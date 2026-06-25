@@ -643,6 +643,11 @@ def render_index(token: str) -> str:
         .replace(/"/g, "&quot;");
     }}
 
+    function looksLikeTerminalArtifact(txt) {{
+      // box-drawing chars signal an ASCII/TUI wireframe or mockup — render raw monospace
+      return /[┌┐└┘├┤┬┴┼─│]/.test(String(txt || ""));
+    }}
+
     function renderInlineMarkdown(text) {{
       let out = esc(text || "");
       out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
@@ -953,6 +958,10 @@ def render_index(token: str) -> str:
         const res = await fetch(href);
         const txt = await res.text();
         if (lower.endsWith(".md")) {{
+          if (looksLikeTerminalArtifact(txt)) {{
+            body.innerHTML = `<div class="code">${{esc(txt.slice(0, 200000))}}</div>`;
+            return;
+          }}
           body.innerHTML = renderMarkdown(txt.slice(0, 200000));
           await renderMermaidIn(body);
           return;
@@ -1049,6 +1058,10 @@ def render_index(token: str) -> str:
         const res = await fetch(href);
         const txt = await res.text();
         if (lower.endsWith(".md")) {{
+          if (looksLikeTerminalArtifact(txt)) {{
+            modalBody.innerHTML = `<div class="code">${{esc(txt.slice(0, 240000))}}</div>`;
+            return;
+          }}
           modalBody.innerHTML = renderMarkdown(txt.slice(0, 240000));
           await renderMermaidIn(modalBody);
           return;
