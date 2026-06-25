@@ -483,6 +483,7 @@ qa:
   coverage_threshold: 80
 
 design:
+  target: web             # web | tui — UI medium the design phase targets
   ui_library: null        # mantine | tailwind | shadcn | null
   token_format: dtcg      # W3C DTCG
 
