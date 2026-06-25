@@ -101,3 +101,18 @@ func TestReclassifyRateLimit_IgnoresFreshOrNoBreadcrumb(t *testing.T) {
 		t.Error("fresh RUNNING must not be promoted")
 	}
 }
+
+func TestReload_PromotesRateLimited(t *testing.T) {
+	withTempCwd(t)
+	_ = os.MkdirAll(".claude/state", 0o755)
+	old := time.Now().Add(-20 * time.Minute).UTC().Format(time.RFC3339)
+	_ = os.WriteFile(".claude/state/maple.json",
+		[]byte(`{"taffy":"impl","stage":"p","status":"RUNNING","updated_at":"`+old+`"}`), 0o644)
+	_ = os.WriteFile(rateLimitBreadcrumbPath, []byte("2026-06-25T15:00:00Z|limit"), 0o644)
+
+	m := &dashboardModel{}
+	m.reload()
+	if m.pipelineState.Status != "RATE_LIMITED" {
+		t.Errorf("reload did not promote: %q", m.pipelineState.Status)
+	}
+}

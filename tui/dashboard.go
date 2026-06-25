@@ -327,6 +327,9 @@ func (m *dashboardModel) reload() {
 	if ps, err := loadPipelineState(); err == nil {
 		m.pipelineState = ps
 	}
+	if ps, ok := reclassifyRateLimit(m.pipelineState); ok {
+		m.pipelineState = ps
+	}
 	m.approvalPending = approvalPending()
 	// clamp cursors
 	m.clampCursor(&m.storiesCur, len(m.stories))
