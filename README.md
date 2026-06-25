@@ -114,6 +114,8 @@ zellij                      # then: maple
 | `n` | Requirements wizard → new Gherkin story |
 | `r` | Run selected test (QA pane) / reload all panes |
 | `d` | Design artifacts pane (full-screen toggle) |
+| `D` | Design Review overlay — review & approve a story's wireframe/mockup (Stories pane) |
+| `C` | Git Changes — popup to view & navigate working-tree diffs (`j/k` file · `J/K` scroll diff · `g/G` top/bottom) |
 | `l` | Logs pane (full-screen toggle) |
 | `R` | RTK harness selector — toggle which harnesses have the token optimizer wired |
 | `S` | `ship-safe` security audit |

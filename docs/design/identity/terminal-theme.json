@@ -1,0 +1,93 @@
+{
+  "_meta": {
+    "status": "draft",
+    "target": "tui",
+    "source": "tokens.json"
+  },
+  "roles": {
+    "primary": {
+      "hex": "#7aa2f7",
+      "ansi256": 111,
+      "lipgloss": "primary"
+    },
+    "accent": {
+      "hex": "#bb9af7",
+      "ansi256": 141,
+      "lipgloss": "accent"
+    },
+    "success": {
+      "hex": "#9ece6a",
+      "ansi256": 149,
+      "lipgloss": "success"
+    },
+    "warning": {
+      "hex": "#e0af68",
+      "ansi256": 179,
+      "lipgloss": "warning"
+    },
+    "error": {
+      "hex": "#f7768e",
+      "ansi256": 210,
+      "lipgloss": "error"
+    },
+    "muted": {
+      "hex": "#565f89",
+      "ansi256": 60,
+      "lipgloss": "muted"
+    },
+    "background": {
+      "hex": "#1a1b26",
+      "ansi256": 234,
+      "lipgloss": "background"
+    },
+    "foreground": {
+      "hex": "#c0caf5",
+      "ansi256": 153,
+      "lipgloss": "foreground"
+    }
+  },
+  "pairs": [
+    {
+      "role": "primary",
+      "on": "background",
+      "contrast": 6.79,
+      "aa_text": true
+    },
+    {
+      "role": "accent",
+      "on": "background",
+      "contrast": 7.39,
+      "aa_text": true
+    },
+    {
+      "role": "success",
+      "on": "background",
+      "contrast": 9.35,
+      "aa_text": true
+    },
+    {
+      "role": "warning",
+      "on": "background",
+      "contrast": 8.55,
+      "aa_text": true
+    },
+    {
+      "role": "error",
+      "on": "background",
+      "contrast": 6.46,
+      "aa_text": true
+    },
+    {
+      "role": "muted",
+      "on": "background",
+      "contrast": 2.76,
+      "aa_text": false
+    },
+    {
+      "role": "foreground",
+      "on": "background",
+      "contrast": 10.59,
+      "aa_text": true
+    }
+  ]
+}

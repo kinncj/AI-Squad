@@ -183,6 +183,10 @@ return m, tea.Quit
 
 `D` (on the Stories pane) opens `designReviewView`, which reads `docs/design/{wireframes,mockups}/<story-id>.*` for the focused story (`design_review.go: loadDesignReview`). `[a]` approves the selected wireframe/mockup by rewriting its `status:` line to `approved` (`approveDesignArtifact`); when no design approval remains it deletes `approval-pending.txt` and calls `notifyAllPanesContinue()`. The overlay never calls `tea.Quit`. The design phase that produces these artifacts is target-aware (`design.target: web | tui` in `project.config.yaml`; see `template/docs/design/design-targets.md`).
 
+### `C` Git Changes overlay
+
+`C` (global) opens `gitChangesView` — a two-pane popup (`git_changes.go`): `git status --porcelain` file list ‖ per-file `git diff HEAD` preview. `j/k` move the file selection (recomputing the diff), `J/K` scroll the diff, `g/G` jump to top/bottom, `q/esc` close. Read-only — never mutates the working tree; handles clean-tree and no-git gracefully. Like every overlay, it never calls `tea.Quit`. Built end-to-end through MAPLE's own `tui` design pipeline (the first dogfood feature).
+
 ### `spawnInNewTerminal` detection order
 
 Goal: always open the **same terminal the user is running MAPLE in**. If the terminal cannot be identified or its launcher is unreachable, return `errNoNewTerminal` immediately — never fall through to a different terminal.

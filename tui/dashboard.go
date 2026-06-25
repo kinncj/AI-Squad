@@ -293,6 +293,13 @@ type dashboardModel struct {
 	designReviewCur    int
 	designReviewScroll int
 
+	// Git Changes overlay ([C] key) — view & navigate working-tree diffs
+	showGitChanges bool
+	gitChanges     gitChanges
+	gitChangesCur  int
+	gitDiffLines   []string
+	gitDiffScroll  int
+
 	// RTK harness selector overlay
 	showRTKHarness      bool
 	rtkHarnessCur       int
@@ -1215,6 +1222,45 @@ func (m *dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Git Changes overlay
+	if m.showGitChanges {
+		visible := m.height - 10
+		if visible < 4 {
+			visible = 4
+		}
+		maxScroll := len(m.gitDiffLines) - visible
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		switch k {
+		case "j", "down":
+			if m.gitChangesCur < len(m.gitChanges.Files)-1 {
+				m.gitChangesCur++
+				m.loadSelectedGitDiff()
+			}
+		case "k", "up":
+			if m.gitChangesCur > 0 {
+				m.gitChangesCur--
+				m.loadSelectedGitDiff()
+			}
+		case "J":
+			if m.gitDiffScroll < maxScroll {
+				m.gitDiffScroll++
+			}
+		case "K":
+			if m.gitDiffScroll > 0 {
+				m.gitDiffScroll--
+			}
+		case "g":
+			m.gitDiffScroll = 0
+		case "G":
+			m.gitDiffScroll = maxScroll
+		case "q", "esc", "b", "ctrl+c":
+			m.showGitChanges = false
+		}
+		return m, nil
+	}
+
 	// Global keys
 	switch k {
 	case "ctrl+c":
@@ -1238,6 +1284,11 @@ func (m *dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			return m, m.setStatus("press [s] to focus Stories, then [D] to review its design", false)
 		}
+	case "C":
+		m.gitChanges = loadGitChanges()
+		m.gitChangesCur = 0
+		m.loadSelectedGitDiff()
+		m.showGitChanges = true
 	case ":":
 		m.cmdMode = true
 		m.cmdBuf = ""
@@ -1673,6 +1724,9 @@ func (m *dashboardModel) View() string {
 	if m.showDesignReview {
 		return m.header() + m.designReviewView() + m.footer()
 	}
+	if m.showGitChanges {
+		return m.header() + m.gitChangesView() + m.footer()
+	}
 	if m.showSkills {
 		return m.header() + m.skillsBrowserView() + m.footer()
 	}
@@ -1876,6 +1930,8 @@ func (m *dashboardModel) footer() string {
 		keys = "  [j/k] scroll · [e] re-edit · [Esc] close"
 	case m.showDesignReview:
 		keys = "  [j/k] select · [a] approve wireframe/mockup · [Esc] close"
+	case m.showGitChanges:
+		keys = "  [j/k] file · [J/K] scroll diff · [g/G] top/bottom · [q/esc] close"
 	case m.showTestOut:
 		if m.testOutRunning {
 			keys = "  running…"

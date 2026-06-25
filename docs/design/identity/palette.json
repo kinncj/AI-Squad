@@ -1,0 +1,71 @@
+{
+  "_meta": {
+    "status": "draft",
+    "target": "tui",
+    "approved_by": null,
+    "approved_at": null,
+    "note": "Derived from maple's built-in tokyo-night theme (tui/themes.go)."
+  },
+  "roles": {
+    "primary": {
+      "value": "#7aa2f7",
+      "ansi256": 111,
+      "on": "#1a1b26",
+      "contrast_on_bg": 6.79,
+      "aa_text": true,
+      "aa_large": true
+    },
+    "accent": {
+      "value": "#bb9af7",
+      "ansi256": 141,
+      "on": "#1a1b26",
+      "contrast_on_bg": 7.39,
+      "aa_text": true,
+      "aa_large": true
+    },
+    "success": {
+      "value": "#9ece6a",
+      "ansi256": 149,
+      "on": "#1a1b26",
+      "contrast_on_bg": 9.35,
+      "aa_text": true,
+      "aa_large": true
+    },
+    "warning": {
+      "value": "#e0af68",
+      "ansi256": 179,
+      "on": "#1a1b26",
+      "contrast_on_bg": 8.55,
+      "aa_text": true,
+      "aa_large": true
+    },
+    "error": {
+      "value": "#f7768e",
+      "ansi256": 210,
+      "on": "#1a1b26",
+      "contrast_on_bg": 6.46,
+      "aa_text": true,
+      "aa_large": true
+    },
+    "muted": {
+      "value": "#565f89",
+      "ansi256": 60,
+      "on": "#1a1b26",
+      "contrast_on_bg": 2.76,
+      "aa_text": false,
+      "aa_large": false
+    },
+    "background": {
+      "value": "#1a1b26",
+      "ansi256": 234
+    },
+    "foreground": {
+      "value": "#c0caf5",
+      "ansi256": 153,
+      "on": "#1a1b26",
+      "contrast_on_bg": 10.59,
+      "aa_text": true,
+      "aa_large": true
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "_meta": {
+    "status": "draft",
+    "target": "tui"
+  },
+  "note": "Terminal text has no font families/px \u2014 only attributes.",
+  "styles": {
+    "title": [
+      "bold"
+    ],
+    "emphasis": [
+      "bold"
+    ],
+    "dim": [
+      "faint"
+    ],
+    "selected": [
+      "bold"
+    ],
+    "added": [],
+    "removed": [],
+    "hunk": [
+      "bold"
+    ]
+  },
+  "supported_attributes": [
+    "bold",
+    "faint",
+    "italic",
+    "underline",
+    "reverse"
+  ]
+}

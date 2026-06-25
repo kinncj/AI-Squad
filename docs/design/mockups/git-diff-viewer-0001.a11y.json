@@ -1,0 +1,59 @@
+{
+  "target": "tui",
+  "url": "git-diff-viewer-0001 terminal UI",
+  "timestamp": "2026-06-25T22:34:45Z",
+  "testEngine": {
+    "name": "maple-tui-a11y",
+    "version": "1"
+  },
+  "violations": [
+    {
+      "id": "color-contrast",
+      "impact": "moderate",
+      "description": "muted (#565f89) on background (#1a1b26) is 2.76:1, below WCAG 2.2 AA 4.5:1",
+      "help": "muted is used only for incidental text (footer hints, file-count summary, ?? glyph); not essential info",
+      "nodes": [
+        {
+          "target": [
+            "footer",
+            "file-count summary",
+            "untracked ?? glyph"
+          ],
+          "failureSummary": "fg #565f89 on bg #1a1b26 = 2.76:1"
+        }
+      ]
+    },
+    {
+      "id": "min-width-resize",
+      "impact": "moderate",
+      "description": "two-pane layout assumes >=80 cols; below that the dashboard degrades to narrowView (overlay not shown)",
+      "help": "acceptable \u2014 narrowView handles <80 cols",
+      "nodes": [
+        {
+          "target": [
+            "overlay"
+          ],
+          "failureSummary": "halfW=(width-4)/2 truncates under ~80 cols"
+        }
+      ]
+    }
+  ],
+  "passes": [
+    {
+      "id": "keyboard-reachable",
+      "description": "open (C), file nav (j/k), diff scroll (J/K), top/bottom (g/G), close (q/esc)"
+    },
+    {
+      "id": "focus-visible",
+      "description": "selected file marked with a \u25b8 glyph + accent, not color alone"
+    },
+    {
+      "id": "color-only-signaling",
+      "description": "file status shown by letter glyph (M/A/D/??) AND color"
+    },
+    {
+      "id": "no-color-support",
+      "description": "lipgloss degrades styles under NO_COLOR / non-TTY"
+    }
+  ]
+}

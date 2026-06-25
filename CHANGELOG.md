@@ -13,6 +13,7 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
 - **Target-aware design phase**: `design.target: web | tui` in `project.config.yaml` (default `web`). The design agents and skills (wireframe-architect, ui-mockup-builder, a11y-auditor, design-system-author, visual-identity-designer + their skills) now read the target and emit medium-appropriate artifacts at the same paths, so the SDLC gates are unchanged. For `tui`: ASCII + Excalidraw wireframes, lipgloss-annotated `.mockup.md`, `terminal-theme.json` tokens, and a terminal a11y checklist written to the same `a11y.json` shape. New profile doc `docs/design/design-targets.md`.
 - **`D` Design Review overlay**: review and approve a story's wireframe/mockup inline in the maple dashboard (Stories pane → `D`), without a browser. `[a]` writes `status: approved` and resumes the pipeline.
 - **Portal terminal rendering**: the design review portal renders box-drawing/terminal `.md` artifacts as raw monospace instead of mangling them through the markdown renderer.
+- **`C` Git Changes overlay**: popup to view and navigate working-tree diffs — `git status` file list ‖ per-file `git diff` preview, `j/k` to switch files, `J/K` to scroll the diff, color-coded hunks (+added/−removed/@@). Read-only; handles clean-tree and no-git gracefully. First feature built end-to-end through MAPLE's own `tui` design pipeline (dogfood).
 
 ### Changed
 - `maple init` writes `design.target: web` into new projects' `project.config.yaml`; web behavior is unchanged.

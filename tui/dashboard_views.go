@@ -432,6 +432,7 @@ func (m *dashboardModel) helpView() string {
 		{"S", "ship-safe audit (shipsafecli.com)"},
 		{"d", "toggle Design pane (full-screen)"},
 		{"D", "Design Review — approve wireframe/mockup (Stories pane)"},
+		{"C", "Git Changes — view & navigate working-tree diffs"},
 		{"l", "toggle Logs pane (full-screen)"},
 		{"n", "new story → Gherkin requirements wizard"},
 		{"u", "update — re-sync template files"},
@@ -547,6 +548,84 @@ func (m *dashboardModel) designReviewView() string {
 		}
 	}
 	return strings.Join(rows, "\n")
+}
+
+func gitStatusColor(t Theme, st string) lipgloss.Color {
+	switch st {
+	case "M":
+		return t.Warning
+	case "A":
+		return t.Success
+	case "D":
+		return t.Error
+	case "R", "C":
+		return t.Accent
+	default:
+		return t.Muted
+	}
+}
+
+func colorizeDiffLine(t Theme, line string, maxW int) string {
+	var c lipgloss.Color
+	switch diffLineKind(line) {
+	case "add":
+		c = t.Success
+	case "del":
+		c = t.Error
+	case "hunk":
+		c = t.Accent
+	case "meta":
+		c = t.Muted
+	default:
+		c = t.Foreground
+	}
+	return lipgloss.NewStyle().Foreground(c).Render(truncate(line, maxW))
+}
+
+func (m *dashboardModel) gitChangesView() string {
+	t := m.theme
+	if m.gitChanges.Err != "" {
+		box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Error).Padding(0, 1)
+		return "\n" + box.Render(lipgloss.NewStyle().Foreground(t.Error).Render("✗ "+m.gitChanges.Err))
+	}
+	if len(m.gitChanges.Files) == 0 {
+		box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Muted).Padding(1, 2)
+		return "\n" + box.Render(lipgloss.NewStyle().Foreground(t.Success).Render("✓ working tree clean — no changes to show"))
+	}
+
+	innerH := m.height - 10
+	if innerH < 4 {
+		innerH = 4
+	}
+	halfW := (m.width - 4) / 2
+
+	fileLines := []string{lipgloss.NewStyle().Foreground(t.Primary).Bold(true).
+		Render(fmt.Sprintf("Git Changes — %d files", len(m.gitChanges.Files)))}
+	for i, f := range m.gitChanges.Files {
+		if i >= innerH-2 {
+			break
+		}
+		glyph := lipgloss.NewStyle().Foreground(gitStatusColor(t, f.Status)).Render(fmt.Sprintf("%-2s", f.Status))
+		path := truncate(f.Path, halfW-8)
+		if i == m.gitChangesCur {
+			cur := lipgloss.NewStyle().Foreground(t.Accent).Render("▸")
+			fileLines = append(fileLines, cur+" "+glyph+" "+lipgloss.NewStyle().Foreground(t.Accent).Bold(true).Render(path))
+		} else {
+			fileLines = append(fileLines, "  "+glyph+" "+lipgloss.NewStyle().Foreground(t.Foreground).Render(path))
+		}
+	}
+	fileLines = append(fileLines, "", lipgloss.NewStyle().Foreground(t.Muted).
+		Render(fmt.Sprintf("%d changed · %d staged", len(m.gitChanges.Files), m.gitChanges.stagedCount())))
+
+	var diffLines []string
+	for j := m.gitDiffScroll; j < len(m.gitDiffLines) && j < m.gitDiffScroll+innerH; j++ {
+		diffLines = append(diffLines, colorizeDiffLine(t, m.gitDiffLines[j], halfW-2))
+	}
+
+	pane := lipgloss.NewStyle().Width(halfW).Height(innerH).Border(lipgloss.RoundedBorder()).PaddingLeft(1)
+	left := pane.BorderForeground(t.Primary).Render(strings.Join(fileLines, "\n"))
+	right := pane.BorderForeground(t.Muted).Render(strings.Join(diffLines, "\n"))
+	return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 }
 
 // extractGherkinFromLines pulls the content inside the first ```gherkin ... ``` block.
