@@ -1948,6 +1948,32 @@ func launcherTools() []string {
 	return tools
 }
 
+func buildResumePrompt(taffy, stage string) string {
+	return "/pipeline-runner " + taffy + `
+
+<maple-resume>
+This pipeline was paused on a rate limit and is now being resumed.
+Continue taffy ` + taffy + ` from stage "` + stage + `" — do not restart from the beginning.
+Re-read .claude/state/maple.json for context, set status back to RUNNING, and carry on.
+</maple-resume>`
+}
+
+// buildResumeCmd builds the exec command to relaunch a rate-limited pipeline on
+// its harness's pinned session with a continuation prompt. Falls back to the only
+// pinned harness when none was recorded. Returns "", nil when no target is known.
+func buildResumeCmd(ps pipelineState, pinned map[string]string) (string, []string) {
+	harness := ps.Harness
+	if harness == "" && len(pinned) == 1 {
+		for h := range pinned {
+			harness = h
+		}
+	}
+	if harness == "" {
+		return "", nil
+	}
+	return harness, buildLaunchCmd(harness, buildResumePrompt(ps.Taffy, ps.Stage), pinned, false)
+}
+
 // buildLaunchCmd constructs the exec command for launching a tool, resuming a pinned
 // session if one exists, otherwise starting fresh with the given command/prompt.
 // When rtk is on PATH, RTK_HOOK_AUDIT=1 is prepended so hook activity is logged.

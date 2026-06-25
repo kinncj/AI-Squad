@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -99,6 +100,37 @@ func TestReclassifyRateLimit_IgnoresFreshOrNoBreadcrumb(t *testing.T) {
 	ps, _ := loadPipelineState()
 	if _, ok := reclassifyRateLimit(ps); ok {
 		t.Error("fresh RUNNING must not be promoted")
+	}
+}
+
+func TestBuildResumeCmd_UsesRecordedHarness(t *testing.T) {
+	ps := pipelineState{Taffy: "implement-stories", Stage: "phase-5", Harness: "claude"}
+	pinned := map[string]string{"claude": "sess-1"}
+	h, cmd := buildResumeCmd(ps, pinned)
+	if h != "claude" {
+		t.Errorf("harness = %q", h)
+	}
+	joined := strings.Join(cmd, " ")
+	if !strings.Contains(joined, "--resume") || !strings.Contains(joined, "sess-1") {
+		t.Errorf("expected resume of pinned session: %q", joined)
+	}
+	if !strings.Contains(joined, "<maple-resume>") || !strings.Contains(joined, "phase-5") {
+		t.Errorf("expected resume prompt with stage: %q", joined)
+	}
+}
+
+func TestBuildResumeCmd_FallsBackToSinglePinned(t *testing.T) {
+	ps := pipelineState{Taffy: "impl", Stage: "p"} // no Harness recorded
+	h, cmd := buildResumeCmd(ps, map[string]string{"opencode": "s2"})
+	if h != "opencode" || cmd == nil {
+		t.Errorf("expected fallback to single pinned harness, got %q / %v", h, cmd)
+	}
+}
+
+func TestBuildResumeCmd_NoHarnessNoSingleton(t *testing.T) {
+	h, cmd := buildResumeCmd(pipelineState{Taffy: "impl"}, map[string]string{"a": "1", "b": "2"})
+	if h != "" || cmd != nil {
+		t.Errorf("expected no resume target, got %q / %v", h, cmd)
 	}
 }
 
