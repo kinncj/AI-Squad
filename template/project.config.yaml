@@ -45,9 +45,10 @@ qa:
   features_dir: tests/features
 
 design:
-  ui_library: none        # mantine | tailwind | shadcn | none
+  target: web             # web | tui — UI medium the design phase targets
+  ui_library: none        # mantine | tailwind | shadcn | none  (web only)
   tokens_file: docs/design/identity/tokens.json
-  wireframe_format: ascii # ascii | svg | html
+  wireframe_format: ascii # ascii | svg | html  (web only)
 
 github:
   project_number: null    # Set by: maple project bootstrap

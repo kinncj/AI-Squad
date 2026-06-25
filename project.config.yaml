@@ -1,0 +1,26 @@
+project:
+  name: "MAPLE"
+  created_at: "2026-06-25T14:48:48-04:00"
+
+sdlc:
+  mode: standard          # standard | spike | quick
+  require_adr_for:
+    - new_dependency
+    - cross_boundary_change
+    - data_model_change
+    - auth_change
+    - mcp_adoption
+    - visual_identity_change
+
+qa:
+  bdd: cucumber           # cucumber | behave | pytest-bdd
+  coverage_threshold: 80
+
+design:
+  target: tui             # web | tui — UI medium the design phase targets
+  ui_library: null        # mantine | tailwind | shadcn | null
+  token_format: dtcg      # W3C DTCG
+
+github:
+  project_number: null
+  project_node_id: null
