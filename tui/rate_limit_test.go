@@ -103,6 +103,32 @@ func TestReclassifyRateLimit_IgnoresFreshOrNoBreadcrumb(t *testing.T) {
 	}
 }
 
+func TestRateLimitResumeDecision(t *testing.T) {
+	now := time.Date(2026, 6, 25, 15, 0, 0, 0, time.UTC)
+	cleared := pipelineState{Status: "RATE_LIMITED", AutoResume: true, ResumeAt: now.Add(-time.Second).Format(time.RFC3339)}
+	notYet := pipelineState{Status: "RATE_LIMITED", AutoResume: true, ResumeAt: now.Add(time.Hour).Format(time.RFC3339)}
+
+	if r, d := rateLimitResumeDecision(cleared, now, time.Time{}); !r || d {
+		t.Errorf("cleared+armed should resume: r=%v d=%v", r, d)
+	}
+	if r, _ := rateLimitResumeDecision(notYet, now, time.Time{}); r {
+		t.Error("not-yet-cleared should not resume")
+	}
+	off := cleared
+	off.AutoResume = false
+	if r, _ := rateLimitResumeDecision(off, now, time.Time{}); r {
+		t.Error("auto-resume OFF should not resume")
+	}
+	// thrash guard: resumed 1 min ago, already rate-limited again
+	if r, d := rateLimitResumeDecision(cleared, now, now.Add(-time.Minute)); r || !d {
+		t.Errorf("recent resume should disarm: r=%v d=%v", r, d)
+	}
+	// resumed long ago — fine to resume again
+	if r, d := rateLimitResumeDecision(cleared, now, now.Add(-time.Hour)); !r || d {
+		t.Errorf("old resume should re-resume: r=%v d=%v", r, d)
+	}
+}
+
 func TestBuildResumeCmd_UsesRecordedHarness(t *testing.T) {
 	ps := pipelineState{Taffy: "implement-stories", Stage: "phase-5", Harness: "claude"}
 	pinned := map[string]string{"claude": "sess-1"}

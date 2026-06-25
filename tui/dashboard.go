@@ -262,6 +262,7 @@ type dashboardModel struct {
 	portalAutoStage string // last approval stage for which portal auto-start was attempted
 	portalPort      int    // TCP port the design portal listens on (0 = not assigned)
 	portalURL       string // full URL once portal is running
+	lastAutoResume  time.Time // when auto-resume last fired (thrash guard)
 
 	// Session launcher overlay
 	showLauncher  bool
@@ -408,6 +409,9 @@ func (m *dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case dashTickMsg:
 		m.reload()
+		if cmd := m.maybeAutoResume(); cmd != nil {
+			return m, tea.Batch(dashTickCmd(), cmd)
+		}
 		autoStage := strings.TrimSpace(m.approvalPending)
 		if autoStage == "" && shouldAutoOpenDesignPortalStage(m.pipelineState.Stage) {
 			autoStage = m.pipelineState.Stage
@@ -1989,6 +1993,51 @@ func launcherTools() []string {
 		tools = append(tools, "claude") // show as option even if not detected
 	}
 	return tools
+}
+
+// rateLimitResumeDecision decides, on a tick, whether to auto-resume a RATE_LIMITED
+// pipeline. disarm=true means turn auto_resume off (thrash guard) because we resumed
+// within the last 5 minutes and are already rate-limited again.
+func rateLimitResumeDecision(ps pipelineState, now, lastResume time.Time) (resume, disarm bool) {
+	if !ps.isRateLimited() || !ps.AutoResume || !ps.windowCleared(now) {
+		return false, false
+	}
+	if !lastResume.IsZero() && now.Sub(lastResume) < 5*time.Minute {
+		return false, true
+	}
+	return true, false
+}
+
+func (m *dashboardModel) maybeAutoResume() tea.Cmd {
+	now := time.Now()
+	resume, disarm := rateLimitResumeDecision(m.pipelineState, now, m.lastAutoResume)
+	if disarm {
+		_ = mergeMapleJSON(map[string]interface{}{"auto_resume": false})
+		if ps, err := loadPipelineState(); err == nil {
+			m.pipelineState = ps
+		}
+		m.status = "auto-resume disarmed — re-hit limit too soon"
+		return nil
+	}
+	if !resume {
+		return nil
+	}
+	harness, cmd := buildResumeCmd(m.pipelineState, m.pinnedSessions)
+	if cmd == nil {
+		return nil
+	}
+	m.lastAutoResume = now
+	_ = mergeMapleJSON(map[string]interface{}{
+		"status":            "RUNNING",
+		"resume_at":         nil,
+		"rate_limit_reason": nil,
+		"updated_at":        now.UTC().Format(time.RFC3339),
+	})
+	if ps, err := loadPipelineState(); err == nil {
+		m.pipelineState = ps
+	}
+	m.status = "⚑ window cleared — auto-resuming " + harness
+	return trySpawnCmdForHarness(harness, cmd)
 }
 
 func buildResumePrompt(taffy, stage string) string {
