@@ -953,6 +953,49 @@ func (m *dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.portalAutoStage = ""
 			m.showPipeline = false
 			return m, m.setStatus("✓ pipeline state cleared", false)
+		case "r":
+			if m.pipelineState.isRateLimited() {
+				harness, cmd := buildResumeCmd(m.pipelineState, m.pinnedSessions)
+				if cmd == nil {
+					return m, m.setStatus("can't resume: no recorded harness/session — relaunch with [x]", true)
+				}
+				_ = mergeMapleJSON(map[string]interface{}{
+					"status":            "RUNNING",
+					"resume_at":         nil,
+					"rate_limit_reason": nil,
+					"updated_at":        time.Now().UTC().Format(time.RFC3339),
+				})
+				if ps, err := loadPipelineState(); err == nil {
+					m.pipelineState = ps
+				}
+				m.showPipeline = false
+				return m, trySpawnCmdForHarness(harness, cmd)
+			}
+		case "A":
+			if m.pipelineState.isRateLimited() {
+				next := !m.pipelineState.AutoResume
+				_ = mergeMapleJSON(map[string]interface{}{"auto_resume": next})
+				if ps, err := loadPipelineState(); err == nil {
+					m.pipelineState = ps
+				}
+				state := "OFF"
+				if next {
+					state = "ON"
+				}
+				return m, m.setStatus("auto-resume: "+state, false)
+			}
+		case "m":
+			if strings.ToUpper(m.pipelineState.Status) == "RUNNING" && m.pipelineState.isStale() {
+				_ = mergeMapleJSON(map[string]interface{}{
+					"status":            "RATE_LIMITED",
+					"resume_at":         time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+					"rate_limit_reason": "manually marked rate-limited",
+				})
+				if ps, err := loadPipelineState(); err == nil {
+					m.pipelineState = ps
+				}
+				return m, m.setStatus("marked RATE_LIMITED — resumes in ~1h or press [r]", false)
+			}
 		default:
 			m.showPipeline = false
 		}
