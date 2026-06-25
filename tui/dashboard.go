@@ -908,7 +908,7 @@ func (m *dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					return m, m.setStatus("add feature requirements before launching a taffy workflow", true)
 				}
 				// Write RUNNING state immediately so [P] reflects it before the agent responds
-				writeQuickLaunchState(name, prompt)
+				writeQuickLaunchState(name, prompt, m.quickLaunchHarness)
 				cmd := buildQuickPromptCmd(name, prompt, m.quickLaunchKind, m.quickLaunchHarness)
 				m.showQuickLaunch = false
 				target := buildLaunchCmd(m.quickLaunchHarness, cmd, m.pinnedSessions, m.quickLaunchKind == "taffy")
@@ -2259,7 +2259,7 @@ func runDashboard(t Theme, noAnimate bool, port int) (dashAction, []string, erro
 
 // writeQuickLaunchState writes an initial RUNNING pipeline state to maple.json
 // when the user launches from the quick-prompt overlay. Merges with existing content.
-func writeQuickLaunchState(skill, stage string) {
+func writeQuickLaunchState(skill, stage, harness string) {
 	_ = os.MkdirAll(".claude/state", 0o755)
 	merged := map[string]interface{}{}
 	if raw, err := os.ReadFile(".claude/state/maple.json"); err == nil {
@@ -2269,6 +2269,7 @@ func writeQuickLaunchState(skill, stage string) {
 	merged["taffy"] = skill
 	merged["stage"] = stage
 	merged["status"] = "RUNNING"
+	merged["harness"] = harness
 	merged["started_at"] = now
 	merged["updated_at"] = now
 	if isQuickLaunchForceUI(skill) {
@@ -2324,6 +2325,17 @@ You were launched from the MAPLE quick-prompt. Keep .claude/state/maple.json upd
   {"taffy":"` + skill + `","stage":"<current step>","status":"RUNNING","updated_at":"<ISO-8601 timestamp>"}
 Set status to "DONE" when finished, "FAILED" if you cannot complete.
 </maple-pipeline>`
+	rateLimit := `
+
+<maple-rate-limit>
+If a usage limit, rate limit, HTTP 429, or "resets at <time>" message stops you from continuing, BEFORE stopping:
+1. Merge-write .claude/state/maple.json (never overwrite other keys), keeping "taffy" and "stage" intact:
+   {"status":"RATE_LIMITED","resume_at":"<ISO-8601 reset time from the message, else now+1h>","rate_limit_reason":"<one line>"}
+2. Write a one-line breadcrumb to .claude/state/rate-limit.txt containing exactly:
+   <resume_at>|<reason>
+   This is a single cheap write — do it even if you can do nothing else.
+3. Then stop. Do not burn retries hammering the API; MAPLE resumes you when the window clears.
+</maple-rate-limit>`
 	progress := ""
 	if kind == "taffy" {
 		progress = `
@@ -2364,7 +2376,7 @@ While this TAFFY run is active, never go silent:
 			"Wireframes are at: " + u + "/wireframes/\n" +
 			"</maple-design-portal>"
 	}
-	return cmd + governance + taffyContext + uiOverride + tracking + progress + portalBlock
+	return cmd + governance + taffyContext + uiOverride + tracking + rateLimit + progress + portalBlock
 }
 
 func writeRecoveryMarker(state string) {

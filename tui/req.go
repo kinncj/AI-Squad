@@ -827,7 +827,7 @@ func (m *reqModel) launchImplementationCmd(ai aiOption) tea.Cmd {
 		if err := writeReqImplementationHandoff(m.stories); err != nil {
 			return reqDoneMsg{err: fmt.Errorf("failed to write gherkin handoff: %w", err)}
 		}
-		writeQuickLaunchState("pipeline-runner implement-stories", "starting")
+		writeQuickLaunchState("pipeline-runner implement-stories", "starting", ai.kind)
 		cmd := m.buildImplementationPrompt(ai.kind)
 		args := buildLaunchCmd(ai.kind, cmd, loadPinnedSessions(), true)
 		msg := trySpawnCmdForHarness(ai.kind, args)

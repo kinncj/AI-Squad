@@ -103,6 +103,32 @@ func TestReclassifyRateLimit_IgnoresFreshOrNoBreadcrumb(t *testing.T) {
 	}
 }
 
+func TestBuildQuickPromptCmd_HasRateLimitBlock(t *testing.T) {
+	out := buildQuickPromptCmd("implement-stories", "do the thing", "taffy", "claude")
+	if !strings.Contains(out, "<maple-rate-limit>") {
+		t.Error("taffy launch missing rate-limit block")
+	}
+	if !strings.Contains(out, "rate-limit.txt") || !strings.Contains(out, "RATE_LIMITED") {
+		t.Error("rate-limit block missing breadcrumb/status instructions")
+	}
+	skillOut := buildQuickPromptCmd("tdd-workflow", "", "skill", "claude")
+	if !strings.Contains(skillOut, "<maple-rate-limit>") {
+		t.Error("skill launch should also carry rate-limit block")
+	}
+}
+
+func TestWriteQuickLaunchState_RecordsHarness(t *testing.T) {
+	withTempCwd(t)
+	writeQuickLaunchState("implement-stories", "phase-1", "opencode")
+	ps, err := loadPipelineState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ps.Harness != "opencode" {
+		t.Errorf("harness = %q", ps.Harness)
+	}
+}
+
 func TestRateLimitResumeDecision(t *testing.T) {
 	now := time.Date(2026, 6, 25, 15, 0, 0, 0, time.UTC)
 	cleared := pipelineState{Status: "RATE_LIMITED", AutoResume: true, ResumeAt: now.Add(-time.Second).Format(time.RFC3339)}
