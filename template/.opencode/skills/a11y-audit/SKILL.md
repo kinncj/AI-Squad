@@ -9,6 +9,18 @@ description: "Run WCAG 2.2 Level AA accessibility audits against generated UI. U
 
 Run WCAG 2.2 Level AA accessibility audits against generated UI. Uses axe-core (via `@axe-core/cli`) or pa11y as available. Posts findings as PR comments. Blocks merge on AA violations. Required for every story with `ui: true`.
 
+## Target awareness
+
+When `design.target` (`project.config.yaml`, default `web`) is `tui`, skip the browser tooling (axe/pa11y)
+and the preview URL. Instead evaluate the terminal a11y checklist from `docs/design/design-targets.md`
+and write the findings to `docs/design/mockups/<id>.a11y.json` using the SAME object shape the web path
+produces — an object with `violations[]`, where each violation has `id`, `impact`
+(`critical|serious|moderate|minor`), `description`, `help`, and `nodes[]` (`{target:[...], failureSummary}`).
+The gate (`scripts/sdlc/a11y-gate.sh`) reads only `violations[].impact`, so matching this shape keeps it
+unchanged. Map checklist failures to impacts: keyboard-reachable→critical, focus-visible→serious,
+color-contrast→serious, color-only-signaling→serious, no-color-support→moderate, min-width-resize→moderate.
+The WCAG criteria, tool-detection, axe/pa11y, and PR-comment sections below apply to `web` targets.
+
 ## WCAG 2.2 AA — Minimum Requirements
 
 | Criterion | Level | What to check |
