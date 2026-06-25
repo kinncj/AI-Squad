@@ -179,6 +179,10 @@ return m, tea.Quit
 
 `reload()` is called on every `dashTickMsg`. It refreshes stories, sessions, QA entries, design tree, logs, pipeline state, approval pending, and pinned sessions. Adding a new file-based state field means adding it here too.
 
+### `D` Design Review overlay
+
+`D` (on the Stories pane) opens `designReviewView`, which reads `docs/design/{wireframes,mockups}/<story-id>.*` for the focused story (`design_review.go: loadDesignReview`). `[a]` approves the selected wireframe/mockup by rewriting its `status:` line to `approved` (`approveDesignArtifact`); when no design approval remains it deletes `approval-pending.txt` and calls `notifyAllPanesContinue()`. The overlay never calls `tea.Quit`. The design phase that produces these artifacts is target-aware (`design.target: web | tui` in `project.config.yaml`; see `template/docs/design/design-targets.md`).
+
 ### `spawnInNewTerminal` detection order
 
 Goal: always open the **same terminal the user is running MAPLE in**. If the terminal cannot be identified or its launcher is unreachable, return `errNoNewTerminal` immediately — never fall through to a different terminal.

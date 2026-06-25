@@ -34,10 +34,10 @@
 | 27 | docs | Feature docs, CHANGELOG, Mermaid |
 | 28 | spec-kit | Gherkin story author — writes story file to `docs/stories/`, halts for approval |
 | 29 | ux-researcher | Personas, journey maps, research summaries — feeds wireframe-architect |
-| 30 | wireframe-architect | Low-fidelity wireframes (md + html + excalidraw, all three required) — requires human approval |
+| 30 | wireframe-architect | Wireframes per `design.target` (web: md+html+excalidraw; tui: md+excalidraw) — requires human approval |
 | 31 | visual-identity-designer | Brand palette, typography, spacing — outputs `palette.json` + `tokens.json` |
 | 32 | design-system-author | Design token system — writes `tokens.json`, CSS vars, Tailwind config, Mantine theme |
-| 33 | ui-mockup-builder | High-fidelity UI mockups as React code — requires wireframe approval |
+| 33 | ui-mockup-builder | High-fidelity mockups per `design.target` (web: React/HTML; tui: lipgloss md) — requires wireframe approval |
 | 34 | a11y-auditor | WCAG 2.2 AA audit — blocks merge on critical/serious violations for `ui:true` stories |
 | 35 | rubber-duck | Second-opinion reviewer — surfaces bugs, design flaws, edge cases (no style comments) |
 
