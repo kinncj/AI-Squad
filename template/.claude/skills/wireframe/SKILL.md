@@ -19,15 +19,26 @@ Generate low-fidelity wireframes from user story files. Output is deterministic 
 
 ## Outputs
 
-All three files are **always required** — not optional, not format-dependent:
+The required files depend on `design.target` in `project.config.yaml` (default `web`) — see Target awareness:
 
-| File | Location | Purpose |
+| File | Location | Targets |
 |---|---|---|
-| `<story-id>.wireframe.md` | `docs/design/wireframes/` | ASCII layout + approval metadata |
-| `<story-id>.wireframe.html` | `docs/design/wireframes/` | Browser-previewable static wireframe |
-| `<story-id>.wireframe.excalidraw` | `docs/design/wireframes/` | Editable Excalidraw diagram |
+| `<story-id>.wireframe.md` | `docs/design/wireframes/` | web + tui — ASCII layout + approval metadata |
+| `<story-id>.wireframe.excalidraw` | `docs/design/wireframes/` | web + tui — editable Excalidraw diagram |
+| `<story-id>.wireframe.html` | `docs/design/wireframes/` | web only — browser-previewable static wireframe |
 
-A wireframe stage that produces only `.md` is **incomplete**. Do not PAUSE or mark DONE without all three files.
+A wireframe stage that produces fewer than the files required for the active target is **incomplete**. Do not PAUSE or mark DONE without them.
+
+## Target awareness
+
+`design.target` decides which files are required:
+
+- **web** — `<id>.wireframe.md` (ASCII) + `.html` (preview) + `.excalidraw`.
+- **tui** — `<id>.wireframe.md` (ASCII/box-drawing) + `.excalidraw`. No `.html`.
+
+Use box-drawing primitives for tui layouts, label panes/overlays/status bar, and include the
+keybinding legend and focus order inline in the `.md`. The Excalidraw generator below applies to both
+targets; the HTML generator is web only.
 
 ## ASCII Wireframe Primitives
 
@@ -121,19 +132,20 @@ approved_at: null
 
 **Step 3 — Write `${STORY_ID}.wireframe.excalidraw`** (see Excalidraw template below)
 
-After writing all three, verify:
+After writing the files required for the active target, verify they exist (web: md, html, excalidraw; tui: md, excalidraw):
 
 ```bash
 ls docs/design/wireframes/${STORY_ID}.wireframe.md
-ls docs/design/wireframes/${STORY_ID}.wireframe.html
 ls docs/design/wireframes/${STORY_ID}.wireframe.excalidraw
+# web target also:
+ls docs/design/wireframes/${STORY_ID}.wireframe.html 2>/dev/null || true
 ```
 
-If any file is missing, produce it before continuing.
+If any required file is missing, produce it before continuing.
 
-## HTML Wireframe (always required)
+## HTML Wireframe (web target only)
 
-Always generate the HTML wireframe — every story, every run. Use multiple `<section>` blocks for multi-state wireframes (default, loading, error, success, empty).
+For web targets, always generate the HTML wireframe. Skip this section entirely for `tui`. Use multiple `<section>` blocks for multi-state wireframes (default, loading, error, success, empty).
 
 ```bash
 cat > "docs/design/wireframes/${STORY_ID}.wireframe.html" <<'HTMLEOF'
@@ -321,8 +333,12 @@ All three files must exist and the `.md` must be `status: approved` before `mock
 python3 - <<'EOF'
 import re, sys, pathlib
 sid = open(".claude/state/maple.json").read()  # or pass STORY_ID
-# Check all three artifacts exist
-for ext in ["md", "html", "excalidraw"]:
+# Check required artifacts exist (html is web-only)
+cfg = open("project.config.yaml").read() if pathlib.Path("project.config.yaml").exists() else ""
+tm = re.search(r'^\s*target:\s*(\w+)', cfg, re.MULTILINE)
+target = tm.group(1) if tm else "web"
+exts = ["md", "excalidraw"] if target == "tui" else ["md", "html", "excalidraw"]
+for ext in exts:
     p = pathlib.Path(f"docs/design/wireframes/{sid}.wireframe.{ext}")
     if not p.exists():
         print(f"BLOCKED: missing {p}")
