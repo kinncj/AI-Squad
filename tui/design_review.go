@@ -87,6 +87,15 @@ func approveDesignArtifact(path string) error {
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
+func (m *dashboardModel) designReviewAllApproved() bool {
+	for _, a := range m.designReview.Artifacts {
+		if (a.Kind == "wireframe" || a.Kind == "mockup") && a.Status != "approved" {
+			return false
+		}
+	}
+	return true
+}
+
 func (a designArtifact) label() string {
 	switch a.Kind {
 	case "a11y":

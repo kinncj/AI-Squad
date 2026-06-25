@@ -287,6 +287,12 @@ type dashboardModel struct {
 	manualLaunchArgs   []string
 	manualLaunchCopied bool // shows "copied!" briefly after [c]
 
+	// Design Review overlay ([D] key) — approve wireframe/mockup for the selected story
+	showDesignReview   bool
+	designReview       designReview
+	designReviewCur    int
+	designReviewScroll int
+
 	// RTK harness selector overlay
 	showRTKHarness      bool
 	rtkHarnessCur       int
@@ -332,6 +338,9 @@ func (m *dashboardModel) reload() {
 		m.pipelineState = ps
 	}
 	m.approvalPending = approvalPending()
+	if m.showDesignReview && m.designReview.StoryID != "" {
+		m.designReview = loadDesignReview(m.designReview.StoryID)
+	}
 	// clamp cursors
 	m.clampCursor(&m.storiesCur, len(m.stories))
 	m.clampCursor(&m.sessionsCur, len(m.sessions))
@@ -1167,6 +1176,45 @@ func (m *dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Design Review overlay
+	if m.showDesignReview {
+		arts := m.designReview.Artifacts
+		switch k {
+		case "j", "down":
+			if m.designReviewCur < len(arts)-1 {
+				m.designReviewCur++
+				m.designReviewScroll = 0
+			}
+		case "k", "up":
+			if m.designReviewCur > 0 {
+				m.designReviewCur--
+				m.designReviewScroll = 0
+			}
+		case "a":
+			if m.designReviewCur < len(arts) {
+				art := arts[m.designReviewCur]
+				if art.Exists && (art.Kind == "wireframe" || art.Kind == "mockup") {
+					if err := approveDesignArtifact(art.Path); err != nil {
+						return m, m.setStatus("✗ approve: "+err.Error(), true)
+					}
+					m.designReview = loadDesignReview(m.designReview.StoryID)
+					if m.designReviewAllApproved() && m.approvalPending != "" {
+						_ = os.Remove(".claude/state/approval-pending.txt")
+						m.approvalPending = ""
+						n := notifyAllPanesContinue()
+						if n > 0 {
+							return m, m.setStatus(fmt.Sprintf("✓ %s approved — sent 'continue' to %d pane(s)", art.Kind, n), false)
+						}
+					}
+					return m, m.setStatus("✓ "+art.Kind+" approved", false)
+				}
+			}
+		case "q", "esc", "b", "ctrl+c":
+			m.showDesignReview = false
+		}
+		return m, nil
+	}
+
 	// Global keys
 	switch k {
 	case "ctrl+c":
@@ -1181,6 +1229,15 @@ func (m *dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "?":
 		m.showHelp = true
+	case "D":
+		if m.focus == paneStories && m.storiesCur < len(m.stories) {
+			m.designReview = loadDesignReview(m.stories[m.storiesCur].id)
+			m.designReviewCur = 0
+			m.designReviewScroll = 0
+			m.showDesignReview = true
+		} else {
+			return m, m.setStatus("press [s] to focus Stories, then [D] to review its design", false)
+		}
 	case ":":
 		m.cmdMode = true
 		m.cmdBuf = ""
@@ -1613,6 +1670,9 @@ func (m *dashboardModel) View() string {
 	if m.showHelp {
 		return m.header() + m.helpView() + m.footer()
 	}
+	if m.showDesignReview {
+		return m.header() + m.designReviewView() + m.footer()
+	}
 	if m.showSkills {
 		return m.header() + m.skillsBrowserView() + m.footer()
 	}
@@ -1814,6 +1874,8 @@ func (m *dashboardModel) footer() string {
 		keys = "  [j/k] scroll · [Esc] close"
 	case m.showStory:
 		keys = "  [j/k] scroll · [e] re-edit · [Esc] close"
+	case m.showDesignReview:
+		keys = "  [j/k] select · [a] approve wireframe/mockup · [Esc] close"
 	case m.showTestOut:
 		if m.testOutRunning {
 			keys = "  running…"

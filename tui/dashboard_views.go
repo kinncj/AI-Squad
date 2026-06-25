@@ -431,6 +431,7 @@ func (m *dashboardModel) helpView() string {
 		{"o  (PRs pane)", "open PR in browser"},
 		{"S", "ship-safe audit (shipsafecli.com)"},
 		{"d", "toggle Design pane (full-screen)"},
+		{"D", "Design Review — approve wireframe/mockup (Stories pane)"},
 		{"l", "toggle Logs pane (full-screen)"},
 		{"n", "new story → Gherkin requirements wizard"},
 		{"u", "update — re-sync template files"},
@@ -499,6 +500,52 @@ func (m *dashboardModel) helpView() string {
 		rows = append(rows, row)
 	}
 	rows = append(rows, "", lipgloss.NewStyle().Foreground(t.Muted).Render("  Press any key to close"))
+	return strings.Join(rows, "\n")
+}
+
+func (m *dashboardModel) designReviewView() string {
+	t := m.theme
+	titleStyle := lipgloss.NewStyle().Foreground(t.Primary).Bold(true)
+	sep := lipgloss.NewStyle().Foreground(t.Muted).Render(strings.Repeat("─", 62))
+
+	var rows []string
+	rows = append(rows, titleStyle.Render("  Design Review — "+m.designReview.StoryID), sep)
+
+	cursor := lipgloss.NewStyle().Foreground(t.Accent).Render("▸")
+	for i, a := range m.designReview.Artifacts {
+		col := t.Foreground
+		if a.Kind != "a11y" && a.Status == "approved" {
+			col = t.Success
+		}
+		if a.Kind != "a11y" && a.Exists && a.Status != "approved" {
+			col = t.Warning
+		}
+		line := lipgloss.NewStyle().Foreground(col).Render(a.label())
+		if i == m.designReviewCur {
+			rows = append(rows, "  "+cursor+" "+line)
+		} else {
+			rows = append(rows, "    "+line)
+		}
+	}
+	rows = append(rows, "")
+
+	if m.designReviewCur < len(m.designReview.Artifacts) {
+		a := m.designReview.Artifacts[m.designReviewCur]
+		rows = append(rows, titleStyle.Render("  "+a.Path), sep)
+		if !a.Exists {
+			rows = append(rows, lipgloss.NewStyle().Foreground(t.Muted).Render("  (not generated yet)"))
+		} else if b, err := os.ReadFile(a.Path); err == nil {
+			lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
+			budget := m.height - 14
+			start := m.designReviewScroll
+			if start > len(lines) {
+				start = len(lines)
+			}
+			for j := start; j < len(lines) && j < start+budget; j++ {
+				rows = append(rows, lipgloss.NewStyle().Foreground(t.Foreground).Render("  "+lines[j]))
+			}
+		}
+	}
 	return strings.Join(rows, "\n")
 }
 
