@@ -39,11 +39,6 @@ description: "Drive development with a red-green-refactor TDD cycle, ensuring te
 # Before integration tests
 docker compose -f docker-compose.test.yml up -d --wait
 
-# Seed test data
-./scripts/seed-test.sh
-# or
-make seed-test
-
 # Run integration tests
 make test-integration
 

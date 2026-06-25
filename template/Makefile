@@ -1,5 +1,5 @@
 # Makefile — Unified build/test contract for all agents
-.PHONY: build test test-integration test-e2e test-contract test-all lint security-scan fmt containers-up containers-down seed-test migrate test-features-sync test-features-scaffold sdlc-report sdlc-rotate-logs sdlc-branch-protection sdlc-bootstrap-project-fields help
+.PHONY: build test test-integration test-e2e test-contract test-all lint security-scan fmt containers-up containers-down migrate test-features-sync test-features-scaffold sdlc-report sdlc-rotate-logs sdlc-branch-protection sdlc-bootstrap-project-fields help
 
 ## Build
 build:
@@ -72,10 +72,6 @@ containers-up:
 ## Stop test containers
 containers-down:
 	docker compose -f docker-compose.test.yml down -v
-
-## Seed test data
-seed-test:
-	./scripts/seed-test.sh
 
 ## Run database migrations
 migrate:
@@ -154,7 +150,6 @@ help:
 	@echo "  fmt                    - Format code"
 	@echo "  containers-up          - Start test containers"
 	@echo "  containers-down        - Stop and remove test containers"
-	@echo "  seed-test              - Seed test data"
 	@echo "  migrate                - Run database migrations"
 	@echo "  sdlc-report            - Print per-story cost + invocation report"
 	@echo "  sdlc-rotate-logs       - Rotate .claude/logs/ (keep last 5 compressed)"

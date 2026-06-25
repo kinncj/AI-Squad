@@ -93,13 +93,6 @@ OC_CMD_COUNT=$(find "$TEMPLATE/.opencode/commands" -name "*.md" | wc -l | tr -d 
 assert_count_gte "Claude Code command count" "$CLAUDE_CMD_COUNT" 5
 assert_count_gte "OpenCode command count"    "$OC_CMD_COUNT"    5
 
-# seed-test.sh lives in infra/scripts/
-if [[ -f "$TEMPLATE/infra/scripts/seed-test.sh" ]]; then
-  ok "infra/scripts/seed-test.sh exists"
-else
-  fail "infra/scripts/seed-test.sh missing"
-fi
-
 # ─── summary ──────────────────────────────────────────────────────────────────
 printf "\n  ────────────────────────────────────────\n"
 printf "  \033[1;32m%d passed\033[0m  ·  " "$PASS"

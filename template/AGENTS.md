@@ -57,7 +57,7 @@ After Phase 7 DOCUMENT, call `/humanizer` to remove AI-isms from prose before me
 ---
 All agents use: `make build`, `make test`, `make test-integration`, `make test-e2e`,
 `make test-contract`, `make test-all`, `make lint`, `make security-scan`, `make fmt`,
-`make containers-up`, `make containers-down`, `make seed-test`, `make migrate`.
+`make containers-up`, `make containers-down`, `make migrate`.
 
 ## Git Conventions
 - Conventional Commits: `feat:`, `fix:`, `test:`, `docs:`, `infra:`, `refactor:`

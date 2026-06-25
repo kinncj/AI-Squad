@@ -1,0 +1,2 @@
+# infra/scripts/ — project infrastructure scripts (migrations, seeding, ops).
+# Add your own here; MAPLE no longer ships a seed-test.sh.

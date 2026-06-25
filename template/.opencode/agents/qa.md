@@ -38,7 +38,6 @@ pytest tests/unit -v --tb=short
 ### Integration Tests (TestContainers pattern)
 ```bash
 make containers-up
-make seed-test
 make test-integration
 make containers-down
 ```

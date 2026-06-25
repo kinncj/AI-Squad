@@ -283,7 +283,7 @@ When a story frontmatter contains `ui: true`, insert a design sub-pipeline befor
 The same agents run for every project; they read `design.target` from `project.config.yaml` (default
 `web`) and emit artifacts for that medium, per `docs/design/design-targets.md`.
 
-1. **UX Research** — delegate to `@ux-researcher`: produce personas + journey map.
+1. **UX Research** — delegate to `@ux-researcher`: personas + journey map.
 2. **Wireframe** — delegate to `@wireframe-architect`: wireframe for every screen/overlay state. **PAUSE — await human wireframe approval.**
 3. **Visual Identity** — if `docs/design/identity/tokens.json` is missing, delegate to `@visual-identity-designer`. **PAUSE — await human palette approval.**
 4. **Design Tokens** — delegate to `@design-system-author`: emit the identity tokens for the active target.

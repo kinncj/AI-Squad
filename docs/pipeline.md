@@ -179,7 +179,6 @@ make security-scan    # Security scanning
 make fmt              # Format code
 make containers-up    # Start PostgreSQL + Redis test containers
 make containers-down  # Stop and remove containers
-make seed-test        # Seed test database
 make migrate          # Run database migrations
 ```
 
