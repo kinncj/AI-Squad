@@ -26,6 +26,15 @@ Produce a coherent visual identity from a brief or set of brand keywords. Output
 | `typography.json` | `docs/design/identity/` | Font families, scale, weights, line-heights |
 | `tokens.json` | `docs/design/identity/` | W3C DTCG format — canonical token file |
 
+## Target awareness
+
+When `design.target` (`project.config.yaml`, default `web`) is `tui`, keep the same JSON outputs but
+constrain choices to the terminal: colors must be expressible in ANSI-256 (record the nearest 256
+index alongside each hex), every fg/bg role pair must clear WCAG 2.2 AA contrast, and `typography.json`
+describes terminal text styles (bold, dim/faint, italic, underline, reverse) rather than font families
+and px sizes. The palette/typography/scale templates below still apply structurally; adapt their values
+for the terminal.
+
 ## Palette Structure
 
 `docs/design/identity/palette.json`:
