@@ -102,6 +102,19 @@ func TestReclassifyRateLimit_IgnoresFreshOrNoBreadcrumb(t *testing.T) {
 	}
 }
 
+func TestIsInFlight(t *testing.T) {
+	for _, s := range []string{"RUNNING", "PAUSED", "RATE_LIMITED", "rate_limited"} {
+		if !isInFlight(s) {
+			t.Errorf("%q should be in-flight", s)
+		}
+	}
+	for _, s := range []string{"DONE", "FAILED", ""} {
+		if isInFlight(s) {
+			t.Errorf("%q should not be in-flight", s)
+		}
+	}
+}
+
 func TestReload_PromotesRateLimited(t *testing.T) {
 	withTempCwd(t)
 	_ = os.MkdirAll(".claude/state", 0o755)

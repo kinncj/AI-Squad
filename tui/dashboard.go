@@ -1614,7 +1614,7 @@ func (m *dashboardModel) header() string {
 	gherkinCount := countGherkinStories()
 	taffyWorkflowCount := countTaffyWorkflows()
 	taffyRunningCount := 0
-	if m.pipelineState.Taffy != "" && (m.pipelineState.Status == "RUNNING" || m.pipelineState.Status == "PAUSED") {
+	if m.pipelineState.Taffy != "" && isInFlight(m.pipelineState.Status) {
 		taffyRunningCount = 1
 	}
 
@@ -1646,6 +1646,14 @@ func countGherkinStories() int {
 		return nil
 	})
 	return count
+}
+
+func isInFlight(status string) bool {
+	switch strings.ToUpper(status) {
+	case "RUNNING", "PAUSED", "RATE_LIMITED":
+		return true
+	}
+	return false
 }
 
 func countTaffyWorkflows() int {
@@ -1707,6 +1715,12 @@ func (m *dashboardModel) footer() string {
 		switch {
 		case m.approvalPending != "":
 			keys = "  [a] approve stage · [v] open design portal · [c] clear state · any other key closes"
+		case m.pipelineState.isRateLimited():
+			if m.pipelineState.windowCleared(time.Now()) {
+				keys = "  [r] resume now · [A] auto-resume toggle · [c] clear · any other key closes"
+			} else {
+				keys = "  waiting for window · [A] auto-resume toggle · [r] force resume · [c] clear"
+			}
 		case m.pipelineState.isStale():
 			keys = "  [v] open design portal · [c] clear stale state · any other key closes"
 		default:
