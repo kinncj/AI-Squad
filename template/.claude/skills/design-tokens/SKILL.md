@@ -198,6 +198,31 @@ with open("docs/design/identity/mantine.theme.ts", "w") as f:
 print("[design-tokens] MANTINE  docs/design/identity/mantine.theme.ts")
 ```
 
+## Emit: Terminal Theme (tui target)
+
+When `design.target` is `tui`, emit `docs/design/identity/terminal-theme.json` from `tokens.json`
+instead of the CSS/Tailwind/Mantine outputs. Map each color role to an ANSI-256 index (and the hex)
+plus a lipgloss style name, and record the foreground/background pairs with their contrast ratios so
+the a11y auditor can flag any pair under WCAG 2.2 AA. Shape:
+
+```json
+{
+  "roles": {
+    "primary":    { "fg": "#7aa2f7", "ansi256": 111, "lipgloss": "primary" },
+    "muted":      { "fg": "#565f89", "ansi256": 60,  "lipgloss": "muted" },
+    "accent":     { "fg": "#bb9af7", "ansi256": 141, "lipgloss": "accent" },
+    "error":      { "fg": "#f7768e", "ansi256": 204, "lipgloss": "error" },
+    "success":    { "fg": "#9ece6a", "ansi256": 149, "lipgloss": "success" },
+    "background": { "bg": "#1a1b26", "ansi256": 234 },
+    "foreground": { "fg": "#c0caf5", "ansi256": 189 }
+  },
+  "pairs": [
+    { "role": "foreground", "on": "background", "contrast": 12.6 },
+    { "role": "muted",      "on": "background", "contrast": 3.4 }
+  ]
+}
+```
+
 ## Run All Emitters
 
 ```bash
