@@ -102,6 +102,23 @@ func TestReclassifyRateLimit_IgnoresFreshOrNoBreadcrumb(t *testing.T) {
 	}
 }
 
+func TestFormatRateLimitCountdown(t *testing.T) {
+	now := time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC)
+	got := formatRateLimitCountdown(now.Add(2*time.Hour+14*time.Minute+9*time.Second).Format(time.RFC3339), now)
+	if got[:9] != "in 02:14:" {
+		t.Errorf("countdown = %q", got)
+	}
+	if formatRateLimitCountdown(now.Add(-time.Minute).Format(time.RFC3339), now) != "window cleared" {
+		t.Error("past should say window cleared")
+	}
+	if formatRateLimitCountdown("", now) != "unknown" {
+		t.Error("empty should say unknown")
+	}
+	if formatRateLimitCountdown("garbage", now) != "unknown" {
+		t.Error("bad should say unknown")
+	}
+}
+
 func TestIsInFlight(t *testing.T) {
 	for _, s := range []string{"RUNNING", "PAUSED", "RATE_LIMITED", "rate_limited"} {
 		if !isInFlight(s) {

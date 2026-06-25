@@ -5,9 +5,28 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
+
+// formatRateLimitCountdown renders time until resume_at as "in HH:MM:SS (3:04 PM)".
+// Returns "window cleared" when now is past resume_at, "unknown" when unset/bad.
+func formatRateLimitCountdown(resumeAt string, now time.Time) string {
+	if resumeAt == "" {
+		return "unknown"
+	}
+	tm, err := time.Parse(time.RFC3339, resumeAt)
+	if err != nil {
+		return "unknown"
+	}
+	if !now.Before(tm) {
+		return "window cleared"
+	}
+	d := tm.Sub(now).Round(time.Second)
+	return fmt.Sprintf("in %02d:%02d:%02d (%s)",
+		int(d.Hours()), int(d.Minutes())%60, int(d.Seconds())%60, tm.Local().Format("3:04 PM"))
+}
 
 // ─── Pane content renderers ───────────────────────────────────────────────────
 
@@ -841,6 +860,8 @@ func (m *dashboardModel) pipelineStatusView() string {
 		switch ps.Status {
 		case "PAUSED":
 			iconStyle = lipgloss.NewStyle().Foreground(t.Accent)
+		case "RATE_LIMITED":
+			iconStyle = lipgloss.NewStyle().Foreground(t.Warning)
 		case "FAILED":
 			iconStyle = lipgloss.NewStyle().Foreground(t.Error)
 		case "DONE":
@@ -862,6 +883,26 @@ func (m *dashboardModel) pipelineStatusView() string {
 				"",
 				lipgloss.NewStyle().Foreground(t.Muted).Render(fmt.Sprintf("  Last update was >%s ago. If the agent is gone, press [c] to clear.", stalePipelineThreshold)),
 			)
+		}
+		if ps.isRateLimited() {
+			now := time.Now()
+			cleared := ps.windowCleared(now)
+			warn := lipgloss.NewStyle().Foreground(t.Warning)
+			bodyLines = append(bodyLines, "", warn.Render("  ⚑ Rate-limited: "+ps.RateLimitReason))
+			bodyLines = append(bodyLines, warn.Render("  Resets "+formatRateLimitCountdown(ps.ResumeAt, now)))
+			auto := "OFF"
+			if ps.AutoResume {
+				auto = "ON"
+			}
+			if cleared {
+				bodyLines = append(bodyLines,
+					lipgloss.NewStyle().Foreground(t.Success).Bold(true).Render("  window cleared — [r] resume now"))
+			} else {
+				bodyLines = append(bodyLines,
+					lipgloss.NewStyle().Foreground(t.Muted).Render("  [r] force resume before the window clears"))
+			}
+			bodyLines = append(bodyLines,
+				lipgloss.NewStyle().Foreground(t.Primary).Render("  [A] auto-resume: "+auto+"   [c] clear"))
 		}
 		if ps.AwaitingApproval != "" || m.approvalPending != "" {
 			stage := ps.AwaitingApproval
