@@ -65,8 +65,8 @@ Then update `issue_number` in the story file frontmatter.
 - NEVER make assumptions about architecture.
 - Each story must be independently testable.
 - Each Gherkin scenario must be machine-executable (no ambiguous steps).
-- **`ui: true`** for any story where the user sees or interacts with a rendered UI element (pages, cards, modals, forms, navigation, visual components). When in doubt, set `ui: true`.
-- **`ui: false`** only for purely backend, data pipeline, CLI, or infrastructure stories with zero frontend output.
+- **`ui: true`** for any story where the user sees or interacts with a rendered surface — a web page or a terminal UI (pages, cards, modals, forms, navigation, overlays, panes, status bars). The medium comes from `design.target` in `project.config.yaml`, not from the story. When in doubt, set `ui: true`.
+- **`ui: false`** only for purely backend, data-pipeline, or infrastructure stories with zero rendered output.
 - `ui: true` stories require explicit wireframe and mockup approval in DoD.
 - Spike stories: set `type:spike` label; no Gherkin required.
 - Always read `project.config.yaml` → `stack:` before writing stories. Reference the confirmed stack in any scenario that touches a technology choice (e.g. "Given the React app renders…" not "Given the app renders…").
