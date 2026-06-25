@@ -18,7 +18,7 @@ Scaffold high-fidelity UI component mockups using the project's declared UI stac
 | `tokens_file` | canonical token file | `docs/design/identity/tokens.json` |
 | `stack` | `project.config.yaml` | `react-mantine` \| `react-tailwind` \| `html` |
 
-## Supported Stacks
+## Supported Stacks (web target)
 
 | Stack value | Framework | Token source |
 |---|---|---|
@@ -29,11 +29,21 @@ Scaffold high-fidelity UI component mockups using the project's declared UI stac
 
 ## Outputs
 
-| File | Location |
-|---|---|
-| `<story-id>.mockup.tsx` | `docs/design/mockups/` (React stacks) |
-| `<story-id>.mockup.html` | `docs/design/mockups/` (html stack) |
-| `<story-id>.mockup.md` | `docs/design/mockups/` (metadata + approval) |
+| File | Location | Targets |
+|---|---|---|
+| `<story-id>.mockup.md` | `docs/design/mockups/` | web + tui — metadata + approval (tui: also the terminal render + lipgloss styles) |
+| `<story-id>.mockup.tsx` | `docs/design/mockups/` | web only — React stacks |
+| `<story-id>.mockup.html` | `docs/design/mockups/` | web only — html stack |
+
+## Target awareness
+
+`design.target` (`project.config.yaml`, default `web`):
+
+- **web** — generate the code mockup (`.tsx`/`.html`) for the configured `ui_library`, plus `.mockup.md`.
+- **tui** — generate ONLY `<id>.mockup.md`: a fenced monospace terminal render at the target width
+  covering default/selected/empty/error/loading states, followed by a "Styles" section mapping each
+  region to lipgloss `Foreground`/`Background`/`Border`/`Padding` taken from
+  `docs/design/identity/terminal-theme.json`. Skip the stack detector and the React templates below.
 
 ## Pre-flight Checks
 
