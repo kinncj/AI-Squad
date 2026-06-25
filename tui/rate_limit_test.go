@@ -103,6 +103,39 @@ func TestReclassifyRateLimit_IgnoresFreshOrNoBreadcrumb(t *testing.T) {
 	}
 }
 
+func TestPipelineStatusView_RateLimitedRender(t *testing.T) {
+	m := &dashboardModel{theme: loadTheme(), width: 100, height: 40}
+	m.pipelineState = pipelineState{
+		Taffy:           "implement-stories",
+		Stage:           "phase-5-implement",
+		Status:          "RATE_LIMITED",
+		ResumeAt:        time.Now().Add(2 * time.Hour).Format(time.RFC3339),
+		RateLimitReason: "5-hour usage limit",
+		Harness:         "claude",
+		AutoResume:      true,
+	}
+	out := m.pipelineStatusView()
+	for _, want := range []string{"⚑", "RATE_LIMITED", "Rate-limited", "5-hour usage limit", "Resets", "[r]", "[A]", "auto-resume: ON"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("pipelineStatusView missing %q", want)
+		}
+	}
+}
+
+func TestPipelineStatusView_RateLimitClearedRender(t *testing.T) {
+	m := &dashboardModel{theme: loadTheme(), width: 100, height: 40}
+	m.pipelineState = pipelineState{
+		Taffy:    "implement-stories",
+		Stage:    "phase-5",
+		Status:   "RATE_LIMITED",
+		ResumeAt: time.Now().Add(-time.Minute).Format(time.RFC3339),
+	}
+	out := m.pipelineStatusView()
+	if !strings.Contains(out, "window cleared") {
+		t.Error("cleared window should render 'window cleared'")
+	}
+}
+
 func TestBuildQuickPromptCmd_HasRateLimitBlock(t *testing.T) {
 	out := buildQuickPromptCmd("implement-stories", "do the thing", "taffy", "claude")
 	if !strings.Contains(out, "<maple-rate-limit>") {
