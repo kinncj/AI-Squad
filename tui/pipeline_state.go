@@ -9,6 +9,8 @@ import (
 
 const stalePipelineThreshold = 10 * time.Minute
 
+const rateLimitBreadcrumbPath = ".claude/state/rate-limit.txt"
+
 // pipelineState mirrors the state written by the pipeline-runner skill
 // to .claude/state/maple.json
 type pipelineState struct {
@@ -102,4 +104,69 @@ func loadPipelineState() (pipelineState, error) {
 		return pipelineState{}, err
 	}
 	return ps, nil
+}
+
+// mergeMapleJSON applies updates to .claude/state/maple.json, preserving every
+// other key. A value of nil deletes its key. Follows the merge-not-overwrite protocol.
+func mergeMapleJSON(updates map[string]interface{}) error {
+	_ = os.MkdirAll(".claude/state", 0o755)
+	merged := map[string]interface{}{}
+	if raw, err := os.ReadFile(".claude/state/maple.json"); err == nil {
+		_ = json.Unmarshal(raw, &merged)
+	}
+	for k, v := range updates {
+		if v == nil {
+			delete(merged, k)
+			continue
+		}
+		merged[k] = v
+	}
+	data, err := json.Marshal(merged)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(".claude/state/maple.json", append(data, '\n'), 0o644)
+}
+
+// parseRateLimitBreadcrumb splits a "resume_at|reason" line. A line with no pipe
+// is treated as resume_at only. Both sides are trimmed.
+func parseRateLimitBreadcrumb(content string) (resumeAt, reason string) {
+	line := strings.TrimSpace(content)
+	if line == "" {
+		return "", ""
+	}
+	if i := strings.Index(line, "|"); i >= 0 {
+		return strings.TrimSpace(line[:i]), strings.TrimSpace(line[i+1:])
+	}
+	return line, ""
+}
+
+// reclassifyRateLimit promotes a stale RUNNING pipeline to RATE_LIMITED when the
+// agent left a breadcrumb it could not turn into a full state write. It consumes
+// (deletes) the breadcrumb and returns the reloaded state plus whether it promoted.
+func reclassifyRateLimit(ps pipelineState) (pipelineState, bool) {
+	if strings.ToUpper(ps.Status) != "RUNNING" || !ps.isStale() {
+		return ps, false
+	}
+	raw, err := os.ReadFile(rateLimitBreadcrumbPath)
+	if err != nil {
+		return ps, false
+	}
+	resumeAt, reason := parseRateLimitBreadcrumb(string(raw))
+	if resumeAt == "" {
+		resumeAt = time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	}
+	if reason == "" {
+		reason = "rate limit (reclassified from stale run)"
+	}
+	_ = mergeMapleJSON(map[string]interface{}{
+		"status":            "RATE_LIMITED",
+		"resume_at":         resumeAt,
+		"rate_limit_reason": reason,
+	})
+	_ = os.Remove(rateLimitBreadcrumbPath)
+	if ps2, err := loadPipelineState(); err == nil {
+		return ps2, true
+	}
+	return ps, true
 }
