@@ -1,0 +1,60 @@
+name: implement-stories
+description: "Implement pre-written stories via orchestrator 8-phase + Karpathy (no spec-kit rerun). For ui:true stories, runs wireframe → visual-identity → design-tokens → mockup approval gates before implementation."
+version: "1.1"
+tags: [implementation, orchestrator, gherkin]
+
+stages:
+  - name: orchestrator-kickoff
+    agent: orchestrator
+    description: "Kick off workflow, publish stage plan, and maintain heartbeat feedback throughout execution"
+    gate: auto
+    when: always
+
+  - name: wireframe
+    agent: wireframe-architect
+    description: "ASCII/SVG wireframes for every screen state — required before implementation for ui:true stories"
+    gate: human-approval
+    when: ui:true
+    depends_on: [orchestrator-kickoff]
+
+  - name: visual-identity
+    agent: visual-identity-designer
+    description: "Palette, typography, spacing — only if tokens.json is missing or not yet approved"
+    gate: human-approval
+    when: ui:true
+    depends_on: [wireframe]
+
+  - name: design-tokens
+    agent: design-system-author
+    description: "Emit CSS vars, Tailwind config, Mantine theme from approved tokens"
+    gate: auto
+    when: ui:true
+    depends_on: [visual-identity]
+
+  - name: ui-mockup-builder
+    agent: ui-mockup-builder
+    description: "High-fidelity code mockup from approved wireframe and tokens — final gate before implementation"
+    gate: human-approval
+    when: ui:true
+    depends_on: [design-tokens]
+
+  - name: standard-8-phase
+    pipeline: standard
+    description: "Run the full 8-phase SDLC pipeline (DISCOVER → FINAL GATE) over existing stories, enforcing repo instruction markdowns and existing test-stack conventions"
+    gate: auto
+    when: always
+    depends_on: [ui-mockup-builder]
+
+  - name: qa-cucumber
+    agent: qa-cucumber
+    description: "Materialize and validate required Gherkin/Cucumber artifacts and step implementations under /tests"
+    gate: auto
+    when: always
+    depends_on: [standard-8-phase]
+
+  - name: a11y-audit
+    agent: a11y-auditor
+    description: "WCAG 2.2 AA accessibility audit for UI stories"
+    gate: auto
+    when: ui:true
+    depends_on: [qa-cucumber]

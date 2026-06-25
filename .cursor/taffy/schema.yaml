@@ -1,0 +1,32 @@
+# Taffy workflow schema
+# A taffy workflow is a named, composable pipeline of agents and skills.
+# The pipeline-runner skill reads this format and executes each stage in order.
+#
+# Top-level fields:
+#   name        string   — machine identifier, used in /pipeline-runner <name>
+#   description string   — shown in the TUI picker
+#   version     string   — semver
+#   tags        [string] — for filtering in the TUI (ui, api, bugfix, design, ...)
+#
+# stages[]:
+#   name         string   — stage identifier (shown in progress output)
+#   agent        string   — @agent to delegate to (matches .claude/agents/<agent>.md)
+#   skill        string   — skill to invoke instead of an agent (optional)
+#   gate         string   — human-approval | auto
+#                           human-approval: pause and write PAUSED state to maple.json
+#                           auto: continue immediately after stage completes
+#   when         string   — always | ui:true | ui:false
+#                           guards this stage based on story frontmatter
+#   depends_on   [string] — stage names that must complete before this one starts
+#   pipeline     string   — standard (run the full 8-phase pipeline for the current story)
+#
+# State tracking:
+#   pipeline-runner writes progress to .claude/state/maple.json:
+#   {
+#     "taffy": "<name>",
+#     "stage": "<current-stage-name>",
+#     "status": "RUNNING | PAUSED | DONE | FAILED",
+#     "awaiting_approval": "<stage-name> | null",
+#     "started_at": "<iso8601>",
+#     "updated_at": "<iso8601>"
+#   }

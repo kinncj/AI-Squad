@@ -1,0 +1,24 @@
+name: api-endpoint
+description: "API-only feature pipeline — Gherkin story → contract → 8-phase pipeline (no design gates)"
+version: "1.0"
+tags: [api, backend, no-ui]
+
+stages:
+  - name: orchestrator-kickoff
+    agent: orchestrator
+    description: "Kick off workflow, publish stage plan, and maintain heartbeat feedback throughout execution"
+    gate: auto
+    when: always
+
+  - name: spec-kit
+    agent: spec-kit
+    description: "Author Gherkin story file and emit to docs/stories/"
+    gate: human-approval
+    when: always
+    depends_on: [orchestrator-kickoff]
+
+  - name: standard-8-phase
+    pipeline: standard
+    description: "Run the full 8-phase SDLC pipeline (DISCOVER → FINAL GATE)"
+    gate: auto
+    depends_on: [spec-kit]

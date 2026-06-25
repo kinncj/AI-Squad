@@ -32,6 +32,13 @@ var/*
 maple
 .maple.json
 
+# Dogfood runtime state — generated at runtime, holds maple.json + portal token, never commit
+/.claude/state/
+/.claude/logs/
+/.opencode/state/
+/.cursor/state/
+__pycache__/
+
 # Build artifact — tui/template is a copy of ./template for go:embed, never commit it
 tui/template/
 # Stale leftover from running maple init inside this repo's template/ dir

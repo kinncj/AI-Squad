@@ -1,0 +1,36 @@
+name: bugfix
+description: "Reproduce → isolate root cause → fix → validate → CHANGELOG"
+version: "1.0"
+tags: [bugfix, hotfix]
+
+stages:
+  - name: orchestrator-kickoff
+    agent: orchestrator
+    description: "Kick off workflow, publish stage plan, and maintain heartbeat feedback throughout execution"
+    gate: auto
+    when: always
+
+  - name: reproduce
+    agent: qa
+    description: "Write a failing test that reproduces the bug (RED)"
+    gate: human-approval
+    when: always
+    depends_on: [orchestrator-kickoff]
+
+  - name: fix
+    agent: orchestrator
+    description: "Delegate fix to the appropriate specialist agent (make test GREEN)"
+    gate: auto
+    depends_on: [reproduce]
+
+  - name: validate
+    agent: qa
+    description: "Run full test suite — ensure no regressions introduced"
+    gate: auto
+    depends_on: [fix]
+
+  - name: changelog
+    agent: docs
+    description: "Add CHANGELOG.md entry under ## Unreleased"
+    gate: auto
+    depends_on: [validate]

@@ -1,0 +1,36 @@
+name: design-refresh
+description: "Refresh visual identity — palette → tokens → mockup updates → a11y re-audit"
+version: "1.0"
+tags: [design, ui, tokens]
+
+stages:
+  - name: orchestrator-kickoff
+    agent: orchestrator
+    description: "Kick off workflow, publish stage plan, and maintain heartbeat feedback throughout execution"
+    gate: auto
+    when: always
+
+  - name: visual-identity
+    agent: visual-identity-designer
+    description: "New palette, typography, spacing — output to docs/design/identity/"
+    gate: human-approval
+    when: always
+    depends_on: [orchestrator-kickoff]
+
+  - name: design-tokens
+    agent: design-system-author
+    description: "Re-emit CSS vars, Tailwind config, Mantine theme from updated tokens"
+    gate: auto
+    depends_on: [visual-identity]
+
+  - name: ui-mockup-builder
+    agent: ui-mockup-builder
+    description: "Update mockups to reflect new design tokens"
+    gate: human-approval
+    depends_on: [design-tokens]
+
+  - name: a11y-audit
+    agent: a11y-auditor
+    description: "Re-run WCAG 2.2 AA audit on updated mockups"
+    gate: auto
+    depends_on: [ui-mockup-builder]

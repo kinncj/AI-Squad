@@ -1,0 +1,69 @@
+name: sdlc-gates
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["main", "develop"]
+
+jobs:
+  frontmatter:
+    name: Story frontmatter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate story frontmatter
+        run: |
+          STORIES=$(find docs/stories -name "*.md" ! -name "_template.md" 2>/dev/null || true)
+          [ -z "$STORIES" ] && echo "No stories found — skipping" && exit 0
+          bash scripts/sdlc/validate-frontmatter.sh $STORIES
+
+  spec-kit:
+    name: Gherkin story validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Gherkin scenarios in story files
+        run: bash scripts/sdlc/spec-kit-gate.sh
+
+  design-approved:
+    name: Design approval (ui:true stories)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check wireframe + mockup approval status
+        run: |
+          STORIES=$(find docs/stories -name "*.md" ! -name "_template.md" 2>/dev/null || true)
+          [ -z "$STORIES" ] && echo "No stories found — skipping" && exit 0
+          bash scripts/sdlc/design-approved-gate.sh $STORIES
+
+  a11y:
+    name: A11y audit gate (ui:true stories)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check a11y audit reports
+        run: |
+          STORIES=$(find docs/stories -name "*.md" ! -name "_template.md" 2>/dev/null || true)
+          [ -z "$STORIES" ] && echo "No stories found — skipping" && exit 0
+          bash scripts/sdlc/a11y-gate.sh $STORIES
+
+  adr-required:
+    name: ADR required gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check ADR files exist when adr_required is true
+        run: bash scripts/sdlc/adr-required-gate.sh
+
+  ship-safe:
+    name: Ship-Safe security audit
+    runs-on: ubuntu-latest
+    if: vars.ENABLE_SHIP_SAFE == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ship-safe audit
+        run: npx --yes ship-safe audit .

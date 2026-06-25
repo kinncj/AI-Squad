@@ -1,0 +1,53 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "theme": "catppuccin",
+  "default_agent": "orchestrator",
+  "instructions": [
+    "AGENTS.md",
+    "CLAUDE.md"
+  ],
+  "permission": {
+    "edit": "ask",
+    "bash": {
+      "*": "ask",
+      "ls*": "allow",
+      "cat*": "allow",
+      "find*": "allow",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "gh *": "allow",
+      "make *": "allow"
+    },
+    "webfetch": "deny"
+  },
+  "mcp": {
+    "context7": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@upstash/context7-mcp@latest"
+      ],
+      "enabled": true
+    }
+  },
+  "watcher": {
+    "ignore": [
+      "node_modules",
+      ".git",
+      "dist",
+      "build",
+      "coverage",
+      ".next",
+      ".nuxt",
+      "bin",
+      "obj",
+      "target",
+      "__pycache__",
+      ".pytest_cache",
+      ".mypy_cache",
+      ".terraform",
+      "*.tfstate*"
+    ]
+  }
+}

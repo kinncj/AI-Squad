@@ -1,0 +1,59 @@
+name: new-ui-feature
+description: "Full UI feature pipeline — Gherkin story → design gates → 8-phase pipeline → a11y audit"
+version: "1.0"
+tags: [ui, frontend, full-pipeline]
+
+stages:
+  - name: orchestrator-kickoff
+    agent: orchestrator
+    description: "Kick off workflow, publish stage plan, and maintain heartbeat feedback throughout execution"
+    gate: auto
+    when: always
+
+  - name: spec-kit
+    agent: spec-kit
+    description: "Run MAPLE internal spec-kit (Specification Knowledge & Integration Toolkit) to author Gherkin story file and emit to docs/stories/ (not github/spec-kit)"
+    gate: human-approval
+    when: always
+    depends_on: [orchestrator-kickoff]
+
+  - name: wireframe
+    agent: wireframe-architect
+    description: "Wireframes for every screen/overlay state (format per design.target)"
+    gate: human-approval
+    when: ui:true
+    depends_on: [spec-kit]
+
+  - name: visual-identity
+    agent: visual-identity-designer
+    description: "Palette, typography, spacing — only if tokens.json is missing"
+    gate: human-approval
+    when: ui:true
+    depends_on: [wireframe]
+
+  - name: design-tokens
+    agent: design-system-author
+    description: "Emit identity tokens for the target medium from approved tokens.json"
+    gate: auto
+    when: ui:true
+    depends_on: [visual-identity]
+
+  - name: ui-mockup-builder
+    agent: ui-mockup-builder
+    description: "High-fidelity mockup for the target medium from approved wireframe and tokens"
+    gate: human-approval
+    when: ui:true
+    depends_on: [design-tokens]
+
+  - name: standard-8-phase
+    pipeline: standard
+    description: "Run the full 8-phase SDLC pipeline (DISCOVER → FINAL GATE)"
+    gate: auto
+    depends_on: [ui-mockup-builder]
+
+  - name: a11y-audit
+    agent: a11y-auditor
+    description: "Accessibility audit for the target medium — blocks merge on critical/serious"
+    gate: auto
+    when: ui:true
+    depends_on: [standard-8-phase]
