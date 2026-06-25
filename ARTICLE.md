@@ -871,7 +871,7 @@ graph LR
 
 **File:** `skills/tdd-workflow/SKILL.md`
 
-Defines TDD (RED → GREEN → REFACTOR) and ATDD (acceptance criteria → test → implement) patterns. Container lifecycle for integration tests (`docker compose up -d --wait` → `make seed-test` → run tests → `docker compose down -v`). Rules: test file before implementation, test must fail initially, never weaken assertions, implementation agent receives test path not requirement text.
+Defines TDD (RED → GREEN → REFACTOR) and ATDD (acceptance criteria → test → implement) patterns. Container lifecycle for integration tests (`docker compose up -d --wait` → run tests → `docker compose down -v`). Rules: test file before implementation, test must fail initially, never weaken assertions, implementation agent receives test path not requirement text.
 
 #### Skill 2: RFC/ADR
 
@@ -1125,7 +1125,6 @@ graph LR
     subgraph "Infrastructure"
         CU[make containers-up]
         CD[make containers-down]
-        ST[make seed-test]
         M[make migrate]
     end
 
@@ -1135,7 +1134,7 @@ graph LR
     TA --> TC
 ```
 
-All 13 targets are required. CI/CD, the Orchestrator, and QA all use the same `make` interface.
+All 12 targets are required. CI/CD, the Orchestrator, and QA all use the same `make` interface.
 
 ---
 
@@ -1289,7 +1288,6 @@ Path-scoping edits (e.g., "QA can only edit `tests/**`") is a prompt convention,
 │   └── runbooks/
 ├── infra/
 │   └── scripts/
-│       └── seed-test.sh
 ├── scripts/
 │   └── maple
 └── CHANGELOG.md
@@ -1835,120 +1833,7 @@ case "${1:-help}" in
 esac
 ```
 
-### `infra/scripts/seed-test.sh` — Test Data Seeding
-
-Seeds the test database from contracts defined in Phase 2. Used by QA and integration tests.
-
-```bash
-#!/usr/bin/env bash
-# seed-test.sh — Seed the test database with fixture data
-# Usage: ./infra/scripts/seed-test.sh
-# Called by: make seed-test
-#
-# Copyright (C) 2025 Kinn Coelho Juliao <kinncj@protonmail.com>
-# SPDX-License-Identifier: AGPL-3.0-or-later
-set -euo pipefail
-
-# ─── Colour palette ───────────────────────────────────────────────────────────
-if [[ -n "${NO_COLOR:-}" || "${TERM:-}" == "dumb" || ! -t 1 ]]; then
-  R=''; B=''; D=''; GRN=''; YLW=''; CYN=''
-  BGRN=''; BRED=''; BYEL=''; BCYN=''; BMGT=''
-else
-  R='\033[0m';    B='\033[1m';    D='\033[2m'
-  GRN='\033[0;32m';  YLW='\033[0;33m';  CYN='\033[0;36m'
-  BGRN='\033[1;32m'; BRED='\033[1;31m'; BYEL='\033[1;33m'
-  BCYN='\033[1;36m'; BMGT='\033[1;35m'
-fi
-
-HR="  ${D}$(printf '─%.0s' {1..60})${R}"
-
-# ─── UI primitives ────────────────────────────────────────────────────────────
-header() {
-  printf "\n"
-  printf "  ${B}${BMGT}MAPLE${R}  ${D}·${R}  ${B}%s${R}\n" "$1"
-  printf "%b\n\n" "$HR"
-}
-
-step()  { printf "\n  ${BCYN}›${R}  ${B}%s${R}\n" "$1"; }
-ok()    { printf "  ${BGRN}✓${R}  %-40s  ${D}%s${R}\n" "$1" "${2:-}"; }
-skip()  { printf "  ${D}–  %-40s  not found, skipping${R}\n" "$1"; }
-info()  { printf "  ${D}  %-20s${R}  ${B}%s${R}\n" "$1" "${2:-}"; }
-fail()  { printf "\n  ${BRED}✗${R}  ${B}%s${R}\n\n" "$*" >&2; exit 1; }
-
-# ─── Config ───────────────────────────────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-
-DB_HOST="${POSTGRES_HOST:-localhost}"
-DB_PORT="${POSTGRES_PORT:-5433}"
-DB_USER="${POSTGRES_USER:-testuser}"
-DB_PASSWORD="${POSTGRES_PASSWORD:-testpassword}"
-DB_NAME="${POSTGRES_DB:-testdb}"
-
-export PGPASSWORD="$DB_PASSWORD"
-
-# ─── Main ─────────────────────────────────────────────────────────────────────
-header "Seed Test Database"
-
-info "Host"     "${DB_HOST}:${DB_PORT}"
-info "Database" "$DB_NAME"
-info "User"     "$DB_USER"
-
-step "Connecting to database"
-for i in $(seq 1 30); do
-  if pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" &>/dev/null; then
-    ok "Database ready"
-    break
-  fi
-  if [[ "$i" -eq 30 ]]; then
-    fail "Database not ready after 30 seconds  (${DB_HOST}:${DB_PORT})"
-  fi
-  printf "  ${D}  Waiting... %d/30${R}\r" "$i"
-  sleep 1
-done
-
-run_sql() {
-  psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
-       -f "$1" --quiet 2>&1 || fail "SQL error in: $1"
-}
-
-MIGRATION_DIR="$PROJECT_DIR/migrations"
-step "Running migrations"
-if compgen -G "${MIGRATION_DIR}/*.sql" &>/dev/null; then
-  for f in "$MIGRATION_DIR"/*.sql; do
-    run_sql "$f"
-    ok "$(basename "$f")"
-  done
-else
-  skip "$MIGRATION_DIR/*.sql"
-fi
-
-step "Applying contract seed data"
-SEED_FILE="$PROJECT_DIR/docs/specs/current/contracts/seed-data.sql"
-if [[ -f "$SEED_FILE" ]]; then
-  run_sql "$SEED_FILE"
-  ok "$(basename "$SEED_FILE")"
-else
-  skip "docs/specs/current/contracts/seed-data.sql"
-fi
-
-FIXTURES_DIR="$PROJECT_DIR/tests/fixtures"
-step "Applying test fixtures"
-if compgen -G "${FIXTURES_DIR}/*.sql" &>/dev/null; then
-  for f in "$FIXTURES_DIR"/*.sql; do
-    [[ -f "$f" ]] || continue
-    run_sql "$f"
-    ok "$(basename "$f")"
-  done
-else
-  skip "tests/fixtures/*.sql"
-fi
-
-printf "\n%b\n" "$HR"
-printf "  ${BGRN}✓${R}  ${B}Test database seeded.${R}\n\n"
-```
-
-### `Makefile` — The 13-Target Contract
+### `Makefile` — The 12-Target Contract
 
 ```makefile
 # Makefile — MAPLE multi-agent contract
@@ -1958,7 +1843,7 @@ printf "  ${BGRN}✓${R}  ${B}Test database seeded.${R}\n\n"
 
 .PHONY: build test test-integration test-e2e test-contract test-all \
         lint security-scan fmt \
-        containers-up containers-down seed-test migrate
+        containers-up containers-down migrate
 
 # ============================================================
 # Build
@@ -1985,7 +1870,7 @@ test:  ## Unit tests
 	# pytest tests/unit -v
 	@echo "✅ Unit tests complete"
 
-test-integration: containers-up seed-test  ## Integration tests (requires containers)
+test-integration: containers-up  ## Integration tests (requires containers)
 	@echo "🧪 Running integration tests..."
 	# dotnet test --filter "Category=Integration"
 	# mvn test -Dgroups=integration
@@ -1993,7 +1878,7 @@ test-integration: containers-up seed-test  ## Integration tests (requires contai
 	# pytest tests/integration -v
 	@echo "✅ Integration tests complete"
 
-test-e2e: containers-up seed-test  ## E2E tests (browser + API)
+test-e2e: containers-up  ## E2E tests (browser + API)
 	@echo "🧪 Running E2E tests..."
 	npx playwright test tests/e2e/
 	@echo "✅ E2E tests complete"
@@ -2047,11 +1932,6 @@ containers-down:  ## Stop and remove test containers
 	@echo "🐳 Stopping containers..."
 	docker compose -f docker-compose.test.yml down -v
 	@echo "✅ Containers removed"
-
-seed-test:  ## Seed test database
-	@echo "🌱 Seeding test data..."
-	./infra/scripts/seed-test.sh
-	@echo "✅ Test data seeded"
 
 migrate:  ## Run database migrations
 	@echo "📦 Running migrations..."
@@ -2253,7 +2133,7 @@ Key skills: tdd-workflow, playwright-cli, github-cli, mermaid-diagrams.
 ## Makefile Contract
 All agents use: `make build`, `make test`, `make test-integration`, `make test-e2e`,
 `make test-contract`, `make test-all`, `make lint`, `make security-scan`, `make fmt`,
-`make containers-up`, `make containers-down`, `make seed-test`, `make migrate`.
+`make containers-up`, `make containers-down`, `make migrate`.
 
 ## Git Conventions
 - Conventional Commits: `feat:`, `fix:`, `test:`, `docs:`, `infra:`, `refactor:`
