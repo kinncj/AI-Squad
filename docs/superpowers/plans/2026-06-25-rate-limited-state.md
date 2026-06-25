@@ -1098,7 +1098,8 @@ git commit -m "inject rate-limit handling block and record launch harness"
 
 **Files:**
 - Modify: `template/.claude/skills/pipeline-runner/SKILL.md`
-- Modify: `template/CLAUDE.md`, `template/COPILOT.md` (only these two carry a session-start status bullet)
+- Modify: `template/CLAUDE.md`, `template/COPILOT.md` (edit the existing session-start bullet)
+- Modify: `template/OPENCODE.md`, `template/CURSOR.md` (add a session-start protocol — they have none today)
 - Modify: `README.md` (FAFE rows ~184-185)
 
 **Interfaces:** documentation only — verified by `grep`.
@@ -1139,9 +1140,9 @@ And after the `approval-pending.txt` subsection, add:
 Skill/agent writes `<resume_at>|<reason>`. TUI reads, promotes `maple.json` to `RATE_LIMITED`, and deletes the file.
 ```
 
-- [ ] **Step 2: Update the session-start protocol**
+- [ ] **Step 2: Update the session-start protocol in all four harness docs**
 
-Only `template/CLAUDE.md` and `template/COPILOT.md` carry a session-start status bullet (`OPENCODE.md`, `CURSOR.md`, and `AGENTS.md` have none — leave them alone).
+`CLAUDE.md` and `COPILOT.md` already have the bullet — edit it. `OPENCODE.md` and `CURSOR.md` have no session-start protocol at all — add the whole section so a rate-limited pipeline running under those harnesses is resumed, not bypassed. All harnesses read the same `.claude/state/maple.json`. (`AGENTS.md` has no such section and stays unchanged.)
 
 In `template/CLAUDE.md`, replace this exact line:
 
@@ -1167,6 +1168,26 @@ with:
 - **`RUNNING`, `PAUSED`, or `RATE_LIMITED`** — pipeline is active (RATE_LIMITED = paused on a rate limit). Continue within it; resume a RATE_LIMITED run rather than starting new work.
 ```
 
+In `template/OPENCODE.md`, insert this section immediately after the title line `# OPENCODE.md — OpenCode Configuration` (before `## Agent System`):
+
+```markdown
+
+## Session Start Protocol (mandatory)
+
+Before responding to any implementation request, run:
+
+```bash
+python3 -c "import json; s=json.load(open('.claude/state/maple.json')); print(s.get('status',''))" 2>/dev/null || echo "none"
+```
+
+- **`RUNNING`, `PAUSED`, or `RATE_LIMITED`** — a pipeline is active (RATE_LIMITED = paused on a rate limit). Continue within it; do not start a parallel one. For RATE_LIMITED, resume it — do not begin new work.
+- **anything else** — no pipeline is active. Route through `/pipeline-runner` before touching `app/` or `tests/`.
+
+Never write to `app/` or `tests/` outside a running pipeline stage.
+```
+
+In `template/CURSOR.md`, insert the same section immediately after the title line `# CURSOR.md — Cursor IDE Configuration` (before `## Agent System`) — identical text, since the state path is the same `.claude/state/maple.json`.
+
 - [ ] **Step 3: Rewrite the README FAFE rows**
 
 In `README.md`, replace lines 184-185 with copy that matches what ships:
@@ -1182,14 +1203,14 @@ Run:
 ```bash
 cd /Users/kinncj/Development/kinncj/MAPLE
 grep -c "Rate-limit Handling" template/.claude/skills/pipeline-runner/SKILL.md
-grep -c "RATE_LIMITED" template/CLAUDE.md README.md
+grep -l "RATE_LIMITED" template/CLAUDE.md template/COPILOT.md template/OPENCODE.md template/CURSOR.md README.md
 ```
-Expected: `1` for the skill heading; non-zero counts for `RATE_LIMITED` in `template/CLAUDE.md` and `README.md`.
+Expected: `1` for the skill heading; all five files listed (each contains `RATE_LIMITED`).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add template/.claude/skills/pipeline-runner/SKILL.md template/CLAUDE.md template/COPILOT.md README.md
+git add template/.claude/skills/pipeline-runner/SKILL.md template/CLAUDE.md template/COPILOT.md template/OPENCODE.md template/CURSOR.md README.md
 git commit -m "document rate-limit handling, resume protocol, and yellow flag"
 ```
 
