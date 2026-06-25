@@ -181,8 +181,8 @@ MAPLE sets the rules. TAFFY runs the jobs.
 |---|---|
 | **T — Task-Isolated** | Each agent job runs in a dedicated subprocess. A 60-second generation loop never freezes the TUI — you keep reviewing PRs or reading specs while the agent works. |
 | **A — Asynchronous** | Fire-and-forget from the orchestrator's perspective. TAFFY manages waiting, polling, and completion signals so the rest of the pipeline stays non-blocking. |
-| **F — Fault-Tolerant** | Hard timeouts kill stuck agents and mark the job `FAILED`. On `429` rate limits, state is set to `RATE_LIMITED` and the job resumes when the window clears. Three consecutive failures escalate to human. |
-| **F — File-Synced** | No Redis, no broker. TAFFY writes state to `.claude/state/maple.json`. The TUI reacts: `RUNNING` → spinner, `PAUSED` → gate indicator, `RATE_LIMITED` → yellow flag, `DONE`/`FAILED` → final status. |
+| **F — Fault-Tolerant** | Hard timeouts kill stuck agents and mark the job `FAILED`. On a rate limit, the agent writes `RATE_LIMITED` with a `resume_at`; MAPLE flags it yellow and resumes the exact stage when the window clears — manually with `[r]`, or automatically when auto-resume is armed. Three consecutive failures escalate to human. |
+| **F — File-Synced** | No Redis, no broker. TAFFY writes state to `.claude/state/maple.json`. The TUI reacts: `RUNNING` → spinner, `PAUSED` → gate indicator, `RATE_LIMITED` → yellow flag with a reset countdown, `DONE`/`FAILED` → final status. State persists on disk, so a run rate-limited today resumes tomorrow. |
 | **Y — YAML-Driven** | Workflows are stateless and deterministic. Each job is a YAML manifest: stage list, agent assignments, gates, guards, artifact expectations. No hidden state. |
 
 ### Built-in workflows

@@ -257,6 +257,19 @@ After 3 consecutive failures on any stage:
 
 Stop. Report failed stage and error to human. Do not proceed.
 
+## Rate-limit Handling
+
+When a usage limit, rate limit, HTTP 429, or "resets at <time>" message stops you continuing, before stopping:
+
+1. Merge-write `.claude/state/maple.json` (keep `taffy`/`stage`):
+
+```json
+{ "status": "RATE_LIMITED", "resume_at": "<iso8601 reset time, else now+1h>", "rate_limit_reason": "<one line>", "updated_at": "<iso8601>" }
+```
+
+2. Write a one-line breadcrumb to `.claude/state/rate-limit.txt`: `<resume_at>|<reason>`. One cheap write — do it even if nothing else is possible.
+3. Stop. Do not hammer the API. MAPLE resumes the pipeline when the window clears (manual `[r]`, or auto when armed).
+
 ## Session Context
 
 On startup, read `.claude/state/sessions.json` if it exists:
@@ -282,6 +295,10 @@ All state in `.claude/state/`. TUI and skill share these files.
 | `pipeline` | skill | `standard` if running 8-phase |
 | `started_at` | skill | ISO 8601 |
 | `updated_at` | skill | ISO 8601 |
+| `resume_at` | skill/TUI | ISO 8601 — when the rate-limit window clears |
+| `rate_limit_reason` | skill/TUI | one-line cause |
+| `harness` | TUI | which harness ran this pipeline (for resume) |
+| `auto_resume` | TUI | `true` when auto-resume is armed |
 | `state` | TUI | `running` or `exited` |
 | `ts` | TUI | ISO 8601 |
 
@@ -290,6 +307,10 @@ All state in `.claude/state/`. TUI and skill share these files.
 ### `.claude/state/approval-pending.txt`
 
 Skill writes stage name. TUI deletes when user presses `[a]`.
+
+### `.claude/state/rate-limit.txt`
+
+Skill/agent writes `<resume_at>|<reason>`. TUI reads, promotes `maple.json` to `RATE_LIMITED`, and deletes the file.
 
 ### `.claude/state/sessions.json`
 

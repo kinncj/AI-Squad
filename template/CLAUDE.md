@@ -8,7 +8,7 @@ Before responding to any implementation request, run:
 python3 -c "import json; s=json.load(open('.claude/state/maple.json')); print(s.get('status',''))" 2>/dev/null || echo "none"
 ```
 
-- **`RUNNING` or `PAUSED`** — a pipeline is active. Continue within it; do not start a parallel one.
+- **`RUNNING`, `PAUSED`, or `RATE_LIMITED`** — a pipeline is active (RATE_LIMITED = paused on a rate limit). Continue within it; do not start a parallel one. For RATE_LIMITED, resume it — do not begin new work.
 - **anything else** — no pipeline is active. Route through `/pipeline-runner` before touching `app/` or `tests/`:
 
 ```
