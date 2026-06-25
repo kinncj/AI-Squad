@@ -7,6 +7,19 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
 
 <!-- Agents append entries here using: gh issue comment + docs agent -->
 
+## [4.16.0] — 2026-06-25
+
+### Added
+- **`RATE_LIMITED` pipeline state**: rate-limited TAFFY runs are now a real, recoverable state instead of a documented-only one. When a usage limit / 429 / "resets at" message stops a run, the agent writes `status=RATE_LIMITED` with `resume_at` and `rate_limit_reason` to `maple.json` plus a `.claude/state/rate-limit.txt` breadcrumb. The `[P]` pipeline overlay shows a yellow `⚑` flag with a live reset countdown.
+- **Rate-limit resume (hybrid)**: `[r]` resumes the paused pipeline on its recorded harness's pinned session with a continue-from-stage prompt; `[A]` arms opt-in auto-resume that relaunches automatically when the window clears. A thrash guard disarms auto-resume if a resumed run re-hits the limit within 5 minutes. State persists on disk, so a run rate-limited today resumes the next day.
+- **Stale-run reclassify safety net**: the TUI promotes a stale `RUNNING` pipeline to `RATE_LIMITED` from the breadcrumb file (consumed like `approval-pending.txt`), and `[m]` manually marks a stale run as rate-limited — covering hard cutoffs the agent cannot self-report.
+- **Session-start protocol parity**: `OPENCODE.md` and `CURSOR.md` gain the mandatory session-start status check (previously only in `CLAUDE.md`/`COPILOT.md`); all four now treat `RATE_LIMITED` as an active pipeline to resume rather than bypass.
+
+### Changed
+- Header taffy badge and pipeline overlay count `RATE_LIMITED` as an in-flight pipeline.
+- `pipeline-runner` skill documents rate-limit handling, the new `maple.json` fields (`resume_at`, `rate_limit_reason`, `harness`, `auto_resume`), and the `rate-limit.txt` signal file.
+- README FAFE rows rewritten to match shipped behavior (was aspirational).
+
 ## [4.13.0] — 2026-05-20
 
 ### Added
