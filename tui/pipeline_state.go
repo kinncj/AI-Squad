@@ -12,12 +12,16 @@ const stalePipelineThreshold = 10 * time.Minute
 // pipelineState mirrors the state written by the pipeline-runner skill
 // to .claude/state/maple.json
 type pipelineState struct {
-	Taffy           string `json:"taffy"`
-	Stage           string `json:"stage"`
-	Status          string `json:"status"` // RUNNING | PAUSED | DONE | FAILED
+	Taffy            string `json:"taffy"`
+	Stage            string `json:"stage"`
+	Status           string `json:"status"` // RUNNING | PAUSED | RATE_LIMITED | DONE | FAILED
 	AwaitingApproval string `json:"awaiting_approval"`
-	StartedAt       string `json:"started_at"`
-	UpdatedAt       string `json:"updated_at"`
+	StartedAt        string `json:"started_at"`
+	UpdatedAt        string `json:"updated_at"`
+	ResumeAt         string `json:"resume_at"`
+	RateLimitReason  string `json:"rate_limit_reason"`
+	Harness          string `json:"harness"`
+	AutoResume       bool   `json:"auto_resume"`
 	// recovery marker fields written by the TUI itself
 	State string `json:"state"`
 	TS    string `json:"ts"`
@@ -43,12 +47,31 @@ func (p pipelineState) isStale() bool {
 	return time.Since(t) > stalePipelineThreshold
 }
 
+func (p pipelineState) isRateLimited() bool {
+	return strings.ToUpper(p.Status) == "RATE_LIMITED"
+}
+
+// windowCleared reports whether the rate-limit window has passed. Returns false
+// when resume_at is empty or unparseable — the run stays paused for manual resume.
+func (p pipelineState) windowCleared(now time.Time) bool {
+	if p.ResumeAt == "" {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339, p.ResumeAt)
+	if err != nil {
+		return false
+	}
+	return !now.Before(t)
+}
+
 func (p pipelineState) statusIcon() string {
 	switch strings.ToUpper(p.Status) {
 	case "RUNNING":
 		return "▶"
 	case "PAUSED":
 		return "⏸"
+	case "RATE_LIMITED":
+		return "⚑"
 	case "DONE":
 		return "✓"
 	case "FAILED":
