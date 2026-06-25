@@ -3,7 +3,7 @@
 set -uo pipefail
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 ROOT="${REPO_ROOT:-$PWD}"
-cd "$TMP"
+cd "$TMP" || exit 1
 
 mkdir -p docs/stories docs/design/wireframes docs/design/mockups
 cat > docs/stories/STORY-TUI.md <<'EOF'
