@@ -2,9 +2,22 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 )
+
+// resumeNote describes what happened after an approval, given how many agent
+// panes accepted the "continue" keystroke. With 0 panes (a direct launch, no
+// multiplexer, or an agent that maple did not spawn) the gate is still cleared
+// by deleting approval-pending.txt — the agent resumes on its next poll — so the
+// message must not imply a live nudge happened.
+func resumeNote(n int) string {
+	if n > 0 {
+		return fmt.Sprintf("sent 'continue' to %d pane(s)", n)
+	}
+	return "no live agent pane to nudge — it resumes on its next poll, or paste 'continue' in its terminal"
+}
 
 type paneRef struct {
 	Kind   string `json:"kind"`   // "tmux", "zellij", ""

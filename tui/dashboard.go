@@ -957,11 +957,7 @@ func (m *dashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				ps, _ := loadPipelineState()
 				m.pipelineState = ps
 				n := notifyAllPanesContinue()
-				msg := "✓ approved — pipeline resuming"
-				if n > 0 {
-					msg = fmt.Sprintf("✓ approved — sent 'continue' to %d pane(s)", n)
-				}
-				return m, m.setStatus(msg, false)
+				return m, m.setStatus("✓ approved — "+resumeNote(n), false)
 			}
 		case "v":
 			return m, designPortalCmd(true, false, m.approvalPending, m.portalPort)
@@ -1647,7 +1643,12 @@ func trySpawnCmdForHarness(harness string, args []string) tea.Cmd {
 			if err != nil {
 				return spawnFailedMsg{args: args}
 			}
-			savePaneRef(harness, p)
+			// Only record panes we can actually signal later. An empty paneRef
+			// (no multiplexer / case-4 plain spawn) can't receive a "continue"
+			// keystroke, so persisting it would just mislead notifyAllPanesContinue.
+			if p.Kind != "" {
+				savePaneRef(harness, p)
+			}
 			return spawnSucceededMsg{harness: label}
 		}
 		if err := spawnInNewTerminal(args); err != nil {

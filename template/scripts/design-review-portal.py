@@ -1133,7 +1133,11 @@ def render_index(token: str) -> str:
     async function approveStage() {{
       try {{
         const r = await api("/api/approve", {{ method: "POST" }});
-        document.getElementById("msg").textContent = `Approved: ${{r.stage || "stage"}}`;
+        const n = (r && r.signaled_panes) || 0;
+        const note = n > 0
+          ? `nudged ${{n}} agent pane(s)`
+          : "no live agent pane — it resumes on its next poll, or paste 'continue' in its terminal";
+        document.getElementById("msg").textContent = `Approved: ${{r.stage || "stage"}} — ${{note}}`;
         resetReviewInputs();
         await refreshAll();
       }} catch (e) {{
