@@ -7,6 +7,12 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
 
 <!-- Agents append entries here using: gh issue comment + docs agent -->
 
+## [4.17.1] — 2026-06-26
+
+### Fixed
+- **Approval resume reporting**: the `[P]` approve no longer claims "pipeline resuming" when no agent pane was actually nudged. The approve message now states honestly whether a `continue` keystroke reached a live pane, or that the agent will resume on its next poll (the deleted `approval-pending.txt` is the real signal). The design review portal's "Approve stage" surfaces the same. Maple no longer persists empty pane refs that can't be signaled.
+- **`pipeline-runner` wireframe gate is now target-aware**: it required `.html` for every wireframe; for `design.target: tui` it now requires `.md` + `.excalidraw` only (no `.html`), matching the rest of the tui design path.
+
 ## [4.17.0] — 2026-06-25
 
 ### Added
