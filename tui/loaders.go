@@ -118,10 +118,10 @@ func loadPRsCmd() tea.Cmd {
 		if err != nil {
 			return prsLoadedMsg{err: "gh not found"}
 		}
-		out, err := exec.Command(ghPath, "pr", "list",
+		out, err := runWithTimeout(timeoutNetwork, nil, ghPath, "pr", "list",
 			"--json", "number,title,state",
 			"--limit", "20",
-		).Output()
+		)
 		if err != nil {
 			return prsLoadedMsg{err: "gh pr list: " + strings.TrimSpace(string(out))}
 		}
@@ -147,7 +147,7 @@ func approvePRCmd(number int) tea.Cmd {
 		if err != nil {
 			return prApproveResultMsg{number: number, err: "gh not found"}
 		}
-		out, err := exec.Command(ghPath, "pr", "review", fmt.Sprintf("%d", number), "--approve").CombinedOutput()
+		out, err := runWithTimeout(timeoutNetwork, nil, ghPath, "pr", "review", fmt.Sprintf("%d", number), "--approve")
 		if err != nil {
 			msg := strings.TrimSpace(string(out))
 			// Strip verbose GraphQL prefix for readability
@@ -166,7 +166,7 @@ func loadPRDetailCmd(number int, title string) tea.Cmd {
 		if err != nil {
 			return prDetailLoadedMsg{err: "gh not found", title: title}
 		}
-		out, err := exec.Command(ghPath, "pr", "view", fmt.Sprintf("%d", number)).Output()
+		out, err := runWithTimeout(timeoutNetwork, nil, ghPath, "pr", "view", fmt.Sprintf("%d", number))
 		if err != nil {
 			return prDetailLoadedMsg{err: strings.TrimSpace(string(out)), title: title}
 		}

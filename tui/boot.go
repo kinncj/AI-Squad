@@ -54,7 +54,7 @@ func newBootModel(t Theme) *bootModel {
 }
 
 func checkGHAuth() error {
-	out, err := exec.Command("gh", "auth", "status").CombinedOutput()
+	out, err := runWithTimeout(timeoutAuth, nil, "gh", "auth", "status")
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
 		if msg == "" {

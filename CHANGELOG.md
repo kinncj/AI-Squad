@@ -7,6 +7,12 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
 
 <!-- Agents append entries here using: gh issue comment + docs agent -->
 
+## [Unreleased]
+
+### Fixed
+- **Subprocess calls now time out**: every external CLI call (`gh`, `npx`, the AI harnesses, `rtk`, `curl|sh`, `cargo`, `tar`, design portal, lefthook) routes through a shared `runWithTimeout` helper with a class-appropriate deadline (AI 120s, network 60s, install 300s, `gh auth status` 10s at boot). A hung child no longer blocks forever.
+- **`maple req` no longer locks out keys while sending**: the `reqStepSending` state now handles `ctrl+c`/`esc`, cancelling the in-flight AI call and exiting cleanly instead of swallowing every keypress until the terminal is killed.
+
 ## [4.17.1] — 2026-06-26
 
 ### Fixed

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -58,7 +59,9 @@ func searchSkillsCmd(query string) tea.Cmd {
 		if query != "" {
 			args = append(args, query)
 		}
-		cmd := exec.Command("npx", args...)
+		ctx, cancel := context.WithTimeout(context.Background(), timeoutNetwork)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "npx", args...)
 		// npm_config_yes=true auto-confirms package install without needing package.json.
 		// NO_COLOR/FORCE_COLOR strip ANSI so parseSkillsOutput gets clean ASCII.
 		cmd.Env = append(os.Environ(), "NO_COLOR=1", "FORCE_COLOR=0", "npm_config_yes=true")
@@ -89,11 +92,13 @@ func listInstalledSkillsCmd() tea.Cmd {
 			if scope.flag != "" {
 				args = append(args, scope.flag)
 			}
-			cmd := exec.Command("npx", args...)
+			ctx, cancel := context.WithTimeout(context.Background(), timeoutNetwork)
+			cmd := exec.CommandContext(ctx, "npx", args...)
 			cmd.Env = append(os.Environ(), "NO_COLOR=1", "FORCE_COLOR=0", "npm_config_yes=true")
 			var stdout bytes.Buffer
 			cmd.Stdout = &stdout
 			_ = cmd.Run()
+			cancel()
 
 			items := parseInstalledJSON(stdout.String(), scope.label)
 			if len(items) == 0 {
@@ -108,9 +113,8 @@ func listInstalledSkillsCmd() tea.Cmd {
 
 func removeSkillCmd(name string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := exec.Command("npx", "skills", "remove", name, "--all", "-y")
-		cmd.Env = append(os.Environ(), "NO_COLOR=1", "FORCE_COLOR=0", "npm_config_yes=true")
-		out, err := cmd.CombinedOutput()
+		env := append(os.Environ(), "NO_COLOR=1", "FORCE_COLOR=0", "npm_config_yes=true")
+		out, err := runWithTimeout(timeoutNetwork, env, "npx", "skills", "remove", name, "--all", "-y")
 		if err != nil {
 			msg := strings.TrimSpace(stripANSI(string(out)))
 			if msg == "" {
@@ -192,9 +196,8 @@ func parseInstalledText(s, scope string) []installedSkillRow {
 
 func installSkillCmd(pkg string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := exec.Command("npx", "skills", "add", pkg, "--all", "-y")
-		cmd.Env = append(os.Environ(), "NO_COLOR=1", "FORCE_COLOR=0", "npm_config_yes=true")
-		out, err := cmd.CombinedOutput()
+		env := append(os.Environ(), "NO_COLOR=1", "FORCE_COLOR=0", "npm_config_yes=true")
+		out, err := runWithTimeout(timeoutNetwork, env, "npx", "skills", "add", pkg, "--all", "-y")
 		if err != nil {
 			msg := strings.TrimSpace(stripANSI(string(out)))
 			if msg == "" {

@@ -2028,8 +2028,7 @@ func (m *dashboardModel) runTestCmd(e testEntry) tea.Cmd {
 			if len(e.runCmd) == 0 {
 				return testRunDoneMsg{lines: []string{"no run command configured"}, failed: true}
 			}
-			cmd := exec.Command(e.runCmd[0], e.runCmd[1:]...)
-			out, err := cmd.CombinedOutput()
+			out, err := runWithTimeout(timeoutInstall, nil, e.runCmd[0], e.runCmd[1:]...)
 			lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
 			if len(lines) == 0 {
 				lines = []string{"(no output)"}
@@ -2048,8 +2047,7 @@ func (m *dashboardModel) runShipSafeCmd() tea.Cmd {
 			if err != nil {
 				return shipSafeDoneMsg{lines: []string{"npx not found — install Node.js from nodejs.org"}, failed: true}
 			}
-			cmd := exec.Command(npx, "ship-safe", "audit", ".")
-			out, err := cmd.CombinedOutput()
+			out, err := runWithTimeout(timeoutNetwork, nil, npx, "ship-safe", "audit", ".")
 			lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
 			if len(lines) == 0 {
 				lines = []string{"(no output)"}
@@ -2290,7 +2288,7 @@ func rtkInitCmd(h rtkHarness) tea.Cmd {
 		if err != nil {
 			return rtkInitDoneMsg{key: h.key, err: "rtk not found"}
 		}
-		out, err := exec.Command(rtkPath, h.flags...).CombinedOutput()
+		out, err := runWithTimeout(timeoutLocal, nil, rtkPath, h.flags...)
 		if err != nil {
 			return rtkInitDoneMsg{key: h.key, err: strings.TrimSpace(string(out))}
 		}
@@ -2304,13 +2302,13 @@ func designPortalCmd(open, auto bool, stage string, port int) tea.Cmd {
 		if _, err := os.Stat(script); err != nil {
 			return designPortalResultMsg{err: "scripts/design-review-portal.sh not found", open: open, auto: auto, stage: stage}
 		}
-		var cmd *exec.Cmd
+		var out []byte
+		var err error
 		if open {
-			cmd = exec.Command("bash", script, "open")
+			out, err = runWithTimeout(timeoutLocal, nil, "bash", script, "open")
 		} else {
-			cmd = exec.Command("bash", script, "start", strconv.Itoa(port))
+			out, err = runWithTimeout(timeoutLocal, nil, "bash", script, "start", strconv.Itoa(port))
 		}
-		out, err := cmd.CombinedOutput()
 		if err != nil {
 			msg := strings.TrimSpace(string(out))
 			if msg == "" {

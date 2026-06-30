@@ -5,7 +5,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -299,7 +298,7 @@ func doInit(tools Tools, fsys fs.FS, force bool) ([]string, error) {
 
 	// Wire lefthook
 	if tools.Lefthook != "" {
-		if out, err := exec.Command(tools.Lefthook, "install").CombinedOutput(); err != nil {
+		if out, err := runWithTimeout(timeoutLocal, nil, tools.Lefthook, "install"); err != nil {
 			log("✗ lefthook install: " + strings.TrimSpace(string(out)))
 		} else {
 			log("✓ lefthook hooks wired")
@@ -321,19 +320,19 @@ func doInit(tools Tools, fsys fs.FS, force bool) ([]string, error) {
 	if rtkPath != "" {
 		// -g wires the hook into ~/.claude/settings.json (global, all projects).
 		// --auto-patch skips the interactive prompt. Idempotent — safe to re-run on update.
-		if out, err := exec.Command(rtkPath, "init", "-g", "--auto-patch").CombinedOutput(); err != nil {
+		if out, err := runWithTimeout(timeoutNetwork, nil, rtkPath, "init", "-g", "--auto-patch"); err != nil {
 			log("~ rtk init: " + strings.TrimSpace(string(out)))
 		} else {
 			log("✓ rtk hook wired (global ~/.claude/settings.json)")
 		}
 		// Wire OpenCode too if the plugin isn't already present.
-		if out, err := exec.Command(rtkPath, "init", "-g", "--auto-patch", "--opencode").CombinedOutput(); err != nil {
+		if out, err := runWithTimeout(timeoutNetwork, nil, rtkPath, "init", "-g", "--auto-patch", "--opencode"); err != nil {
 			log("~ rtk opencode: " + strings.TrimSpace(string(out)))
 		} else {
 			log("✓ rtk opencode plugin wired")
 		}
 		// Confirm hook status.
-		if out, err := exec.Command(rtkPath, "init", "--show").CombinedOutput(); err == nil {
+		if out, err := runWithTimeout(timeoutLocal, nil, rtkPath, "init", "--show"); err == nil {
 			for _, line := range strings.Split(string(out), "\n") {
 				if strings.Contains(line, "[ok]") || strings.Contains(line, "[warn]") || strings.Contains(line, "[--]") {
 					log("  " + strings.TrimSpace(line))

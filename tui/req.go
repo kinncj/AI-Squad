@@ -1,10 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -100,6 +100,7 @@ type reqModel struct {
 	storyListTop int // Y row where first story item is rendered (for mouse clicks)
 	implReturnTo reqStep
 	implCursor   int
+	cancelSend   context.CancelFunc
 }
 
 type reqDoneMsg struct {
@@ -213,6 +214,16 @@ func (m *reqModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.step = reqStepEdit
 				return m, textarea.Blink
 			case "ctrl+c", "q", "esc":
+				return m, tea.Quit
+			}
+			return m, nil
+
+		case reqStepSending:
+			switch msg.String() {
+			case "ctrl+c", "esc":
+				if m.cancelSend != nil {
+					m.cancelSend()
+				}
 				return m, tea.Quit
 			}
 			return m, nil
@@ -487,7 +498,7 @@ func (m *reqModel) sendingView(t Theme) string {
 	line2 := "  " + m.spinner.View() +
 		lipgloss.NewStyle().Foreground(t.Accent).Render(" Converting to Gherkin…") +
 		"  " + lipgloss.NewStyle().Foreground(t.Muted).Render(elapsed.String())
-	hint := lipgloss.NewStyle().Foreground(t.Muted).Render("  This may take 10–30 seconds.")
+	hint := lipgloss.NewStyle().Foreground(t.Muted).Render("  This may take 10–30 seconds.  Esc to cancel.")
 	return line1 + "\n\n" + line2 + "\n" + hint + "\n"
 }
 
@@ -691,9 +702,9 @@ Rules:
 Requirements:
 %s`
 
-func convertToGherkin(requirements string, ai aiOption) (string, error) {
+func convertToGherkin(ctx context.Context, requirements string, ai aiOption) (string, error) {
 	prompt := fmt.Sprintf(gherkinPrompt, requirements)
-	out, err := invokeAI(ai, prompt)
+	out, err := invokeAI(ctx, ai, prompt)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", ai.label, err)
 	}
@@ -838,26 +849,27 @@ func (m *reqModel) launchImplementationCmd(ai aiOption) tea.Cmd {
 // invokeAI runs the selected AI tool and returns its stdout output.
 // The prompt is passed as a positional argument (not stdin) to avoid inheriting
 // the Bubble Tea raw-mode terminal state in the subprocess.
-func invokeAI(ai aiOption, prompt string) ([]byte, error) {
-	var cmd *exec.Cmd
+func invokeAI(ctx context.Context, ai aiOption, prompt string) ([]byte, error) {
+	var (
+		out []byte
+		err error
+	)
 	switch ai.kind {
 	case "claude":
 		// -p = --print (non-interactive), prompt is positional arg.
 		// --output-format text suppresses JSON wrappers.
 		// --no-session-persistence avoids writing session files.
-		cmd = exec.Command(ai.path, "-p", "--output-format", "text", "--no-session-persistence", prompt)
+		out, err = runCtx(ctx, timeoutAI, nil, "", ai.path, "-p", "--output-format", "text", "--no-session-persistence", prompt)
 	case "copilot":
-		cmd = exec.Command(ai.path, "-i", prompt)
+		out, err = runCtx(ctx, timeoutAI, nil, "", ai.path, "-i", prompt)
 	case "opencode":
-		cmd = exec.Command(ai.path, "run")
-		cmd.Stdin = strings.NewReader(prompt)
+		out, err = runCtx(ctx, timeoutAI, nil, prompt, ai.path, "run")
 	case "cursor":
-		return invokeCursor(ai.path, prompt)
+		return invokeCursor(ctx, ai.path, prompt)
 	default:
 		return nil, fmt.Errorf("unsupported AI tool: %s", ai.kind)
 	}
 
-	out, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
 		if msg == "" {
@@ -868,20 +880,22 @@ func invokeAI(ai aiOption, prompt string) ([]byte, error) {
 	return out, nil
 }
 
-func invokeCursor(binPath, prompt string) ([]byte, error) {
-	candidates := []*exec.Cmd{
-		exec.Command(binPath, "-p", "--output-format", "text", "--trust", prompt),
-		exec.Command(binPath, "-p", prompt),
-		exec.Command(binPath, "--prompt", prompt),
-		exec.Command(binPath, "run", prompt),
+func invokeCursor(ctx context.Context, binPath, prompt string) ([]byte, error) {
+	type attempt struct {
+		args  []string
+		stdin string
 	}
-	stdinRun := exec.Command(binPath, "run")
-	stdinRun.Stdin = strings.NewReader(prompt)
-	candidates = append(candidates, stdinRun)
+	candidates := []attempt{
+		{args: []string{"-p", "--output-format", "text", "--trust", prompt}},
+		{args: []string{"-p", prompt}},
+		{args: []string{"--prompt", prompt}},
+		{args: []string{"run", prompt}},
+		{args: []string{"run"}, stdin: prompt},
+	}
 
 	var lastErr string
-	for _, cmd := range candidates {
-		out, err := cmd.CombinedOutput()
+	for _, c := range candidates {
+		out, err := runCtx(ctx, timeoutAI, nil, c.stdin, binPath, c.args...)
 		if err == nil {
 			return out, nil
 		}
@@ -906,12 +920,15 @@ func (m *reqModel) convert(requirements string) tea.Cmd {
 			oldDirs = append(oldDirs, s.savedTo)
 		}
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancelSend = cancel
 	return func() tea.Msg {
+		defer cancel()
 		// remove old story directories before saving new ones
 		for _, d := range oldDirs {
 			_ = os.RemoveAll(d)
 		}
-		gherkin, err := convertToGherkin(requirements, ai)
+		gherkin, err := convertToGherkin(ctx, requirements, ai)
 		if err != nil {
 			return reqDoneMsg{err: err}
 		}

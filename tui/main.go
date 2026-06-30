@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -344,7 +345,9 @@ func selfUpdate() error {
 
 	// Extract the maple binary from the tar and write alongside current exe
 	newBin := exe + ".new"
-	extractCmd := exec.Command("tar", "-xzf", tmp.Name(), "-O", "maple")
+	ctx, cancel := context.WithTimeout(context.Background(), timeoutInstall)
+	defer cancel()
+	extractCmd := exec.CommandContext(ctx, "tar", "-xzf", tmp.Name(), "-O", "maple")
 	newFile, err := os.OpenFile(newBin, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
 	if err != nil {
 		return err
