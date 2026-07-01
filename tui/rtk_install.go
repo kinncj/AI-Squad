@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -116,10 +117,15 @@ func installRTKFromUpstreamScript() (string, error) {
 		return "", fmt.Errorf("upstream install script is linux/macos only")
 	}
 
-	cmd := exec.Command("sh", "-c", "curl -fsSL "+rtkUpstreamInstallURL+" | sh")
+	ctx, cancel := context.WithTimeout(context.Background(), timeoutInstall)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "sh", "-c", "curl -fsSL "+rtkUpstreamInstallURL+" | sh")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("upstream install script timed out after %s", timeoutInstall)
+		}
 		return "", fmt.Errorf("upstream install script failed: %w", err)
 	}
 	return findInstalledRTK()
@@ -134,10 +140,15 @@ func installRTKFromCargo() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("cargo not found on PATH")
 	}
-	cmd := exec.Command(cargo, "install", "--git", "https://github.com/rtk-ai/rtk", "--quiet")
+	ctx, cancel := context.WithTimeout(context.Background(), timeoutInstall)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, cargo, "install", "--git", "https://github.com/rtk-ai/rtk", "--quiet")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("cargo install timed out after %s", timeoutInstall)
+		}
 		return "", fmt.Errorf("cargo install failed: %w", err)
 	}
 	return findInstalledRTK()

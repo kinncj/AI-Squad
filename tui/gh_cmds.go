@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 )
 
@@ -86,11 +85,11 @@ func runLabels(gh string) error {
 	for _, g := range groups {
 		fmt.Printf("\n  %s\n", g.title)
 		for _, l := range g.labels {
-			out, err := exec.Command(gh, "label", "create", l.name,
+			out, err := runWithTimeout(timeoutNetwork, nil, gh, "label", "create", l.name,
 				"--color", l.color,
 				"--description", l.desc,
 				"--force",
-			).CombinedOutput()
+			)
 			if err != nil {
 				if strings.Contains(string(out), "already exists") {
 					fmt.Printf("    ~ %s\n", l.name)
@@ -120,7 +119,7 @@ func runProject(gh string) error {
 	}
 
 	// Get repo owner/name
-	repoOut, err := exec.Command(gh, "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner").Output()
+	repoOut, err := runWithTimeout(timeoutNetwork, nil, gh, "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner")
 	if err != nil {
 		return fmt.Errorf("gh repo view: %w", err)
 	}
@@ -134,11 +133,11 @@ func runProject(gh string) error {
 	fmt.Printf("  Creating GitHub Project v2 for %s...\n", repo)
 
 	// Create project
-	projOut, err := exec.Command(gh, "project", "create",
+	projOut, err := runWithTimeout(timeoutNetwork, nil, gh, "project", "create",
 		"--owner", owner,
 		"--title", "MAPLE",
 		"--format", "json",
-	).Output()
+	)
 	if err != nil {
 		return fmt.Errorf("gh project create: %w", err)
 	}
@@ -211,7 +210,7 @@ func bootstrapProjectFields(gh, owner, number string) error {
 		if len(f.options) > 0 {
 			args = append(args, "--single-select-options", strings.Join(f.options, ","))
 		}
-		out, err := exec.Command(gh, args...).CombinedOutput()
+		out, err := runWithTimeout(timeoutNetwork, nil, gh, args...)
 		if err != nil {
 			if strings.Contains(string(out), "already exists") {
 				fmt.Printf("    ~ field %q already exists\n", f.name)
