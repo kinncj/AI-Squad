@@ -1,0 +1,50 @@
+{
+  "name": "maple",
+  "default_mode": "dark",
+  "modes": {
+    "dark": {
+      "structure": {
+        "base":        { "fg": "#e6e6e6", "attrs": [] },
+        "border":      { "fg": "#5a4632", "attrs": [] },
+        "border_focus":{ "fg": "#e07a34", "attrs": ["bold"] },
+        "title":       { "fg": "#f2a25c", "attrs": ["bold"] },
+        "subtitle":    { "fg": "#b5651d", "attrs": [] },
+        "faint":       { "fg": "#7a7a7a", "attrs": ["faint"] },
+        "accent":      { "fg": "#d1495b", "attrs": [] },
+        "leaf":        { "fg": "#e07a34", "attrs": [], "glyph": "🍁" },
+        "selected":    { "fg": "#1c1c1c", "bg": "#f2a25c", "attrs": ["bold"] },
+        "scrollhint":  { "fg": "#8a6d3b", "attrs": ["faint"] }
+      },
+      "states": {
+        "running":      { "fg": "#f2a25c", "glyph": "◐", "label": "running",  "attrs": ["bold"] },
+        "paused":       { "fg": "#d9a441", "glyph": "‖", "label": "paused",   "attrs": [] },
+        "rate_limited": { "fg": "#c1666b", "glyph": "⏳", "label": "rate-limited", "attrs": [] },
+        "done":         { "fg": "#6a994e", "glyph": "✓", "label": "done",     "attrs": [] },
+        "blocked":      { "fg": "#d1495b", "glyph": "✗", "label": "blocked",  "attrs": ["bold"] },
+        "pending":      { "fg": "#7a7a7a", "glyph": "·", "label": "pending",  "attrs": ["faint"] }
+      }
+    },
+    "light": {
+      "structure": {
+        "base":        { "fg": "#1c1c1c", "attrs": [] },
+        "border":      { "fg": "#b5a48c", "attrs": [] },
+        "border_focus":{ "fg": "#c85a17", "attrs": ["bold"] },
+        "title":       { "fg": "#a85a1a", "attrs": ["bold"] },
+        "subtitle":    { "fg": "#8a4a12", "attrs": [] },
+        "faint":       { "fg": "#6a6a6a", "attrs": ["faint"] },
+        "accent":      { "fg": "#a3232f", "attrs": [] },
+        "leaf":        { "fg": "#c85a17", "attrs": [], "glyph": "🍁" },
+        "selected":    { "fg": "#fdfdfd", "bg": "#c85a17", "attrs": ["bold"] },
+        "scrollhint":  { "fg": "#8a6d3b", "attrs": ["faint"] }
+      },
+      "states": {
+        "running":      { "fg": "#b5651d", "glyph": "◐", "label": "running",  "attrs": ["bold"] },
+        "paused":       { "fg": "#9a7420", "glyph": "‖", "label": "paused",   "attrs": [] },
+        "rate_limited": { "fg": "#a3454a", "glyph": "⏳", "label": "rate-limited", "attrs": [] },
+        "done":         { "fg": "#3f7a2e", "glyph": "✓", "label": "done",     "attrs": [] },
+        "blocked":      { "fg": "#a3232f", "glyph": "✗", "label": "blocked",  "attrs": ["bold"] },
+        "pending":      { "fg": "#6a6a6a", "glyph": "·", "label": "pending",  "attrs": ["faint"] }
+      }
+    }
+  }
+}
