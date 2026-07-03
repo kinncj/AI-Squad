@@ -9,11 +9,24 @@ package main
 import (
 	"fmt"
 	"os"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/kinncj/maple/app/internal/tui/dashboard"
 )
 
 // version is set at build time via -ldflags "-X main.version=...".
 var version = "dev"
 
 func main() {
-	fmt.Fprintf(os.Stdout, "maple %s — rebuild in progress (feature/better-ui-ux)\n", version)
+	model, err := dashboard.New(version)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "maple:", err)
+		os.Exit(1)
+	}
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	if _, err := p.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, "maple:", err)
+		os.Exit(1)
+	}
 }
