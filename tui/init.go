@@ -471,7 +471,7 @@ func projectConfigYAML(name string) string {
   created_at: "%s"
 
 sdlc:
-  mode: standard          # standard | spike | quick
+  mode: standard          # standard | spike
   require_adr_for:
     - new_dependency
     - cross_boundary_change
@@ -481,13 +481,11 @@ sdlc:
     - visual_identity_change
 
 qa:
-  bdd: cucumber           # cucumber | behave | pytest-bdd
-  coverage_threshold: 80
+  bdd: cucumber           # cucumber | behave | none
 
 design:
   target: web             # web | tui — UI medium the design phase targets
-  ui_library: null        # mantine | tailwind | shadcn | null
-  token_format: dtcg      # W3C DTCG
+  ui_library: none        # mantine | tailwind | shadcn | none
 
 github:
   project_number: null    # null = ask once; 0 = declined; N = configured board (maple project bootstrap)

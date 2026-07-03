@@ -18,6 +18,11 @@
           "description": "Human-readable project name.",
           "minLength": 1
         },
+        "created_at": {
+          "type": "string",
+          "description": "RFC3339 timestamp stamped by `maple init` when the project was scaffolded.",
+          "format": "date-time"
+        },
         "repo": {
           "type": "string",
           "description": "GitHub repository in owner/repo format.",
@@ -90,6 +95,29 @@
         }
       }
     },
+    "stack": {
+      "type": "object",
+      "description": "Tech stack. Filled by the orchestrator during discovery; all fields null until interviewed.",
+      "additionalProperties": false,
+      "properties": {
+        "frontend": { "type": ["string", "null"], "description": "react | vue | angular | nextjs | svelte | vanilla | none", "default": null },
+        "backend": { "type": ["string", "null"], "description": "nodejs | fastapi | django | spring | dotnet | none", "default": null },
+        "language": { "type": ["string", "null"], "description": "typescript | javascript | python | java | csharp | go | rust", "default": null },
+        "database": { "type": ["string", "null"], "description": "postgresql | mysql | sqlite | mongodb | supabase | none", "default": null },
+        "cache": { "type": ["string", "null"], "description": "redis | none", "default": null },
+        "css": { "type": ["string", "null"], "description": "tailwind | mantine | shadcn | bootstrap | css-modules | none", "default": null },
+        "testing": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "unit": { "type": ["string", "null"], "description": "vitest | jest | pytest | junit | nunit", "default": null },
+            "e2e": { "type": ["string", "null"], "description": "playwright | cypress | selenium | none", "default": null }
+          }
+        },
+        "deployment": { "type": ["string", "null"], "description": "vercel | aws | gcp | azure | docker | none", "default": null },
+        "package_manager": { "type": ["string", "null"], "description": "npm | pnpm | yarn | pip | maven | gradle", "default": null }
+      }
+    },
     "design": {
       "type": "object",
       "description": "Design system and UX settings.",
@@ -146,6 +174,23 @@
           "description": "Which SemVer classes get their own milestone. null = ask the user once; none = declined (no milestones); minor = major & minor only (vX.Y.0), patches attach to their minor; patch = also give patches their own milestone.",
           "enum": [null, "none", "minor", "patch"],
           "default": null
+        }
+      }
+    },
+    "maple": {
+      "type": "object",
+      "description": "MAPLE TUI state, managed by the maple binary.",
+      "additionalProperties": false,
+      "properties": {
+        "sessions": {
+          "type": "object",
+          "description": "Pinned harness session IDs, set by the MAPLE TUI (o key auto-pins, p key manual-pins).",
+          "additionalProperties": false,
+          "properties": {
+            "claude": { "type": "string", "default": "" },
+            "opencode": { "type": "string", "default": "" },
+            "copilot": { "type": "string", "default": "" }
+          }
         }
       }
     },
