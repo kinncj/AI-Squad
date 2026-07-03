@@ -248,8 +248,10 @@ func doInit(tools Tools, fsys fs.FS, force bool) ([]string, error) {
 		{"Makefile", "Makefile"}, // skipped on first copy if already exists when force=false
 		{"lefthook.yml", "lefthook.yml"},
 		{".github", ".github"},
+		{"COPILOT.md", "COPILOT.md"},
 		{".gitignore", ".gitignore"},
 		{".cursor", ".cursor"},
+		{"CURSOR.md", "CURSOR.md"},
 	}
 
 	// Platform-specific copies. In CI copy everything so the smoke test can
@@ -265,6 +267,7 @@ func doInit(tools Tools, fsys fs.FS, force bool) ([]string, error) {
 		pairs = append(pairs,
 			struct{ src, dst string }{".opencode", ".opencode"},
 			struct{ src, dst string }{"AGENTS.md", "AGENTS.md"},
+			struct{ src, dst string }{"OPENCODE.md", "OPENCODE.md"},
 			struct{ src, dst string }{"opencode.json", "opencode.json"},
 		)
 	}
@@ -487,7 +490,11 @@ design:
   token_format: dtcg      # W3C DTCG
 
 github:
-  project_number: null
-  project_node_id: null
+  project_number: null    # null = ask once; 0 = declined; N = configured board (maple project bootstrap)
+  project_node_id: null    # Set by: maple project bootstrap
+  status_field_id: null    # Status single-select field id; cached by gh-projects / maple project bootstrap
+  milestone_granularity: null  # null = ask once; none = declined; minor = major+minor; patch = also per-patch
+  # Issue label taxonomy (type:bug | type:feature | type:docs | type:refactor | type:chore)
+  # lives in the gh-labels-milestones skill, not here. See "Version & Issue Tracking" in CLAUDE.md.
 `, name, time.Now().Format(time.RFC3339))
 }
