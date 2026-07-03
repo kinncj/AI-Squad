@@ -248,10 +248,14 @@ func doInit(tools Tools, fsys fs.FS, force bool) ([]string, error) {
 		{"Makefile", "Makefile"}, // skipped on first copy if already exists when force=false
 		{"lefthook.yml", "lefthook.yml"},
 		{".github", ".github"},
-		{"COPILOT.md", "COPILOT.md"},
 		{".gitignore", ".gitignore"},
 		{".cursor", ".cursor"},
+		// Root harness docs — always shipped. req.go points every agent at all four
+		// regardless of which harness is running, so all four must exist.
+		{"CLAUDE.md", "CLAUDE.md"},
+		{"OPENCODE.md", "OPENCODE.md"},
 		{"CURSOR.md", "CURSOR.md"},
+		{"COPILOT.md", "COPILOT.md"},
 	}
 
 	// Platform-specific copies. In CI copy everything so the smoke test can
@@ -260,14 +264,12 @@ func doInit(tools Tools, fsys fs.FS, force bool) ([]string, error) {
 	if tools.Claude != "" || ciMode {
 		pairs = append(pairs,
 			struct{ src, dst string }{".claude", ".claude"},
-			struct{ src, dst string }{"CLAUDE.md", "CLAUDE.md"},
 		)
 	}
 	if tools.OpenCode != "" || ciMode {
 		pairs = append(pairs,
 			struct{ src, dst string }{".opencode", ".opencode"},
 			struct{ src, dst string }{"AGENTS.md", "AGENTS.md"},
-			struct{ src, dst string }{"OPENCODE.md", "OPENCODE.md"},
 			struct{ src, dst string }{"opencode.json", "opencode.json"},
 		)
 	}

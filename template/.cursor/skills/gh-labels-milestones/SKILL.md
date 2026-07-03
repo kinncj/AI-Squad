@@ -149,13 +149,19 @@ for line in open('project.config.yaml'):
 
 - **`null` or empty** — not yet decided. Ask the user **once**:
   "Track milestones for this project? (yes = major & minor releases / no = skip)".
-  Persist the answer so we never re-ask:
+  Persist the answer so we never re-ask. The key is **absent** in older configs,
+  so replace it if present, otherwise insert it under the `github:` block:
   ```bash
   python3 - "$ANSWER" <<'PY'   # ANSWER = "minor" (yes) or "none" (no)
   import re, sys
   val = sys.argv[1]
   p = 'project.config.yaml'; s = open(p).read()
-  s = re.sub(r'(milestone_granularity:\s*)null', r'\g<1>' + val, s, count=1)
+  if re.search(r'^\s*milestone_granularity:', s, re.M):
+      s = re.sub(r'(^\s*milestone_granularity:\s*)\S+', r'\g<1>' + val, s, count=1, flags=re.M)
+  elif re.search(r'^github:\s*$', s, re.M):
+      s = re.sub(r'(^github:\s*\n)', r'\g<1>  milestone_granularity: ' + val + '\n', s, count=1, flags=re.M)
+  else:
+      s = s.rstrip('\n') + '\ngithub:\n  milestone_granularity: ' + val + '\n'
   open(p, 'w').write(s)
   PY
   ```
