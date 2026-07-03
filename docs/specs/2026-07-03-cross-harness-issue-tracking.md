@@ -88,6 +88,12 @@ overwrites it (menu.go:274), so those old configs persist. Verified safe:
 
 ## Config schema change
 
+Reconciled with Heimdall's fix commit (f4ea31f): **drop the `labels` config key**
+(the `type:*` taxonomy is a fixed convention in `gh-labels-milestones`, not user
+config — this removes the mapping-drift risk at the root). **Keep
+`milestone_granularity` in config** (MAPLE's interactive/configurable requirement,
+which Heimdall dropped) and add it to the schema properly.
+
 `template/project.config.yaml` — extend the `github:` block:
 
 ```yaml
@@ -95,19 +101,18 @@ github:
   project_number: null          # null = ask once; 0 = declined; N = configured board
   project_node_id: null
   status_field_id: null         # cached Status single-select field id for gh-projects
-  labels:
-    fix: type:bug               # patch / bugfix
-    feature: type:feature       # minor / major (feat:)
   milestone_granularity: null   # null = ask once; none = declined; minor = major+minor (default when enabled); patch = also per-patch
+  # Issue label taxonomy (type:bug | type:feature | type:docs | type:refactor |
+  # type:chore) lives in the gh-labels-milestones skill, not here.
 ```
 
 `template/.claude/schemas/project.config.schema.json` — under `properties.github.properties`, keep `additionalProperties: false` but add:
 
-- `status_field_id`: `{ "type": ["string","null"], "default": null }`
-- `labels`: object, `additionalProperties: false`, properties `fix` and `feature`
-  (both `string`), defaults `type:bug` / `type:feature`.
-- `milestone_granularity`: `{ "type": ["string","null"], "enum": [null,"none","minor","patch"], "default": null }`
+- `status_field_id`: `{ "type": ["string","null"], "default": null }` (matches Heimdall).
+- `milestone_granularity`: `{ "type": ["string","null"], "enum": [null,"none","minor","patch"], "default": null }` (MAPLE-only).
 - `project_number`: change to allow the `0` sentinel — `{ "type": ["integer","null"], "minimum": 0, "default": null }`.
+- **No `labels` property** — dropped by design.
+- Keep the schema's existing single-line enum style; add only the new properties (surgical diff).
 
 ## The standing rule (identical intent, harness-appropriate phrasing)
 
@@ -125,9 +130,11 @@ Section title: **"Version & Issue Tracking (mandatory)"**. Body:
    - `minor` → ensure `vX.Y.0` exists (create via `gh-labels-milestones`);
      patches attach to their minor's `vX.Y.0`.
    - `patch` → patches also get milestones.
-4. **Issue — every change.** Create via `gh-issues`, labelled from
-   `github.labels` (`type:bug` for fix/patch, `type:feature` for feature/
-   minor/major), assigned to the target milestone if milestones are enabled.
+4. **Issue — every change.** Create via `gh-issues`, labelled with the matching
+   `type:*` label per `gh-labels-milestones` (`type:bug` fix · `type:feature`
+   feature · `type:docs`/`type:refactor`/`type:chore`), assigned to the target
+   milestone if milestones are enabled. The taxonomy is the skill's convention,
+   not a config mapping.
 5. **Project board.** Read `github.project_number`.
    - `null` → ask once: "Add issues to a GitHub project board?" If yes, bootstrap
      (`maple project bootstrap` / `gh-projects`) and write `project_number` +
@@ -166,13 +173,16 @@ Config + schema (2):
 - `template/project.config.yaml`
 - `template/.claude/schemas/project.config.schema.json`
 
-Skills — config-read + ask/persist + `type:*` labels + `In Progress` casing,
-each in 3 mirror copies (9 files):
-- `gh-issues/SKILL.md` — read `github.labels`; attach milestone when enabled.
-- `gh-labels-milestones/SKILL.md` — honour `milestone_granularity`; ask/persist
-  helper documented.
+Skills — `type:*` taxonomy + ask/persist + `In Progress` casing, each in 3 mirror
+copies (9 files):
+- `gh-issues/SKILL.md` — label with the `type:*` taxonomy convention; attach the
+  target milestone when milestones are enabled.
+- `gh-labels-milestones/SKILL.md` — honour `milestone_granularity`
+  (null→ask→persist `minor`/`none`); document the ask/persist helper. The `type:*`
+  taxonomy already lives here — this is the single source of truth for labels.
 - `gh-projects/SKILL.md` — `project_number` null→ask→persist; `0` sentinel skip;
-  fix any `In progress` casing.
+  cache `status_field_id`; keep `In Progress` (capital P) — MAPLE keeps capital,
+  unlike Heimdall's fix which unified on lowercase.
 - Copies under `.claude/skills/`, `.opencode/skills/`, `.cursor/skills/`.
 
 Orchestrator agent (3 mirror copies):
