@@ -167,6 +167,15 @@ func runProject(gh string) error {
 	content := string(data)
 	content = strings.ReplaceAll(content, "project_number: null", "project_number: "+number)
 	content = strings.ReplaceAll(content, "project_node_id: null", "project_node_id: \""+nodeID+"\"")
+	// Cache the built-in Status single-select field id so gh-projects can set
+	// Status without re-discovering it. Best-effort — the skill falls back to a
+	// live lookup when this stays null.
+	if sfid := statusFieldID(gh, owner, number); sfid != "" {
+		content = strings.ReplaceAll(content, "status_field_id: null", "status_field_id: \""+sfid+"\"")
+		fmt.Printf("  ✓ Status field id cached: %s\n", sfid)
+	} else {
+		fmt.Printf("  ~ Status field id not found — gh-projects will look it up on first use\n")
+	}
 	if err := os.WriteFile(cfg, []byte(content), 0644); err != nil {
 		return err
 	}
@@ -177,6 +186,20 @@ func runProject(gh string) error {
 		fmt.Printf("  ~ custom fields: %v (project was still created)\n", err)
 	}
 	return nil
+}
+
+// statusFieldID returns the node id of a Project v2's built-in Status
+// single-select field, or "" if it can't be resolved.
+func statusFieldID(gh, owner, number string) string {
+	out, err := runWithTimeout(timeoutNetwork, nil, gh, "project", "field-list", number,
+		"--owner", owner,
+		"--format", "json",
+		"--jq", `.fields[] | select(.name == "Status") | .id`,
+	)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // bootstrapProjectFields adds the standard MAPLE custom fields to a Project v2.

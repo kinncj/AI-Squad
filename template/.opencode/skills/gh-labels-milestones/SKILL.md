@@ -132,6 +132,50 @@ upsert_milestone() {
 upsert_milestone "v1.0" "2025-12-31" "Initial release"
 ```
 
+## Milestone granularity gate (ask once, then persist)
+
+Whether a change gets a milestone is driven by `github.milestone_granularity` in
+`project.config.yaml`. An absent key in an older config counts as `null`.
+
+```bash
+GRANULARITY=$(python3 -c "
+for line in open('project.config.yaml'):
+    s = line.strip()
+    if s.startswith('milestone_granularity:'):
+        v = s.split(':', 1)[1].split('#', 1)[0].strip().strip('\"').strip(\"'\")
+        print(v); break
+")
+```
+
+- **`null` or empty** — not yet decided. Ask the user **once**:
+  "Track milestones for this project? (yes = major & minor releases / no = skip)".
+  Persist the answer so we never re-ask. The key is **absent** in older configs,
+  so replace it if present, otherwise insert it under the `github:` block:
+  ```bash
+  python3 - "$ANSWER" <<'PY'   # ANSWER = "minor" (yes) or "none" (no)
+  import re, sys
+  val = sys.argv[1]
+  p = 'project.config.yaml'; s = open(p).read()
+  if re.search(r'^\s*milestone_granularity:', s, re.M):
+      s = re.sub(r'(^\s*milestone_granularity:\s*)\S+', r'\g<1>' + val, s, count=1, flags=re.M)
+  elif re.search(r'^github:\s*$', s, re.M):
+      s = re.sub(r'(^github:\s*\n)', r'\g<1>  milestone_granularity: ' + val + '\n', s, count=1, flags=re.M)
+  else:
+      s = s.rstrip('\n') + '\ngithub:\n  milestone_granularity: ' + val + '\n'
+  open(p, 'w').write(s)
+  PY
+  ```
+- **`none`** — declined. Skip milestones entirely.
+- **`minor`** (default when enabled) — **major & minor only**. Ensure `vX.Y.0`
+  exists (`upsert_milestone`); a **patch** attaches to its minor's `vX.Y.0` and
+  never gets its own milestone.
+- **`patch`** — also give patches their own `vX.Y.Z` milestone.
+
+The label taxonomy (`type:bug` / `type:feature` / `type:docs` / `type:refactor` /
+`type:chore`) is the single source of truth defined above under **Type Labels** —
+map the SemVer class to it (`type:bug` for a fix/patch, `type:feature` for a
+feature/minor/major). Do not invent `bug`/`enhancement` labels.
+
 ## Assign Labels to an Issue
 
 ```bash

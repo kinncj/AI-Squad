@@ -250,6 +250,12 @@ func doInit(tools Tools, fsys fs.FS, force bool) ([]string, error) {
 		{".github", ".github"},
 		{".gitignore", ".gitignore"},
 		{".cursor", ".cursor"},
+		// Root harness docs — always shipped. req.go points every agent at all four
+		// regardless of which harness is running, so all four must exist.
+		{"CLAUDE.md", "CLAUDE.md"},
+		{"OPENCODE.md", "OPENCODE.md"},
+		{"CURSOR.md", "CURSOR.md"},
+		{"COPILOT.md", "COPILOT.md"},
 	}
 
 	// Platform-specific copies. In CI copy everything so the smoke test can
@@ -258,7 +264,6 @@ func doInit(tools Tools, fsys fs.FS, force bool) ([]string, error) {
 	if tools.Claude != "" || ciMode {
 		pairs = append(pairs,
 			struct{ src, dst string }{".claude", ".claude"},
-			struct{ src, dst string }{"CLAUDE.md", "CLAUDE.md"},
 		)
 	}
 	if tools.OpenCode != "" || ciMode {
@@ -468,7 +473,7 @@ func projectConfigYAML(name string) string {
   created_at: "%s"
 
 sdlc:
-  mode: standard          # standard | spike | quick
+  mode: standard          # standard | spike
   require_adr_for:
     - new_dependency
     - cross_boundary_change
@@ -478,16 +483,18 @@ sdlc:
     - visual_identity_change
 
 qa:
-  bdd: cucumber           # cucumber | behave | pytest-bdd
-  coverage_threshold: 80
+  bdd: cucumber           # cucumber | behave | none
 
 design:
   target: web             # web | tui — UI medium the design phase targets
-  ui_library: null        # mantine | tailwind | shadcn | null
-  token_format: dtcg      # W3C DTCG
+  ui_library: none        # mantine | tailwind | shadcn | none
 
 github:
-  project_number: null
-  project_node_id: null
+  project_number: null    # null = ask once; 0 = declined; N = configured board (maple project bootstrap)
+  project_node_id: null    # Set by: maple project bootstrap
+  status_field_id: null    # Status single-select field id; cached by gh-projects / maple project bootstrap
+  milestone_granularity: null  # null = ask once; none = declined; minor = major+minor; patch = also per-patch
+  # Issue label taxonomy (type:bug | type:feature | type:docs | type:refactor | type:chore)
+  # lives in the gh-labels-milestones skill, not here. See "Version & Issue Tracking" in CLAUDE.md.
 `, name, time.Now().Format(time.RFC3339))
 }
