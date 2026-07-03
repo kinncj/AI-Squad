@@ -44,6 +44,16 @@ ISSUE_URL=$(echo "$RESULT"    | python3 -c "import sys,json; d=json.load(sys.std
 ISSUE_NODE=$(echo "$RESULT"   | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['id'])")
 ```
 
+### Version & Issue Tracking labels + milestone
+
+- **Label** with the `type:*` taxonomy from `gh-labels-milestones` — `type:bug`
+  for a fix/patch, `type:feature` for a feature/minor/major (also `type:docs` /
+  `type:refactor` / `type:chore` as fitting). Never `bug`/`enhancement`.
+- **Milestone** is the target major/minor `vX.Y.0` chosen by the granularity gate
+  in `gh-labels-milestones`, not the static `project.milestone`. When
+  `github.milestone_granularity` is `none`, **omit** the `--milestone` flag
+  entirely (passing an empty milestone errors).
+
 ## View an Issue
 
 ```bash

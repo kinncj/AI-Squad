@@ -82,9 +82,15 @@ overwrites it (menu.go:274), so those old configs persist. Verified safe:
   comment after `null` keeps that substring intact, so the replace still fires.
   It does NOT currently write `status_field_id` or `milestone_granularity` — the
   skills cache/populate those (binary extension is a nice-to-have, not required).
-- **Verify:** `maple update` also re-syncs the root harness md files + `.github/`
-  so existing users actually receive the new rule text (check the init.go copy
-  list; if root md/.github are not in it, note the gap).
+- **Verify:** `maple update` re-syncs the surfaces that carry the rule. **Finding
+  (init.go:245-270):** the copy list includes `.github`, `.cursor`, `.claude` +
+  `CLAUDE.md`, and `.opencode` + `AGENTS.md` — but NOT the root `OPENCODE.md`,
+  `CURSOR.md`, or `COPILOT.md`. Those three root files are never installed
+  (pre-existing gap). The rule still reaches every harness via an installed
+  surface: Claude → `CLAUDE.md`; OpenCode → `AGENTS.md` + `.opencode` orchestrator;
+  Cursor → `.cursor/rules/version-and-issues.mdc`; Copilot →
+  `.github/copilot-instructions.md`. Optional follow-up: add the three root md
+  files to the init.go copy list so `req.go`'s referenced roots actually ship.
 
 ## Config schema change
 

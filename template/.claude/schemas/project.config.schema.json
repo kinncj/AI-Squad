@@ -127,12 +127,24 @@
       "properties": {
         "project_number": {
           "type": ["integer", "null"],
-          "description": "GitHub Project v2 number (numeric ID, not node ID). Set by `maple project bootstrap`.",
+          "description": "GitHub Project v2 number. null = ask once; 0 = user declined the board; N = configured board. Set by `maple project bootstrap`.",
+          "minimum": 0,
           "default": null
         },
         "project_node_id": {
           "type": ["string", "null"],
           "description": "GitHub Project v2 GraphQL node ID. Set by `maple project bootstrap`.",
+          "default": null
+        },
+        "status_field_id": {
+          "type": ["string", "null"],
+          "description": "GitHub Project v2 Status single-select field node ID, used to set a card's Status. Cached by gh-projects / `maple project bootstrap`.",
+          "default": null
+        },
+        "milestone_granularity": {
+          "type": ["string", "null"],
+          "description": "Which SemVer classes get their own milestone. null = ask the user once; none = declined (no milestones); minor = major & minor only (vX.Y.0), patches attach to their minor; patch = also give patches their own milestone.",
+          "enum": [null, "none", "minor", "patch"],
           "default": null
         }
       }

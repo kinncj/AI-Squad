@@ -262,7 +262,15 @@ If failure → return to Phase 5.
 On success: Create PR via gh pr create, post completion summary.
 
 ## GitHub Issue Management
-Every feature has a corresponding GitHub issue. Update issues at each phase transition:
+
+### Version & Issue Tracking (mandatory — every change)
+Gate on a GitHub repo first (`project.repo` or a git remote); if none, skip this. Then classify the SemVer bump — **major** (breaking) / **minor** (new backward-compatible feature) / **patch** (bug fix, no API change) — and:
+- **Milestone — major & minor only.** Read `github.milestone_granularity` (absent = `null`). `null` → ask the user once, persist `minor` (yes) / `none` (no). `minor` → ensure `vX.Y.0` exists (`gh-labels-milestones`); a patch attaches to its minor's `vX.Y.0`, never its own. `patch` → patches get their own. `none` → skip.
+- **Issue — every change.** Labelled the matching **`type:*`** label (`type:bug` fix · `type:feature` feature · `type:docs`/`type:refactor`/`type:chore`, per `gh-labels-milestones`), assigned to the target major/minor milestone (`gh-issues`). Never `bug`/`enhancement`.
+- **Project board.** Read `github.project_number` (absent = `null`). `null` → ask once; if yes bootstrap (`maple project` / `gh-projects`) and write it back to config, if no persist `0`. `0` → skip. `> 0` → add the issue and set **Status** (`In Progress` → `Done`), reading the number from `project.config.yaml`, never hard-coded.
+- PR `Closes #N`. **No Claude/Anthropic attribution** anywhere.
+
+Every change has a corresponding GitHub issue. Update issues at each phase transition:
 
 ```bash
 # Create issue (done by @product-owner, but you track)

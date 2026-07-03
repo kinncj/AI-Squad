@@ -51,8 +51,12 @@ design:
   wireframe_format: ascii # ascii | svg | html  (web only)
 
 github:
-  project_number: null    # Set by: maple project bootstrap
+  project_number: null    # null = ask once; 0 = declined; N = configured board (maple project bootstrap)
   project_node_id: null   # Set by: maple project bootstrap
+  status_field_id: null   # Status single-select field id; cached by gh-projects / maple project bootstrap
+  milestone_granularity: null  # null = ask once; none = declined; minor = major+minor (default when enabled); patch = also per-patch
+  # Issue label taxonomy (type:bug | type:feature | type:docs | type:refactor | type:chore)
+  # lives in the gh-labels-milestones skill, not here. See "Version & Issue Tracking" in CLAUDE.md.
 
 maple:
   sessions:
