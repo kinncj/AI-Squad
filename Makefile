@@ -1,7 +1,7 @@
 # Makefile — maple repo root
 # Targets for building, testing, and maintaining the MAPLE platform itself.
 # For targets in your project template, see template/Makefile.
-.PHONY: build-tui build-tui-all test lint sdlc-report sdlc-rotate-logs clean help
+.PHONY: build-tui build-tui-all build-app test test-app lint lint-app sdlc-report sdlc-rotate-logs clean help
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS  = -s -w -X main.version=$(VERSION)
@@ -13,6 +13,20 @@ build-tui:
 	@go build -ldflags="$(LDFLAGS)" -o maple ./tui
 	@rm -rf tui/template && ln -s ../template tui/template
 	@echo "Built: ./maple"
+
+## Build the rebuilt maple binary (feature/better-ui-ux; parallel to ./maple until parity)
+build-app:
+	@echo "Building maple (rebuild)..."
+	@go build -ldflags="$(LDFLAGS)" -o bin/maple ./app/cmd/maple
+	@echo "Built: ./bin/maple"
+
+## Run the rebuilt binary's unit tests
+test-app:
+	@go test ./app/...
+
+## gofmt-check the rebuilt binary sources
+lint-app:
+	@gofmt -e ./app >/dev/null && echo "gofmt(app): clean" || (echo "gofmt(app): issues found" && exit 1)
 
 ## Cross-compile maple for all platforms
 build-tui-all:

@@ -29,7 +29,7 @@ var/*
 
 # Swarm v2 session data (worktrees, status files, result.md)
 .swarm/squad
-maple
+/maple
 .maple.json
 
 # Dogfood runtime state — generated at runtime, holds maple.json + portal token, never commit
@@ -44,3 +44,4 @@ tui/template/
 # Stale leftover from running maple init inside this repo's template/ dir
 template/template/
 .playwright-mcp/
+bin/
