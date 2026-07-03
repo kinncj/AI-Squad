@@ -45,3 +45,4 @@ tui/template/
 template/template/
 .playwright-mcp/
 bin/
+app/internal/tui/splash/assets/

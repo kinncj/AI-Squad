@@ -98,14 +98,15 @@ func TestArrowMovesSelectionOnFocusedPane(t *testing.T) {
 }
 
 func TestViewShowsSplashThenGrid(t *testing.T) {
+	t.Setenv("MAPLE_ASCII", "1") // deterministic ASCII splash in the test env
 	m := newModel(t)
-	nm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = nm.(Model)
 	sp := m.View()
-	if !strings.Contains(sp, brand.Leaf) {
-		t.Error("splash view should show the maple leaf")
+	if !strings.Contains(sp, brand.Tagline) {
+		t.Error("splash view should show the brand tagline")
 	}
-	// Dismiss and render the grid.
+	// Dismiss and render the dashboard shell.
 	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 	grid := nm.(Model).View()
 	if !strings.Contains(grid, "Stories") {
@@ -113,6 +114,9 @@ func TestViewShowsSplashThenGrid(t *testing.T) {
 	}
 	if !strings.Contains(grid, "quit") {
 		t.Error("grid view should show the footer help")
+	}
+	if !strings.Contains(grid, brand.Leaf) {
+		t.Error("dashboard header should show the maple leaf")
 	}
 }
 

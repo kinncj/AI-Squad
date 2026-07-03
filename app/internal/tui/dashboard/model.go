@@ -5,10 +5,14 @@
 package dashboard
 
 import (
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/kinncj/maple/app/internal/tui/brand"
 	"github.com/kinncj/maple/app/internal/tui/pane"
+	"github.com/kinncj/maple/app/internal/tui/render"
 	"github.com/kinncj/maple/app/internal/tui/splash"
 	"github.com/kinncj/maple/app/internal/tui/theme"
 )
@@ -138,23 +142,51 @@ func (m Model) View() string {
 		return ""
 	}
 	if m.splash {
-		return splash.Render(m.width, m.height, "maple "+m.version, m.mode)
+		return splash.Render(m.mode, m.width, m.height, "maple "+m.version)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, m.grid(), m.footer())
+	// header (1 row) + body + footer (1 row).
+	bodyH := m.height - 2
+	if bodyH < 2 {
+		bodyH = 2
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, m.header(), m.grid(bodyH), m.footer())
 }
 
-// grid lays the four panes out in a 2×2 grid filling the viewport above the footer.
-func (m Model) grid() string {
+// header is the top bar: brand + version on the left, context on the right.
+func (m Model) header() string {
+	left := m.mode.Role("leaf").Style().Render(brand.Leaf+" maple") +
+		m.mode.Role("faint").Style().Render(" "+m.version)
+	right := ""
+	if p := m.group.Focused(); p != nil {
+		right = m.mode.Role("subtitle").Style().Render(p.Title)
+	}
+	return bar(left, right, m.width)
+}
+
+// footer is the bottom bar: context-sensitive key hints.
+func (m Model) footer() string {
+	help := "tab focus · ↑/↓ move · g/G top/bottom · q quit"
+	return bar(m.mode.Role("faint").Style().Render(help), "", m.width)
+}
+
+// bar places left and right segments on a single full-width row, filling the gap
+// with spaces and truncating if the segments don't fit.
+func bar(left, right string, width int) string {
+	gap := width - lipgloss.Width(left) - lipgloss.Width(right)
+	if gap < 1 {
+		return render.Truncate(left+" "+right, width)
+	}
+	return left + strings.Repeat(" ", gap) + right
+}
+
+// grid lays the four panes out in a 2×2 grid filling bodyH rows below the header.
+func (m Model) grid(bodyH int) string {
 	panes := m.group.Panes()
 	if len(panes) == 0 {
 		return ""
 	}
-	gridH := m.height - 1 // reserve the footer row
-	if gridH < 2 {
-		gridH = 2
-	}
 	colW := m.width / 2
-	rowH := gridH / 2
+	rowH := bodyH / 2
 	cells := make([]string, len(panes))
 	for i, p := range panes {
 		col := i % 2
@@ -165,9 +197,9 @@ func (m Model) grid() string {
 		}
 		h := rowH
 		if row == 1 {
-			h = gridH - rowH
+			h = bodyH - rowH
 		}
-		cells[i] = p.RenderAt(col*colW, row*rowH, w, h, m.mode)
+		cells[i] = p.RenderAt(col*colW, 1+row*rowH, w, h, m.mode)
 	}
 	top := lipgloss.JoinHorizontal(lipgloss.Top, cells[0], cells[1])
 	if len(cells) < 4 {
@@ -175,9 +207,4 @@ func (m Model) grid() string {
 	}
 	bottom := lipgloss.JoinHorizontal(lipgloss.Top, cells[2], cells[3])
 	return lipgloss.JoinVertical(lipgloss.Left, top, bottom)
-}
-
-func (m Model) footer() string {
-	help := "tab focus · ↑/↓ move · g/G top/bottom · q quit"
-	return m.mode.Role("faint").Style().Render(help)
 }
