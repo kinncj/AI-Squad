@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/kinncj/maple/app/internal/state"
 	"github.com/kinncj/maple/app/internal/tui/brand"
 	"github.com/kinncj/maple/app/internal/tui/pane"
 	"github.com/kinncj/maple/app/internal/tui/render"
@@ -17,8 +18,8 @@ import (
 	"github.com/kinncj/maple/app/internal/tui/theme"
 )
 
-// demoSource is a placeholder Selectable source. It stands in for the real state
-// adapters (stories, sessions, PRs, QA) until app/internal/state lands.
+// demoSource is a placeholder Selectable source. It stands in for the state adapters
+// not yet built (sessions, PRs, QA); Stories already uses the real state layer.
 type demoSource struct{ rows []string }
 
 func (d demoSource) Rows() []string { return d.rows }
@@ -35,14 +36,15 @@ type Model struct {
 	version string
 }
 
-// New builds the dashboard model. It fails only if the embedded theme is malformed.
-func New(version string) (Model, error) {
+// New builds the dashboard model from a story store. Pass state.NewFS(".") in
+// production or a fake in tests. It fails only if the embedded theme is malformed.
+func New(version string, store state.StoryStore) (Model, error) {
 	th, err := theme.Load()
 	if err != nil {
 		return Model{}, err
 	}
 	g := pane.NewGroup(
-		pane.New("Stories", demoSource{sample("story", 12)}),
+		pane.New("Stories", newStorySource(store.Stories())),
 		pane.New("Sessions", demoSource{sample("session", 8)}),
 		pane.New("Pull Requests", demoSource{sample("PR #", 20)}),
 		pane.New("QA", demoSource{sample("scenario", 15)}),

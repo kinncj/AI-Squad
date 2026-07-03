@@ -12,6 +12,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/kinncj/maple/app/internal/state"
 	"github.com/kinncj/maple/app/internal/tui/dashboard"
 )
 
@@ -19,7 +20,7 @@ import (
 var version = "dev"
 
 func main() {
-	model, err := dashboard.New(version)
+	model, err := dashboard.New(version, state.NewFS("."))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "maple:", err)
 		os.Exit(1)

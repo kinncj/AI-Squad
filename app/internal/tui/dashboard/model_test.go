@@ -6,12 +6,24 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/kinncj/maple/app/internal/state"
 	"github.com/kinncj/maple/app/internal/tui/brand"
 )
 
+// fakeStore returns a fixed set of stories for deterministic dashboard tests.
+type fakeStore struct{ n int }
+
+func (f fakeStore) Stories() []state.Story {
+	out := make([]state.Story, f.n)
+	for i := range out {
+		out[i] = state.Story{ID: "story-" + itoa(i+1), Phase: "implement"}
+	}
+	return out
+}
+
 func newModel(t *testing.T) Model {
 	t.Helper()
-	m, err := New("v-test")
+	m, err := New("v-test", fakeStore{n: 12})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
