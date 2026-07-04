@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -416,13 +417,13 @@ func TestSpawnSuccessSetsStatus(t *testing.T) {
 func TestSpawnNoTerminalShowsManualModal(t *testing.T) {
 	m := sized(t, newModel(t))
 	m.spawnFn = func([]string) error { return spawn.ErrNoTerminal }
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("L")})
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("R")}) // R spawns rtk directly
 	m = nm.(Model)
 	if !m.showManual {
 		t.Fatal("ErrNoTerminal should open the manual-launch modal")
 	}
-	if m.manualCmd != "claude" {
-		t.Errorf("manualCmd = %q, want claude", m.manualCmd)
+	if m.manualCmd != "rtk" {
+		t.Errorf("manualCmd = %q, want rtk", m.manualCmd)
 	}
 	if !strings.Contains(m.View(), "new terminal") {
 		t.Error("manual modal should tell the user to run it in a new terminal")
@@ -436,6 +437,54 @@ func TestSpawnNoTerminalShowsManualModal(t *testing.T) {
 		if _, ok := cmd().(tea.QuitMsg); ok {
 			t.Error("closing the manual modal must not quit the TUI")
 		}
+	}
+}
+
+func TestLauncherPickerAndSpawn(t *testing.T) {
+	m := sized(t, newModel(t))
+	// Only claude + copilot are "installed".
+	m.lookPath = func(bin string) (string, error) {
+		if bin == "claude" || bin == "copilot" {
+			return "/usr/bin/" + bin, nil
+		}
+		return "", exec.ErrNotFound
+	}
+	var launched []string
+	m.spawnFn = func(args []string) error { launched = args; return nil }
+
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("L")})
+	m = nm.(Model)
+	if m.picker == nil {
+		t.Fatal("L should open the launcher picker")
+	}
+	if len(m.pickItems) != 2 {
+		t.Errorf("picker should list 2 installed harnesses, got %d", len(m.pickItems))
+	}
+	if !strings.Contains(m.View(), "claude") {
+		t.Error("picker should show harness options")
+	}
+	// Move to the second (copilot) and launch it.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = nm.(Model)
+	if m.picker != nil {
+		t.Error("Enter should close the picker")
+	}
+	if len(launched) != 1 || launched[0] != "copilot" {
+		t.Errorf("should have launched copilot, got %v", launched)
+	}
+}
+
+func TestLauncherNoHarness(t *testing.T) {
+	m := sized(t, newModel(t))
+	m.lookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("L")})
+	m = nm.(Model)
+	if m.picker != nil {
+		t.Error("no harness should not open a picker")
+	}
+	if !strings.Contains(m.status, "no harness") {
+		t.Errorf("status = %q, want no-harness note", m.status)
 	}
 }
 

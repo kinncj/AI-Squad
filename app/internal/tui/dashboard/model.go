@@ -6,6 +6,7 @@ package dashboard
 
 import (
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -69,8 +70,11 @@ type Model struct {
 	fullscreen  int
 	store       Store
 	spawnFn     func([]string) error
+	lookPath    func(string) (string, error)
 	manualCmd   string
 	showManual  bool
+	picker      *pane.Pane
+	pickItems   []pickItem
 	width       int
 	height      int
 	splash      bool
@@ -166,6 +170,59 @@ func (m *Model) openDetail() {
 			m.setDetail("Test · "+tst.Path, state.FileLines(tst.Path))
 		}
 	}
+}
+
+// pickItem is one choice in the picker overlay.
+type pickItem struct {
+	label string
+	argv  []string
+}
+
+// pickerSource is a selectable list source backing the picker overlay.
+type pickerSource struct{ rows []string }
+
+func (p pickerSource) Rows() []string { return p.rows }
+func (p pickerSource) RowCount() int  { return len(p.rows) }
+
+// available reports whether a binary is on PATH (injectable for tests).
+func (m *Model) available(bin string) bool {
+	look := m.lookPath
+	if look == nil {
+		look = exec.LookPath
+	}
+	_, err := look(bin)
+	return err == nil
+}
+
+// openPicker shows a selectable list; Enter spawns the chosen item.
+func (m *Model) openPicker(title string, items []pickItem) {
+	m.pickItems = items
+	rows := make([]string, len(items))
+	for i, it := range items {
+		rows[i] = it.label
+	}
+	m.picker = pane.New(title, pickerSource{rows})
+	m.picker.SetFocus(true)
+}
+
+// openLauncher offers the installed harnesses to launch.
+func (m *Model) openLauncher() {
+	harnesses := []pickItem{
+		{"claude", []string{"claude"}},
+		{"opencode", []string{"opencode"}},
+		{"copilot", []string{"copilot"}},
+	}
+	var avail []pickItem
+	for _, h := range harnesses {
+		if m.available(h.argv[0]) {
+			avail = append(avail, h)
+		}
+	}
+	if len(avail) == 0 {
+		m.status = "no harness found (claude / opencode / copilot)"
+		return
+	}
+	m.openPicker("Launch a harness", avail)
 }
 
 // trySpawn launches args in a new terminal. On success it notes the launch; when no
@@ -337,6 +394,28 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Picker overlay: navigate + Enter spawns the choice.
+	if m.picker != nil {
+		switch k {
+		case "esc":
+			m.picker, m.pickItems = nil, nil
+		case "up", "k":
+			m.picker.SelectBy(-1, m.picker.VisibleRows())
+		case "down", "j":
+			m.picker.SelectBy(1, m.picker.VisibleRows())
+		case "enter":
+			i := m.picker.Selected()
+			if i >= 0 && i < len(m.pickItems) {
+				item := m.pickItems[i]
+				m.picker, m.pickItems = nil, nil
+				m.trySpawn(item.label, item.argv)
+			}
+		case "q", "ctrl+c":
+			return m, tea.Quit
+		}
+		return m, nil
+	}
+
 	// Filter input mode captures typing until enter/esc.
 	if m.filtering {
 		return m.handleFilterKey(msg), nil
@@ -416,7 +495,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "o":
 		m.openSession()
 	case "L":
-		m.trySpawn("claude", []string{"claude"})
+		m.openLauncher()
 	case "R":
 		m.trySpawn("rtk", []string{"rtk"})
 	case "S":
@@ -633,6 +712,8 @@ func (m Model) View() string {
 		body = m.helpView(bodyH)
 	} else if m.showManual {
 		body = m.manualView(bodyH)
+	} else if m.picker != nil {
+		body = m.picker.RenderAt(0, lipgloss.Height(header), m.width, bodyH, m.mode)
 	} else if p := m.activePane(); p != nil {
 		body = p.RenderAt(0, lipgloss.Height(header), m.width, bodyH, m.mode)
 	}
