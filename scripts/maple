@@ -17,7 +17,7 @@
 set -euo pipefail
 
 TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TEMPLATE_DIR="$TOOL_DIR/tui/template"
+TEMPLATE_DIR="$TOOL_DIR/template"
 PLAN_FILE="${PLAN_FILE:-docs/specs/current/plan.md}"
 GLOBAL_CONFIG="$HOME/.maple.json"   # jingle state — once ever, across all projects
 CONFIG_FILE="$(pwd)/.maple.json"    # project options — per working directory

@@ -87,10 +87,12 @@ clean:
 ## Show available targets
 help:
 	@echo ""
-	@echo "  make build-tui          Build maple TUI binary"
+	@echo "  make build-tui          Build the maple binary (./maple, from app/cmd/maple)"
+	@echo "  make build-app          Build into ./bin/maple (local dev)"
 	@echo "  make build-tui-all      Cross-compile for darwin/linux/windows"
-	@echo "  make test               Run test suite (218 tests)"
-	@echo "  make lint               Lint Go code"
+	@echo "  make test-app           Run app unit tests (with the embed dance)"
+	@echo "  make test               Run the shell test suite"
+	@echo "  make lint               Lint Go code (gofmt ./app)"
 	@echo "  make sdlc-report        Print cost + invocation report"
 	@echo "  make sdlc-rotate-logs   Rotate .claude/logs/ (keep last 5)"
 	@echo "  make clean              Remove built binaries"
