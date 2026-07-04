@@ -35,6 +35,8 @@ type Store interface {
 	PipelineLines() []string
 	Skills() []string
 	Agents() []string
+	RTKHarnesses() map[string]bool
+	SetRTKHarness(name string, on bool) error
 	DesignArtifacts(storyID string) []state.Artifact
 	ApprovalPending() string
 	ApproveGate() error
@@ -76,6 +78,7 @@ type Model struct {
 	showManual  bool
 	picker      *pane.Pane
 	pickItems   []pickItem
+	pickerMode  string
 	width       int
 	height      int
 	splash      bool
@@ -173,10 +176,12 @@ func (m *Model) openDetail() {
 	}
 }
 
-// pickItem is one choice in the picker overlay.
+// pickItem is one choice in the picker overlay. id identifies the item for toggle
+// pickers; argv is the spawn command for spawn pickers.
 type pickItem struct {
 	label string
 	argv  []string
+	id    string
 }
 
 // pickerSource is a selectable list source backing the picker overlay.
@@ -197,6 +202,12 @@ func (m *Model) available(bin string) bool {
 
 // openPicker shows a selectable list; Enter spawns the chosen item.
 func (m *Model) openPicker(title string, items []pickItem) {
+	m.pickerMode = "spawn"
+	m.setPicker(title, items, 0)
+}
+
+// setPicker (re)builds the picker pane from items, restoring the selection.
+func (m *Model) setPicker(title string, items []pickItem, sel int) {
 	m.pickItems = items
 	rows := make([]string, len(items))
 	for i, it := range items {
@@ -204,6 +215,48 @@ func (m *Model) openPicker(title string, items []pickItem) {
 	}
 	m.picker = pane.New(title, pickerSource{rows})
 	m.picker.SetFocus(true)
+	if sel > 0 {
+		m.picker.SelectBy(sel, len(rows))
+	}
+}
+
+// closePicker dismisses the picker overlay.
+func (m *Model) closePicker() {
+	m.picker, m.pickItems, m.pickerMode = nil, nil, ""
+}
+
+// rtkHarnesses are the harnesses rtk can wire, in display order.
+var rtkHarnesses = []string{"claude", "opencode", "copilot", "cursor"}
+
+// openRTK shows the rtk per-harness toggle overlay.
+func (m *Model) openRTK() {
+	m.pickerMode = "rtk"
+	m.rebuildRTK(0)
+}
+
+// rebuildRTK renders the rtk toggle list with ✓/○ marks from current state.
+func (m *Model) rebuildRTK(sel int) {
+	on := m.store.RTKHarnesses()
+	items := make([]pickItem, len(rtkHarnesses))
+	for i, h := range rtkHarnesses {
+		mark := "○"
+		if on[h] {
+			mark = "✓"
+		}
+		items[i] = pickItem{label: mark + " " + h, id: h}
+	}
+	m.setPicker("RTK harnesses — [Enter] toggle · [esc] close", items, sel)
+}
+
+// toggleRTK flips the wired state of the item at i and refreshes the list.
+func (m *Model) toggleRTK(i int) {
+	h := m.pickItems[i].id
+	on := m.store.RTKHarnesses()
+	if err := m.store.SetRTKHarness(h, !on[h]); err != nil {
+		m.status = "rtk: " + err.Error()
+		return
+	}
+	m.rebuildRTK(i)
 }
 
 // firstHarness returns the first installed harness, or "".
@@ -226,10 +279,10 @@ func (m *Model) openQuickPrompt() {
 	}
 	var items []pickItem
 	for _, sk := range m.store.Skills() {
-		items = append(items, pickItem{"/" + sk, []string{h, "/" + sk}})
+		items = append(items, pickItem{label: "/" + sk, argv: []string{h, "/" + sk}})
 	}
 	for _, ag := range m.store.Agents() {
-		items = append(items, pickItem{"@" + ag, []string{h, "@" + ag}})
+		items = append(items, pickItem{label: "@" + ag, argv: []string{h, "@" + ag}})
 	}
 	if len(items) == 0 {
 		m.status = "no skills or agents found"
@@ -241,9 +294,9 @@ func (m *Model) openQuickPrompt() {
 // openLauncher offers the installed harnesses to launch.
 func (m *Model) openLauncher() {
 	harnesses := []pickItem{
-		{"claude", []string{"claude"}},
-		{"opencode", []string{"opencode"}},
-		{"copilot", []string{"copilot"}},
+		{label: "claude", argv: []string{"claude"}},
+		{label: "opencode", argv: []string{"opencode"}},
+		{label: "copilot", argv: []string{"copilot"}},
 	}
 	var avail []pickItem
 	for _, h := range harnesses {
@@ -427,11 +480,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Picker overlay: navigate + Enter spawns the choice.
+	// Picker overlay: navigate + Enter (spawn the choice, or toggle in rtk mode).
 	if m.picker != nil {
 		switch k {
 		case "esc":
-			m.picker, m.pickItems = nil, nil
+			m.closePicker()
 		case "up", "k":
 			m.picker.SelectBy(-1, m.picker.VisibleRows())
 		case "down", "j":
@@ -439,9 +492,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			i := m.picker.Selected()
 			if i >= 0 && i < len(m.pickItems) {
-				item := m.pickItems[i]
-				m.picker, m.pickItems = nil, nil
-				m.trySpawn(item.label, item.argv)
+				if m.pickerMode == "rtk" {
+					m.toggleRTK(i) // toggle keeps the picker open
+				} else {
+					item := m.pickItems[i]
+					m.closePicker()
+					m.trySpawn(item.label, item.argv)
+				}
 			}
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -532,7 +589,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "x":
 		m.openQuickPrompt()
 	case "R":
-		m.trySpawn("rtk", []string{"rtk"})
+		m.openRTK()
 	case "S":
 		m.trySpawn("ship-safe", []string{"npx", "ship-safe", "audit", "."})
 	case "?":

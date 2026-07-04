@@ -34,12 +34,14 @@ func (f fakeStore) PullRequests() []state.PullRequest {
 func (f fakeStore) Tests() []state.Test {
 	return []state.Test{{Path: "app/x_test.go", Framework: "go"}}
 }
-func (f fakeStore) DesignTree() []string    { return []string{"📁 wireframes", "  📄 home.md"} }
-func (f fakeStore) LogLines(n int) []string { return []string{"ts=12:00  agent=qa"} }
-func (f fakeStore) GitChanges() []string    { return []string{"── status ──", " M app/x.go"} }
-func (f fakeStore) PipelineLines() []string { return []string{"status  RUNNING", "stage  IMPLEMENT"} }
-func (f fakeStore) Skills() []string        { return []string{"gh-issues", "humanizer"} }
-func (f fakeStore) Agents() []string        { return []string{"orchestrator"} }
+func (f fakeStore) DesignTree() []string             { return []string{"📁 wireframes", "  📄 home.md"} }
+func (f fakeStore) LogLines(n int) []string          { return []string{"ts=12:00  agent=qa"} }
+func (f fakeStore) GitChanges() []string             { return []string{"── status ──", " M app/x.go"} }
+func (f fakeStore) PipelineLines() []string          { return []string{"status  RUNNING", "stage  IMPLEMENT"} }
+func (f fakeStore) Skills() []string                 { return []string{"gh-issues", "humanizer"} }
+func (f fakeStore) Agents() []string                 { return []string{"orchestrator"} }
+func (f fakeStore) RTKHarnesses() map[string]bool    { return map[string]bool{} }
+func (f fakeStore) SetRTKHarness(string, bool) error { return nil }
 func (f fakeStore) DesignArtifacts(id string) []state.Artifact {
 	return []state.Artifact{{Path: "docs/design/wireframes/" + id + ".wireframe.md", Kind: "wireframes", Status: "pending"}}
 }
@@ -418,13 +420,13 @@ func TestSpawnSuccessSetsStatus(t *testing.T) {
 func TestSpawnNoTerminalShowsManualModal(t *testing.T) {
 	m := sized(t, newModel(t))
 	m.spawnFn = func([]string) error { return spawn.ErrNoTerminal }
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("R")}) // R spawns rtk directly
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")}) // S spawns ship-safe directly
 	m = nm.(Model)
 	if !m.showManual {
 		t.Fatal("ErrNoTerminal should open the manual-launch modal")
 	}
-	if m.manualCmd != "rtk" {
-		t.Errorf("manualCmd = %q, want rtk", m.manualCmd)
+	if !strings.Contains(m.manualCmd, "ship-safe") {
+		t.Errorf("manualCmd = %q, want ship-safe", m.manualCmd)
 	}
 	if !strings.Contains(m.View(), "new terminal") {
 		t.Error("manual modal should tell the user to run it in a new terminal")
@@ -517,6 +519,52 @@ func TestLauncherNoHarness(t *testing.T) {
 	}
 	if !strings.Contains(m.status, "no harness") {
 		t.Errorf("status = %q, want no-harness note", m.status)
+	}
+}
+
+// rtkStore holds a mutable rtk-harness map for the toggle test.
+type rtkStore struct {
+	fakeStore
+	on map[string]bool
+}
+
+func (r rtkStore) RTKHarnesses() map[string]bool { return r.on }
+func (r rtkStore) SetRTKHarness(name string, v bool) error {
+	r.on[name] = v
+	return nil
+}
+
+func TestRTKToggleOverlay(t *testing.T) {
+	on := map[string]bool{}
+	m, err := New("v-test", rtkStore{fakeStore{n: 3}, on})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = sized(t, m)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("R")})
+	m = nm.(Model)
+	if m.picker == nil || m.pickerMode != "rtk" {
+		t.Fatal("R should open the rtk toggle overlay")
+	}
+	if !strings.Contains(m.View(), "○ claude") {
+		t.Errorf("rtk overlay should show claude as off:\n%s", m.View())
+	}
+	// Enter toggles the focused (first = claude) harness on, keeping the picker open.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = nm.(Model)
+	if !on["claude"] {
+		t.Error("Enter should wire claude")
+	}
+	if m.picker == nil {
+		t.Error("toggle should keep the picker open")
+	}
+	if !strings.Contains(m.View(), "✓ claude") {
+		t.Errorf("rtk overlay should now show claude wired:\n%s", m.View())
+	}
+	// esc closes.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if nm.(Model).picker != nil {
+		t.Error("esc should close the rtk overlay")
 	}
 }
 
