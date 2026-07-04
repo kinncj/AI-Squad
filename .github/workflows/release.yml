@@ -42,8 +42,8 @@ jobs:
 
       - name: Sync template for embedding
         run: |
-          rm -rf tui/template
-          cp -r template tui/template
+          rm -rf app/cmd/maple/template
+          cp -r template app/cmd/maple/template
 
       - name: Build
         env:
@@ -56,7 +56,7 @@ jobs:
           [ "${{ matrix.goos }}" = "windows" ] && EXT=".exe"
           go build \
             -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
-            -o "dist/maple${EXT}" ./tui
+            -o "dist/maple${EXT}" ./app/cmd/maple
 
       - name: Archive
         run: |
