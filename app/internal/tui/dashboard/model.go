@@ -399,7 +399,16 @@ func (m Model) runCommand(line string) (tea.Model, tea.Cmd) {
 	case "C", "changes":
 		m.setDetail("Git Changes", m.store.GitChanges())
 	case "theme", "colo":
-		m.status = "themes — coming in the rebuild"
+		if len(fields) < 2 {
+			m.status = "usage: :theme <" + strings.Join(theme.Names(), "|") + ">"
+			break
+		}
+		if th, err := theme.Switch(fields[1]); err == nil {
+			m.theme, m.mode = th, th.ActiveMode()
+			m.status = "theme: " + th.Name
+		} else {
+			m.status = "unknown theme: " + fields[1]
+		}
 	case "n", "req", "story":
 		m.status = "new-story — not yet ported"
 	case "u", "update":

@@ -1,0 +1,28 @@
+{
+  "name": "everforest",
+  "default_mode": "dark",
+  "modes": {
+    "dark": {
+      "structure": {
+        "base":        { "fg": "#d3c6aa" },
+        "border":      { "fg": "#859289" },
+        "border_focus":{ "fg": "#7fbbb3", "attrs": ["bold"] },
+        "title":       { "fg": "#7fbbb3", "attrs": ["bold"] },
+        "subtitle":    { "fg": "#d699b6" },
+        "faint":       { "fg": "#859289", "attrs": ["faint"] },
+        "accent":      { "fg": "#d699b6" },
+        "leaf":        { "fg": "#7fbbb3", "glyph": "🍁" },
+        "selected":    { "fg": "#2d353b", "bg": "#7fbbb3", "attrs": ["bold"] },
+        "scrollhint":  { "fg": "#859289", "attrs": ["faint"] }
+      },
+      "states": {
+        "running":      { "fg": "#dbbc7f", "glyph": "◐", "label": "running",  "attrs": ["bold"] },
+        "paused":       { "fg": "#dbbc7f", "glyph": "‖", "label": "paused" },
+        "rate_limited": { "fg": "#e67e80", "glyph": "⏳", "label": "rate-limited" },
+        "done":         { "fg": "#a7c080", "glyph": "✓", "label": "done" },
+        "blocked":      { "fg": "#e67e80", "glyph": "✗", "label": "blocked", "attrs": ["bold"] },
+        "pending":      { "fg": "#859289", "glyph": "·", "label": "pending", "attrs": ["faint"] }
+      }
+    }
+  }
+}

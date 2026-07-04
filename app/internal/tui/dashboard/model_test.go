@@ -328,6 +328,25 @@ func TestCommandHelpAndUnknown(t *testing.T) {
 	}
 }
 
+func TestCommandThemeSwitch(t *testing.T) {
+	m := sized(t, newModel(t))
+	if m.theme.Name != "tokyo-night" {
+		t.Fatalf("default theme = %q, want tokyo-night", m.theme.Name)
+	}
+	m2, _ := typeCommand(t, m, "theme gruvbox")
+	if m2.theme.Name != "gruvbox" {
+		t.Errorf(":theme gruvbox should switch, got %q", m2.theme.Name)
+	}
+	if !strings.Contains(m2.View(), "gruvbox") {
+		t.Error("header should show the active theme name")
+	}
+	// unknown theme reports and does not switch.
+	m3, _ := typeCommand(t, m2, "theme bogus")
+	if m3.theme.Name != "gruvbox" || !strings.Contains(m3.status, "unknown theme") {
+		t.Errorf("bad theme should keep current + warn, got %q status=%q", m3.theme.Name, m3.status)
+	}
+}
+
 func TestCommandEscCancels(t *testing.T) {
 	m := sized(t, newModel(t))
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(":")})

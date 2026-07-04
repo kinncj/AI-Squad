@@ -1,0 +1,28 @@
+{
+  "name": "tokyo-night",
+  "default_mode": "dark",
+  "modes": {
+    "dark": {
+      "structure": {
+        "base":        { "fg": "#c0caf5" },
+        "border":      { "fg": "#565f89" },
+        "border_focus":{ "fg": "#7aa2f7", "attrs": ["bold"] },
+        "title":       { "fg": "#7aa2f7", "attrs": ["bold"] },
+        "subtitle":    { "fg": "#bb9af7" },
+        "faint":       { "fg": "#565f89", "attrs": ["faint"] },
+        "accent":      { "fg": "#bb9af7" },
+        "leaf":        { "fg": "#7aa2f7", "glyph": "🍁" },
+        "selected":    { "fg": "#1a1b26", "bg": "#7aa2f7", "attrs": ["bold"] },
+        "scrollhint":  { "fg": "#565f89", "attrs": ["faint"] }
+      },
+      "states": {
+        "running":      { "fg": "#e0af68", "glyph": "◐", "label": "running",  "attrs": ["bold"] },
+        "paused":       { "fg": "#e0af68", "glyph": "‖", "label": "paused" },
+        "rate_limited": { "fg": "#f7768e", "glyph": "⏳", "label": "rate-limited" },
+        "done":         { "fg": "#9ece6a", "glyph": "✓", "label": "done" },
+        "blocked":      { "fg": "#f7768e", "glyph": "✗", "label": "blocked", "attrs": ["bold"] },
+        "pending":      { "fg": "#565f89", "glyph": "·", "label": "pending", "attrs": ["faint"] }
+      }
+    }
+  }
+}

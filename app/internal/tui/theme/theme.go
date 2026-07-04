@@ -5,15 +5,43 @@
 package theme
 
 import (
-	_ "embed"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/charmbracelet/lipgloss"
 )
 
-//go:embed maple-theme.json
-var themeJSON []byte
+//go:embed themes/*.json
+var themesFS embed.FS
+
+// DefaultName is the theme loaded when none is chosen (matches the OG default).
+const DefaultName = "tokyo-night"
+
+// registry holds every parsed theme, keyed by name. Built once at init.
+var registry = map[string]*Theme{}
+
+func init() {
+	entries, err := themesFS.ReadDir("themes")
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		data, err := themesFS.ReadFile("themes/" + e.Name())
+		if err != nil {
+			continue
+		}
+		var t Theme
+		if json.Unmarshal(data, &t) != nil || t.Name == "" || len(t.Modes) == 0 {
+			continue
+		}
+		if _, ok := t.Modes[t.DefaultMode]; !ok {
+			continue
+		}
+		registry[t.Name] = &t
+	}
+}
 
 // RoleStyle is a structural role: a foreground/background plus text attributes and
 // an optional decorative glyph.
@@ -51,19 +79,31 @@ type Theme struct {
 	Modes       map[string]Mode `json:"modes"`
 }
 
-// Load parses the embedded maple theme.
-func Load() (*Theme, error) {
-	var t Theme
-	if err := json.Unmarshal(themeJSON, &t); err != nil {
-		return nil, fmt.Errorf("theme: parse embedded json: %w", err)
+// Load returns the default theme (tokyo-night).
+func Load() (*Theme, error) { return Switch(DefaultName) }
+
+// Switch returns the named theme, or an error if it is unknown.
+func Switch(name string) (*Theme, error) {
+	if t, ok := registry[name]; ok {
+		return t, nil
 	}
-	if t.Name == "" || len(t.Modes) == 0 {
-		return nil, fmt.Errorf("theme: embedded json is empty or malformed")
+	return nil, fmt.Errorf("theme: unknown theme %q (have: %v)", name, Names())
+}
+
+// Names returns the available theme names, with the default first, rest sorted.
+func Names() []string {
+	var rest []string
+	for n := range registry {
+		if n != DefaultName {
+			rest = append(rest, n)
+		}
 	}
-	if _, ok := t.Modes[t.DefaultMode]; !ok {
-		return nil, fmt.Errorf("theme: default_mode %q not present in modes", t.DefaultMode)
+	sort.Strings(rest)
+	out := make([]string, 0, len(registry))
+	if _, ok := registry[DefaultName]; ok {
+		out = append(out, DefaultName)
 	}
-	return &t, nil
+	return append(out, rest...)
 }
 
 // ActiveMode returns the DefaultMode variant. Load guarantees it exists.
