@@ -54,3 +54,36 @@ func TestStorySourceEmpty(t *testing.T) {
 		t.Errorf("empty source should render no rows")
 	}
 }
+
+func TestSessionSourceRendersTagAndToolCount(t *testing.T) {
+	s := newSessionSource([]state.Session{
+		{Title: "Standardize tracking", Source: "claude", ToolCount: 293},
+		{Title: "abc…def", Source: "copilot", ToolCount: 5},
+		{Title: "oc one", Source: "opencode", ToolCount: 0},
+	})
+	rows := s.Rows()
+	if rows[0] != "[cc] Standardize tracking  293t" {
+		t.Errorf("row 0 = %q", rows[0])
+	}
+	if rows[1] != "[gh] abc…def  5t" {
+		t.Errorf("copilot row = %q, want [gh] tag", rows[1])
+	}
+	if rows[2] != "[oc] oc one  0t" {
+		t.Errorf("opencode row = %q, want [oc] tag", rows[2])
+	}
+}
+
+func TestSessionSourceFilter(t *testing.T) {
+	s := newSessionSource([]state.Session{
+		{Title: "alpha", Source: "claude"},
+		{Title: "beta", Source: "copilot"},
+	})
+	s.SetFilter("alpha")
+	if s.RowCount() != 1 {
+		t.Errorf("filter alpha matched %d, want 1", s.RowCount())
+	}
+	s.SetFilter("copilot") // matches source
+	if s.RowCount() != 1 {
+		t.Errorf("filter by source matched %d, want 1", s.RowCount())
+	}
+}

@@ -30,6 +30,7 @@ func (d demoSource) RowCount() int  { return len(d.rows) }
 // Store provides live project state to the dashboard. state.FS satisfies it.
 type Store interface {
 	Stories() []state.Story
+	Sessions() []state.Session
 	ProjectName() string
 	TaffyCount() int
 	PipelineStatus() string
@@ -60,7 +61,7 @@ func New(version string, store Store) (Model, error) {
 	}
 	g := pane.NewGroup(
 		pane.New("Stories", newStorySource(store.Stories())),
-		pane.New("Sessions", demoSource{sample("session", 8)}),
+		pane.New("Sessions", newSessionSource(store.Sessions())),
 		pane.New("Pull Requests", demoSource{sample("PR #", 20)}),
 		pane.New("QA", demoSource{sample("scenario", 15)}),
 	)
@@ -226,11 +227,14 @@ func (m Model) handleFilterKey(msg tea.KeyMsg) Model {
 
 // reload re-reads live project state into the panes.
 func (m *Model) reload() {
-	if m.store != nil {
-		m.group.Panes()[paneStories] = pane.New("Stories", newStorySource(m.store.Stories()))
-		// Rebuild the group so focus wiring stays consistent.
-		m.group = pane.NewGroup(m.group.Panes()...)
+	if m.store == nil {
+		return
 	}
+	panes := m.group.Panes()
+	panes[paneStories] = pane.New("Stories", newStorySource(m.store.Stories()))
+	panes[paneSessions] = pane.New("Sessions", newSessionSource(m.store.Sessions()))
+	// Rebuild the group so focus wiring stays consistent.
+	m.group = pane.NewGroup(panes...)
 }
 
 func (m Model) handleMouse(msg tea.MouseMsg) {

@@ -20,6 +20,12 @@ func (f fakeStore) Stories() []state.Story {
 	}
 	return out
 }
+func (f fakeStore) Sessions() []state.Session {
+	return []state.Session{
+		{Title: "Standardize tracking", Source: "claude", ToolCount: 293},
+		{Title: "deadbeef…cafebabe", Source: "copilot", ToolCount: 42},
+	}
+}
 func (f fakeStore) ProjectName() string    { return "test-project" }
 func (f fakeStore) TaffyCount() int        { return 5 }
 func (f fakeStore) PipelineStatus() string { return "DONE" }
