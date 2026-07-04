@@ -28,6 +28,7 @@ type Store interface {
 	Tests() []state.Test
 	DesignTree() []string
 	LogLines(n int) []string
+	GitChanges() []string
 	ProjectName() string
 	TaffyCount() int
 	PipelineStatus() string
@@ -52,6 +53,8 @@ type Model struct {
 	mode       theme.Mode
 	group      *pane.Group
 	stories    *storySource
+	sessions   *sessionSource
+	qa         *qaSource
 	design     *pane.Pane
 	logs       *pane.Pane
 	detail     *pane.Pane
@@ -75,26 +78,30 @@ func New(version string, store Store) (Model, error) {
 		return Model{}, err
 	}
 	stories := newStorySource(store.Stories())
+	sessions := newSessionSource(store.Sessions())
+	qa := newQASource(store.Tests())
 	g := pane.NewGroup(
 		pane.New("Stories", stories),
-		pane.New("Sessions", newSessionSource(store.Sessions())),
+		pane.New("Sessions", sessions),
 		pane.New("Pull Requests", newPRSource(store.PullRequests())),
-		pane.New("QA / Tests", newQASource(store.Tests())),
+		pane.New("QA / Tests", qa),
 	)
 	design := pane.New("Design", linesSource{store.DesignTree()})
 	logs := pane.New("Logs", linesSource{store.LogLines(500)})
 	design.SetFocus(true)
 	logs.SetFocus(true)
 	return Model{
-		theme:   th,
-		mode:    th.ActiveMode(),
-		group:   g,
-		stories: stories,
-		design:  design,
-		logs:    logs,
-		store:   store,
-		splash:  true,
-		version: version,
+		theme:    th,
+		mode:     th.ActiveMode(),
+		group:    g,
+		stories:  stories,
+		sessions: sessions,
+		qa:       qa,
+		design:   design,
+		logs:     logs,
+		store:    store,
+		splash:   true,
+		version:  version,
 	}, nil
 }
 
@@ -131,10 +138,23 @@ func (m *Model) openDetail() {
 	switch m.group.FocusIndex() {
 	case paneStories:
 		if st, ok := m.stories.at(sel); ok {
-			m.detail = pane.New("Story · "+st.ID, linesSource{state.FileLines(st.Path)})
-			m.detail.SetFocus(true)
+			m.setDetail("Story · "+st.ID, state.FileLines(st.Path))
+		}
+	case paneSessions:
+		if se, ok := m.sessions.at(sel); ok {
+			m.setDetail("Session · "+se.Title, state.SessionTranscript(se.ID))
+		}
+	case paneQA:
+		if tst, ok := m.qa.at(sel); ok {
+			m.setDetail("Test · "+tst.Path, state.FileLines(tst.Path))
 		}
 	}
+}
+
+// setDetail opens a scrollable detail overlay with the given title and content.
+func (m *Model) setDetail(title string, lines []string) {
+	m.detail = pane.New(title, linesSource{lines})
+	m.detail.SetFocus(true)
 }
 
 func itoa(n int) string {
@@ -237,6 +257,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "enter":
 		m.openDetail()
+	case "C":
+		m.setDetail("Git Changes", m.store.GitChanges())
 	case "?":
 		m.showHelp = true
 	case "/":
@@ -292,7 +314,7 @@ func toggleFS(cur, target int) int {
 
 // pendingOverlays maps keys to the overlays still to be ported from tui/.
 var pendingOverlays = map[string]string{
-	"D": "Design Review", "C": "Git Changes",
+	"D": "Design Review",
 	"n": "new-story wizard", "u": "update", "F": "Skills marketplace", "x": "Quick Prompt",
 	"P": "Pipeline status", "o": "open session/PR", "S": "ship-safe",
 	":": "command mode",
@@ -329,10 +351,12 @@ func (m *Model) reload() {
 	}
 	panes := m.group.Panes()
 	m.stories = newStorySource(m.store.Stories())
+	m.sessions = newSessionSource(m.store.Sessions())
+	m.qa = newQASource(m.store.Tests())
 	panes[paneStories] = pane.New("Stories", m.stories)
-	panes[paneSessions] = pane.New("Sessions", newSessionSource(m.store.Sessions()))
+	panes[paneSessions] = pane.New("Sessions", m.sessions)
 	panes[panePRs] = pane.New("Pull Requests", newPRSource(m.store.PullRequests()))
-	panes[paneQA] = pane.New("QA / Tests", newQASource(m.store.Tests()))
+	panes[paneQA] = pane.New("QA / Tests", m.qa)
 	// Rebuild the group so focus wiring stays consistent.
 	m.group = pane.NewGroup(panes...)
 	m.design = pane.New("Design", linesSource{m.store.DesignTree()})
@@ -407,7 +431,8 @@ func (m Model) helpView(bodyH int) string {
 		{"j / k · ↓ / ↑", "navigate rows"},
 		{"g / G", "top / bottom"},
 		{"s a p Q", "focus Stories / Sessions / PRs / QA"},
-		{"Enter", "open story detail"},
+		{"Enter", "detail (story / session / test)"},
+		{"C", "git changes (status + diff)"},
 		{"d / l", "Design / Logs full-screen"},
 		{"/", "filter the focused pane"},
 		{"r", "reload pane data"},
@@ -417,7 +442,7 @@ func (m Model) helpView(bodyH int) string {
 	}
 	coming := [][2]string{
 		{"o", "open session / PR"},
-		{"D / C", "Design Review / Git Changes"},
+		{"D", "Design Review"},
 		{"n / u / F", "new story / update / skills"},
 		{"x / P / S", "quick prompt / pipeline / ship-safe"},
 		{":", "command mode"},

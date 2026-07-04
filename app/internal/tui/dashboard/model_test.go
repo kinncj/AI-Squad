@@ -34,6 +34,7 @@ func (f fakeStore) Tests() []state.Test {
 }
 func (f fakeStore) DesignTree() []string    { return []string{"📁 wireframes", "  📄 home.md"} }
 func (f fakeStore) LogLines(n int) []string { return []string{"ts=12:00  agent=qa"} }
+func (f fakeStore) GitChanges() []string    { return []string{"── status ──", " M app/x.go"} }
 func (f fakeStore) ProjectName() string     { return "test-project" }
 func (f fakeStore) TaffyCount() int         { return 5 }
 func (f fakeStore) PipelineStatus() string  { return "DONE" }
@@ -277,6 +278,25 @@ func TestEnterOpensStoryDetail(t *testing.T) {
 	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if nm.(Model).detail != nil {
 		t.Error("esc should close the detail overlay")
+	}
+}
+
+func TestGitChangesOverlay(t *testing.T) {
+	m := sized(t, newModel(t))
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("C")})
+	m = nm.(Model)
+	if m.detail == nil {
+		t.Fatal("C should open the git changes overlay")
+	}
+	if !strings.Contains(m.View(), "Git Changes") {
+		t.Error("git changes overlay should show its title")
+	}
+	if !strings.Contains(m.View(), "app/x.go") {
+		t.Error("git changes overlay should show the status output")
+	}
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if nm.(Model).detail != nil {
+		t.Error("esc should close git changes")
 	}
 }
 

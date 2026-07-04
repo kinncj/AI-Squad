@@ -137,3 +137,69 @@ func shortenID(id string) string {
 	}
 	return id
 }
+
+// SessionTranscript renders a Claude session JSONL as readable lines: the title, any
+// prompts (▶), and each tool call (🔧). Used by the session detail overlay.
+func SessionTranscript(path string) []string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return []string{"(cannot read " + path + ")"}
+	}
+	var out []string
+	for _, raw := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		var e map[string]any
+		if json.Unmarshal([]byte(raw), &e) != nil {
+			continue
+		}
+		switch e["type"] {
+		case "ai-title":
+			if t, _ := e["aiTitle"].(string); t != "" {
+				out = append(out, "── "+t)
+			}
+		case "last-prompt":
+			if p, _ := e["lastPrompt"].(string); p != "" {
+				out = append(out, "▶ "+truncate(p, 72))
+			}
+		case "assistant":
+			for _, name := range assistantToolNames(e) {
+				out = append(out, "🔧 "+name)
+			}
+		}
+	}
+	if len(out) == 0 {
+		out = append(out, "(empty session)")
+	}
+	return out
+}
+
+// assistantToolNames returns the tool_use names in an assistant record.
+func assistantToolNames(e map[string]any) []string {
+	msg, ok := e["message"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	content, ok := msg["content"].([]any)
+	if !ok {
+		return nil
+	}
+	var names []string
+	for _, c := range content {
+		if cm, ok := c.(map[string]any); ok && cm["type"] == "tool_use" {
+			if n, _ := cm["name"].(string); n != "" {
+				names = append(names, n)
+			}
+		}
+	}
+	return names
+}
+
+func truncate(s string, n int) string {
+	if len(s) > n {
+		return s[:n] + "…"
+	}
+	return s
+}

@@ -110,6 +110,14 @@ func (s *sessionSource) Rows() []string {
 func (s *sessionSource) RowCount() int      { return len(s.filtered()) }
 func (s *sessionSource) SetFilter(q string) { s.filter = q }
 
+func (s *sessionSource) at(i int) (state.Session, bool) {
+	f := s.filtered()
+	if i < 0 || i >= len(f) {
+		return state.Session{}, false
+	}
+	return f[i], true
+}
+
 // prSource adapts pull requests into a filterable, selectable pane source.
 type prSource struct {
 	all    []state.PullRequest
@@ -179,3 +187,11 @@ func (s *qaSource) Rows() []string {
 
 func (s *qaSource) RowCount() int      { return len(s.filtered()) }
 func (s *qaSource) SetFilter(q string) { s.filter = q }
+
+func (s *qaSource) at(i int) (state.Test, bool) {
+	f := s.filtered()
+	if i < 0 || i >= len(f) {
+		return state.Test{}, false
+	}
+	return f[i], true
+}

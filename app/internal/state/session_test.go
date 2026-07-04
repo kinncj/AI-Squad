@@ -1,6 +1,9 @@
 package state
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestClaudeSessionsReadsTitleAndToolCount(t *testing.T) {
 	sessions := claudeSessions("testdata/claude-project")
@@ -41,6 +44,26 @@ func TestClaudeSessionsReadsTitleAndToolCount(t *testing.T) {
 func TestClaudeSessionsMissingDir(t *testing.T) {
 	if got := claudeSessions("testdata/nope"); got != nil {
 		t.Errorf("missing dir should yield nil, got %+v", got)
+	}
+}
+
+func TestSessionTranscript(t *testing.T) {
+	got := SessionTranscript("testdata/claude-project/titled.jsonl")
+	want := []string{"── Standardize GitHub issue tracking", "🔧 Bash", "🔧 Edit"}
+	if len(got) != len(want) {
+		t.Fatalf("transcript = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("line %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestSessionTranscriptMissing(t *testing.T) {
+	got := SessionTranscript("testdata/nope.jsonl")
+	if len(got) != 1 || !strings.Contains(got[0], "cannot read") {
+		t.Errorf("missing session should note it, got %v", got)
 	}
 }
 
