@@ -35,6 +35,8 @@ func (f fakeStore) Tests() []state.Test {
 func (f fakeStore) DesignTree() []string    { return []string{"📁 wireframes", "  📄 home.md"} }
 func (f fakeStore) LogLines(n int) []string { return []string{"ts=12:00  agent=qa"} }
 func (f fakeStore) GitChanges() []string    { return []string{"── status ──", " M app/x.go"} }
+func (f fakeStore) PipelineLines() []string { return []string{"status  RUNNING", "stage  IMPLEMENT"} }
+func (f fakeStore) Skills() []string        { return []string{"gh-issues", "humanizer"} }
 func (f fakeStore) ProjectName() string     { return "test-project" }
 func (f fakeStore) TaffyCount() int         { return 5 }
 func (f fakeStore) PipelineStatus() string  { return "DONE" }

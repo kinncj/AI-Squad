@@ -29,6 +29,8 @@ type Store interface {
 	DesignTree() []string
 	LogLines(n int) []string
 	GitChanges() []string
+	PipelineLines() []string
+	Skills() []string
 	ProjectName() string
 	TaffyCount() int
 	PipelineStatus() string
@@ -259,6 +261,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.openDetail()
 	case "C":
 		m.setDetail("Git Changes", m.store.GitChanges())
+	case "P":
+		m.setDetail("Pipeline", m.store.PipelineLines())
+	case "F":
+		m.setDetail("Skills", m.store.Skills())
 	case "?":
 		m.showHelp = true
 	case "/":
@@ -315,8 +321,8 @@ func toggleFS(cur, target int) int {
 // pendingOverlays maps keys to the overlays still to be ported from tui/.
 var pendingOverlays = map[string]string{
 	"D": "Design Review",
-	"n": "new-story wizard", "u": "update", "F": "Skills marketplace", "x": "Quick Prompt",
-	"P": "Pipeline status", "o": "open session/PR", "S": "ship-safe",
+	"n": "new-story wizard", "u": "update", "x": "Quick Prompt",
+	"o": "open session/PR", "S": "ship-safe",
 	":": "command mode",
 }
 
@@ -433,6 +439,7 @@ func (m Model) helpView(bodyH int) string {
 		{"s a p Q", "focus Stories / Sessions / PRs / QA"},
 		{"Enter", "detail (story / session / test)"},
 		{"C", "git changes (status + diff)"},
+		{"P / F", "pipeline status / skills"},
 		{"d / l", "Design / Logs full-screen"},
 		{"/", "filter the focused pane"},
 		{"r", "reload pane data"},

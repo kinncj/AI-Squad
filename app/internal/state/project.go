@@ -2,8 +2,10 @@ package state
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -60,4 +62,49 @@ func InFlight(status string) bool {
 		return true
 	}
 	return false
+}
+
+// pipelineFields are the maple.json keys shown in the pipeline overlay, in order.
+var pipelineFields = []string{
+	"pipeline", "taffy", "stage", "status", "state",
+	"awaiting_approval", "started_at", "updated_at", "ts",
+}
+
+// PipelineLines returns the pipeline state from .claude/state/maple.json as aligned
+// "key value" lines for the pipeline overlay.
+func (s *FS) PipelineLines() []string {
+	data, err := os.ReadFile(filepath.Join(s.Root, ".claude", "state", "maple.json"))
+	if err != nil {
+		return []string{"(no active pipeline)"}
+	}
+	var m map[string]any
+	if json.Unmarshal(data, &m) != nil {
+		return []string{"(unreadable maple.json)"}
+	}
+	var out []string
+	for _, k := range pipelineFields {
+		if v, ok := m[k]; ok && v != nil && v != "" {
+			out = append(out, fmt.Sprintf("%-18s %v", k, v))
+		}
+	}
+	if len(out) == 0 {
+		out = append(out, "(no pipeline fields)")
+	}
+	return out
+}
+
+// Skills lists the skill directories under .claude/skills, sorted.
+func (s *FS) Skills() []string {
+	entries, err := os.ReadDir(filepath.Join(s.Root, ".claude", "skills"))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if e.IsDir() {
+			out = append(out, e.Name())
+		}
+	}
+	sort.Strings(out)
+	return out
 }
