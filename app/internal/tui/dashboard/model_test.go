@@ -283,6 +283,75 @@ func TestEnterOpensStoryDetail(t *testing.T) {
 	}
 }
 
+// typeCommand enters command mode, types the given text, and presses Enter.
+func typeCommand(t *testing.T, m Model, text string) (Model, tea.Cmd) {
+	t.Helper()
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(":")})
+	m = nm.(Model)
+	if !m.commanding {
+		t.Fatal(": should enter command mode")
+	}
+	for _, r := range text {
+		nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = nm.(Model)
+	}
+	nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	return nm.(Model), cmd
+}
+
+func TestCommandQuit(t *testing.T) {
+	m := sized(t, newModel(t))
+	_, cmd := typeCommand(t, m, "q")
+	assertQuit(t, cmd, ":q")
+}
+
+func TestCommandReload(t *testing.T) {
+	m := sized(t, newModel(t))
+	m2, _ := typeCommand(t, m, "reload")
+	if m2.commanding {
+		t.Error("command mode should end after Enter")
+	}
+	if m2.status != "reloaded" {
+		t.Errorf("status = %q, want reloaded", m2.status)
+	}
+}
+
+func TestCommandHelpAndUnknown(t *testing.T) {
+	m := sized(t, newModel(t))
+	m2, _ := typeCommand(t, m, "help")
+	if !m2.showHelp {
+		t.Error(":help should open help")
+	}
+	m3, _ := typeCommand(t, sized(t, newModel(t)), "bogus")
+	if !strings.Contains(m3.status, "unknown command") {
+		t.Errorf(":bogus should report unknown, got %q", m3.status)
+	}
+}
+
+func TestCommandEscCancels(t *testing.T) {
+	m := sized(t, newModel(t))
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(":")})
+	m = nm.(Model)
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if nm.(Model).commanding {
+		t.Error("esc should cancel command mode")
+	}
+}
+
+func TestCommandBufferEchoedInFooter(t *testing.T) {
+	m := sized(t, newModel(t))
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(":")})
+	m = nm.(Model)
+	for _, r := range "theme" {
+		nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = nm.(Model)
+	}
+	if !strings.Contains(m.View(), ":theme") {
+		t.Error("footer should echo the command buffer")
+	}
+}
+
 func TestGitChangesOverlay(t *testing.T) {
 	m := sized(t, newModel(t))
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("C")})

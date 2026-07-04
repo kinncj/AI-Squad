@@ -68,6 +68,8 @@ type Model struct {
 	showHelp   bool
 	filtering  bool
 	filterBuf  string
+	commanding bool
+	cmdBuf     string
 	status     string
 	version    string
 }
@@ -220,6 +222,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleFilterKey(msg), nil
 	}
 
+	// Command mode (vim-style `:`) captures typing until enter/esc.
+	if m.commanding {
+		return m.handleCommandKey(msg)
+	}
+
 	m.status = "" // any key clears a transient status line
 
 	// Fullscreen Design/Logs: d/l toggle; while any overlay is open, nav scrolls it.
@@ -269,6 +276,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.showHelp = true
 	case "/":
 		m.filtering, m.filterBuf = true, m.group.Focused().Filter()
+	case ":":
+		m.commanding, m.cmdBuf = true, ""
 	case "tab":
 		m.group.FocusNext()
 	case "shift+tab":
@@ -323,7 +332,6 @@ var pendingOverlays = map[string]string{
 	"D": "Design Review",
 	"n": "new-story wizard", "u": "update", "x": "Quick Prompt",
 	"o": "open session/PR", "S": "ship-safe",
-	":": "command mode",
 }
 
 // handleFilterKey processes typing while the filter input is active.
@@ -348,6 +356,64 @@ func (m Model) handleFilterKey(msg tea.KeyMsg) Model {
 		}
 	}
 	return m
+}
+
+// handleCommandKey processes typing while `:` command mode is active.
+func (m Model) handleCommandKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.commanding, m.cmdBuf = false, ""
+	case "enter":
+		m.commanding = false
+		return m.runCommand(strings.TrimSpace(m.cmdBuf))
+	case "backspace":
+		if len(m.cmdBuf) > 0 {
+			r := []rune(m.cmdBuf)
+			m.cmdBuf = string(r[:len(r)-1])
+		}
+	default:
+		if len(msg.Runes) > 0 {
+			m.cmdBuf += string(msg.Runes)
+		}
+	}
+	return m, nil
+}
+
+// runCommand dispatches a `:` command line. Unported commands set a status note.
+func (m Model) runCommand(line string) (tea.Model, tea.Cmd) {
+	m.cmdBuf = ""
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return m, nil
+	}
+	switch fields[0] {
+	case "q", "q!", "wq", "x", "quit":
+		return m, tea.Quit
+	case "e", "e!", "r", "reload":
+		m.reload()
+		m.status = "reloaded"
+	case "help", "h", "?":
+		m.showHelp = true
+	case "P", "pipeline":
+		m.setDetail("Pipeline", m.store.PipelineLines())
+	case "C", "changes":
+		m.setDetail("Git Changes", m.store.GitChanges())
+	case "theme", "colo":
+		m.status = "themes — coming in the rebuild"
+	case "n", "req", "story":
+		m.status = "new-story — not yet ported"
+	case "u", "update":
+		m.status = "update — not yet ported"
+	case "labels":
+		m.status = "labels — not yet ported"
+	case "project":
+		m.status = "project — not yet ported"
+	case "debug":
+		m.status = "debug — not yet ported"
+	default:
+		m.status = "unknown command: :" + fields[0]
+	}
+	return m, nil
 }
 
 // reload re-reads live project state into the panes.
@@ -442,6 +508,7 @@ func (m Model) helpView(bodyH int) string {
 		{"P / F", "pipeline status / skills"},
 		{"d / l", "Design / Logs full-screen"},
 		{"/", "filter the focused pane"},
+		{":", "command mode (:q :r :help …)"},
 		{"r", "reload pane data"},
 		{"?", "toggle this help"},
 		{"esc", "close overlay"},
@@ -502,6 +569,8 @@ func (m Model) footer() string {
 	switch {
 	case m.filtering:
 		left = m.mode.Role("accent").Style().Render("/" + m.filterBuf + "▏")
+	case m.commanding:
+		left = m.mode.Role("accent").Style().Render(":" + m.cmdBuf + "▏")
 	case m.status != "":
 		left = m.mode.Role("subtitle").Style().Render(m.status)
 	default:
