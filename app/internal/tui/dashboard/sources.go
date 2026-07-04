@@ -153,6 +153,14 @@ func (s *prSource) Rows() []string {
 func (s *prSource) RowCount() int      { return len(s.filtered()) }
 func (s *prSource) SetFilter(q string) { s.filter = q }
 
+func (s *prSource) at(i int) (state.PullRequest, bool) {
+	f := s.filtered()
+	if i < 0 || i >= len(f) {
+		return state.PullRequest{}, false
+	}
+	return f[i], true
+}
+
 // qaSource adapts discovered tests into a filterable, selectable pane source.
 type qaSource struct {
 	all    []state.Test

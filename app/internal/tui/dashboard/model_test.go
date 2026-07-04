@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/kinncj/maple/app/internal/spawn"
 	"github.com/kinncj/maple/app/internal/state"
 	"github.com/kinncj/maple/app/internal/tui/brand"
 )
@@ -391,6 +392,62 @@ func TestCommandBufferEchoedInFooter(t *testing.T) {
 	}
 	if !strings.Contains(m.View(), ":theme") {
 		t.Error("footer should echo the command buffer")
+	}
+}
+
+func TestSpawnSuccessSetsStatus(t *testing.T) {
+	m := sized(t, newModel(t))
+	var got []string
+	m.spawnFn = func(args []string) error { got = args; return nil }
+	// focus Sessions, then open (o) resumes the focused claude session.
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")}) // focus Sessions
+	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
+	m = nm.(Model)
+	if len(got) == 0 || got[0] != "claude" {
+		t.Errorf("o on a claude session should spawn claude, got %v", got)
+	}
+	if !strings.Contains(m.status, "launched") {
+		t.Errorf("status = %q, want a launched note", m.status)
+	}
+}
+
+func TestSpawnNoTerminalShowsManualModal(t *testing.T) {
+	m := sized(t, newModel(t))
+	m.spawnFn = func([]string) error { return spawn.ErrNoTerminal }
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("L")})
+	m = nm.(Model)
+	if !m.showManual {
+		t.Fatal("ErrNoTerminal should open the manual-launch modal")
+	}
+	if m.manualCmd != "claude" {
+		t.Errorf("manualCmd = %q, want claude", m.manualCmd)
+	}
+	if !strings.Contains(m.View(), "new terminal") {
+		t.Error("manual modal should tell the user to run it in a new terminal")
+	}
+	// any key closes it — and does NOT quit.
+	nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	if nm.(Model).showManual {
+		t.Error("a key should close the manual modal")
+	}
+	if cmd != nil {
+		if _, ok := cmd().(tea.QuitMsg); ok {
+			t.Error("closing the manual modal must not quit the TUI")
+		}
+	}
+}
+
+func TestResumeCommand(t *testing.T) {
+	cases := map[string][]string{
+		"claude":   {"claude", "--resume"},
+		"opencode": {"opencode"},
+		"copilot":  {"copilot"},
+	}
+	for src, want := range cases {
+		got := resumeCommand(src)
+		if len(got) != len(want) || got[0] != want[0] {
+			t.Errorf("resumeCommand(%q) = %v, want %v", src, got, want)
+		}
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/kinncj/maple/app/internal/spawn"
 	"github.com/kinncj/maple/app/internal/state"
 	"github.com/kinncj/maple/app/internal/tui/brand"
 	"github.com/kinncj/maple/app/internal/tui/pane"
@@ -58,12 +59,16 @@ type Model struct {
 	group       *pane.Group
 	stories     *storySource
 	sessions    *sessionSource
+	prs         *prSource
 	qa          *qaSource
 	design      *pane.Pane
 	logs        *pane.Pane
 	detail      *pane.Pane
 	fullscreen  int
 	store       Store
+	spawnFn     func([]string) error
+	manualCmd   string
+	showManual  bool
 	width       int
 	height      int
 	splash      bool
@@ -86,11 +91,12 @@ func New(version string, store Store) (Model, error) {
 	}
 	stories := newStorySource(store.Stories())
 	sessions := newSessionSource(store.Sessions())
+	prs := newPRSource(store.PullRequests())
 	qa := newQASource(store.Tests())
 	g := pane.NewGroup(
 		pane.New("Stories", stories),
 		pane.New("Sessions", sessions),
-		pane.New("Pull Requests", newPRSource(store.PullRequests())),
+		pane.New("Pull Requests", prs),
 		pane.New("QA / Tests", qa),
 	)
 	design := pane.New("Design", linesSource{store.DesignTree()})
@@ -103,6 +109,7 @@ func New(version string, store Store) (Model, error) {
 		group:    g,
 		stories:  stories,
 		sessions: sessions,
+		prs:      prs,
 		qa:       qa,
 		design:   design,
 		logs:     logs,
@@ -155,6 +162,56 @@ func (m *Model) openDetail() {
 		if tst, ok := m.qa.at(sel); ok {
 			m.setDetail("Test · "+tst.Path, state.FileLines(tst.Path))
 		}
+	}
+}
+
+// trySpawn launches args in a new terminal. On success it notes the launch; when no
+// terminal can be driven it pops the manual-launch modal with the pasteable command.
+// The TUI never quits for a spawn.
+func (m *Model) trySpawn(label string, args []string) {
+	launch := m.spawnFn
+	if launch == nil {
+		launch = spawn.Spawn
+	}
+	err := launch(args)
+	switch {
+	case err == nil:
+		m.status = "launched " + label
+	case err == spawn.ErrNoTerminal:
+		m.manualCmd = strings.Join(args, " ")
+		m.showManual = true
+	default:
+		m.status = "launch failed: " + err.Error()
+	}
+}
+
+// openSession spawns the resume command for the focused session, or opens the
+// focused PR in the browser.
+func (m *Model) openSession() {
+	switch m.group.FocusIndex() {
+	case paneSessions:
+		if se, ok := m.sessions.at(m.group.Focused().Selected()); ok {
+			m.trySpawn(se.Source, resumeCommand(se.Source))
+		}
+	case panePRs:
+		if pr, ok := m.prs.at(m.group.Focused().Selected()); ok {
+			m.trySpawn(fmt.Sprintf("PR #%d", pr.Number),
+				[]string{"gh", "pr", "view", "--web", fmt.Sprintf("%d", pr.Number)})
+		}
+	}
+}
+
+// resumeCommand maps a session source to its resume argv.
+func resumeCommand(source string) []string {
+	switch source {
+	case "claude":
+		return []string{"claude", "--resume"}
+	case "opencode":
+		return []string{"opencode"}
+	case "copilot":
+		return []string{"copilot"}
+	default:
+		return []string{source}
 	}
 }
 
@@ -258,6 +315,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Manual-launch modal: any key closes it.
+	if m.showManual {
+		m.showManual = false
+		m.manualCmd = ""
+		return m, nil
+	}
+
 	// Filter input mode captures typing until enter/esc.
 	if m.filtering {
 		return m.handleFilterKey(msg), nil
@@ -324,6 +388,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.setDetail("Pipeline", m.store.PipelineLines())
 	case "F":
 		m.setDetail("Skills", m.store.Skills())
+	case "o":
+		m.openSession()
+	case "L":
+		m.trySpawn("claude", []string{"claude"})
+	case "R":
+		m.trySpawn("rtk", []string{"rtk"})
+	case "S":
+		m.trySpawn("ship-safe", []string{"npx", "ship-safe", "audit", "."})
 	case "?":
 		m.showHelp = true
 	case "/":
@@ -382,7 +454,6 @@ func toggleFS(cur, target int) int {
 // pendingOverlays maps keys to the overlays still to be ported from tui/.
 var pendingOverlays = map[string]string{
 	"n": "new-story wizard", "u": "update", "x": "Quick Prompt",
-	"o": "open session/PR", "S": "ship-safe",
 }
 
 // handleFilterKey processes typing while the filter input is active.
@@ -487,7 +558,8 @@ func (m *Model) reload() {
 	m.qa = newQASource(m.store.Tests())
 	panes[paneStories] = pane.New("Stories", m.stories)
 	panes[paneSessions] = pane.New("Sessions", m.sessions)
-	panes[panePRs] = pane.New("Pull Requests", newPRSource(m.store.PullRequests()))
+	m.prs = newPRSource(m.store.PullRequests())
+	panes[panePRs] = pane.New("Pull Requests", m.prs)
 	panes[paneQA] = pane.New("QA / Tests", m.qa)
 	// Rebuild the group so focus wiring stays consistent.
 	m.group = pane.NewGroup(panes...)
@@ -534,10 +606,26 @@ func (m Model) View() string {
 	body := m.grid(bodyH)
 	if m.showHelp {
 		body = m.helpView(bodyH)
+	} else if m.showManual {
+		body = m.manualView(bodyH)
 	} else if p := m.activePane(); p != nil {
 		body = p.RenderAt(0, lipgloss.Height(header), m.width, bodyH, m.mode)
 	}
 	return kittyClearImages + lipgloss.JoinVertical(lipgloss.Left, header, body, m.footer())
+}
+
+// manualView renders the manual-launch modal: the command to paste when no terminal
+// could be driven automatically.
+func (m Model) manualView(bodyH int) string {
+	title := m.mode.Role("title").Style().Render("Run this in a new terminal")
+	cmd := m.mode.Role("accent").Style().Render(m.manualCmd)
+	hint := m.mode.Role("faint").Style().Render("couldn't open a new terminal automatically · any key to close")
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(m.mode.Role("border_focus").FG)).
+		Padding(1, 3).
+		Render(lipgloss.JoinVertical(lipgloss.Left, title, "", cmd, "", hint))
+	return lipgloss.Place(m.width, bodyH, lipgloss.Center, lipgloss.Center, box)
 }
 
 // helpView renders the keybinding reference as a bordered, column-aligned box,
@@ -567,6 +655,8 @@ func (m Model) helpView(bodyH int) string {
 		{"D", "design review (Stories; a approves)"},
 		{"C", "git changes (status + diff)"},
 		{"P / F", "pipeline status / skills"},
+		{"o", "open session / PR"},
+		{"L / R / S", "launch harness / rtk / ship-safe"},
 		{"d / l", "Design / Logs full-screen"},
 		{"/", "filter the focused pane"},
 		{":", "command mode (:q :r :help …)"},
