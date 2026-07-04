@@ -47,13 +47,15 @@ func (f fakeStore) SetPinnedSession(string, string) error { return nil }
 func (f fakeStore) DesignArtifacts(id string) []state.Artifact {
 	return []state.Artifact{{Path: "docs/design/wireframes/" + id + ".wireframe.md", Kind: "wireframes", Status: "pending"}}
 }
-func (f fakeStore) ApprovalPending() string { return "" }
-func (f fakeStore) ApproveGate() error      { return nil }
-func (f fakeStore) RejectGate() error       { return nil }
-func (f fakeStore) PortalURL() string       { return "" }
-func (f fakeStore) ProjectName() string     { return "test-project" }
-func (f fakeStore) TaffyCount() int         { return 5 }
-func (f fakeStore) PipelineStatus() string  { return "DONE" }
+func (f fakeStore) ApprovalPending() string   { return "" }
+func (f fakeStore) ApproveGate() error        { return nil }
+func (f fakeStore) RejectGate() error         { return nil }
+func (f fakeStore) PortalURL() string         { return "" }
+func (f fakeStore) ProjectConfigExists() bool { return true }
+func (f fakeStore) ClaudeDirExists() bool     { return true }
+func (f fakeStore) ProjectName() string       { return "test-project" }
+func (f fakeStore) TaffyCount() int           { return 5 }
+func (f fakeStore) PipelineStatus() string    { return "DONE" }
 
 func newModel(t *testing.T) Model {
 	t.Helper()
@@ -64,12 +66,13 @@ func newModel(t *testing.T) Model {
 	return m
 }
 
-// sized dismisses the splash and gives the model a viewport, returning the ready model.
+// sized dismisses the splash + boot screen and gives the model a viewport.
 func sized(t *testing.T, m Model) Model {
 	t.Helper()
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = nm.(Model)
 	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")}) // dismiss splash
+	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyEnter})            // dismiss boot check
 	return nm.(Model)
 }
 
@@ -152,8 +155,13 @@ func TestViewShowsSplashThenGrid(t *testing.T) {
 	if !strings.Contains(sp, brand.Tagline) {
 		t.Error("splash view should show the brand tagline")
 	}
-	// Dismiss and render the dashboard shell.
+	// Dismiss splash → boot check → dashboard shell.
 	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	boot := nm.(Model).View()
+	if !strings.Contains(boot, "boot check") {
+		t.Error("after the splash, the boot-check screen should show")
+	}
+	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyEnter})
 	grid := nm.(Model).View()
 	if !strings.Contains(grid, "Stories") {
 		t.Error("grid view should show the Stories pane title")
@@ -163,6 +171,26 @@ func TestViewShowsSplashThenGrid(t *testing.T) {
 	}
 	if !strings.Contains(grid, brand.Leaf) {
 		t.Error("dashboard header should show the maple leaf")
+	}
+}
+
+func TestBootScreenBetweenSplashAndDashboard(t *testing.T) {
+	m := newModel(t)
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = nm.(Model)
+	// Dismiss splash → boot check.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	m = nm.(Model)
+	if m.booted {
+		t.Fatal("after splash the model should be on the boot check, not booted")
+	}
+	if !strings.Contains(m.View(), "boot check") || !strings.Contains(m.View(), "✓") {
+		t.Error("boot view should show the readiness checklist")
+	}
+	// Enter continues.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !nm.(Model).booted {
+		t.Error("Enter should pass the boot check")
 	}
 }
 

@@ -45,6 +45,8 @@ type Store interface {
 	ApproveGate() error
 	RejectGate() error
 	PortalURL() string
+	ProjectConfigExists() bool
+	ClaudeDirExists() bool
 	ProjectName() string
 	TaffyCount() int
 	PipelineStatus() string
@@ -87,6 +89,7 @@ type Model struct {
 	width       int
 	height      int
 	splash      bool
+	booted      bool
 	showHelp    bool
 	filtering   bool
 	filterBuf   string
@@ -513,6 +516,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.ClearScreen
 	}
 
+	// Boot-check screen: Enter/any key continues to the dashboard; q quits.
+	if !m.booted {
+		if k == "q" || k == "ctrl+c" {
+			return m, tea.Quit
+		}
+		m.booted = true
+		return m, tea.ClearScreen
+	}
+
 	// Help overlay: any key closes it.
 	if m.showHelp {
 		m.showHelp = false
@@ -653,6 +665,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.openLauncher()
 	case "x":
 		m.openQuickPrompt()
+	case "n":
+		if h := m.firstHarness(); h != "" {
+			m.trySpawn("new story", []string{h, "/spec-kit"})
+		} else {
+			m.status = "no harness found for new-story"
+		}
+	case "u":
+		m.trySpawn("update", []string{"maple", "update"})
 	case "R":
 		m.openRTK()
 	case "S":
@@ -718,9 +738,8 @@ func toggleFS(cur, target int) int {
 }
 
 // pendingOverlays maps keys to the overlays still to be ported from tui/.
-var pendingOverlays = map[string]string{
-	"n": "new-story wizard", "u": "update",
-}
+// pendingOverlays maps keys to features not yet ported (empty — all wired).
+var pendingOverlays = map[string]string{}
 
 // handleFilterKey processes typing while the filter input is active.
 func (m Model) handleFilterKey(msg tea.KeyMsg) Model {
@@ -864,6 +883,9 @@ func (m Model) View() string {
 	if m.splash {
 		return splash.Render(m.mode, m.width, m.height, "maple "+m.version)
 	}
+	if !m.booted {
+		return m.bootView()
+	}
 	header := m.header()
 	bodyH := m.height - lipgloss.Height(header) - 1
 	if bodyH < 2 {
@@ -880,6 +902,51 @@ func (m Model) View() string {
 		body = p.RenderAt(0, lipgloss.Height(header), m.width, bodyH, m.mode)
 	}
 	return kittyClearImages + lipgloss.JoinVertical(lipgloss.Left, header, body, m.footer())
+}
+
+// bootChecks are the readiness checks shown on the boot screen.
+type bootCheck struct {
+	label string
+	ok    bool
+}
+
+func (m Model) bootChecks() []bootCheck {
+	return []bootCheck{
+		{"project.config.yaml present", m.store.ProjectConfigExists()},
+		{".claude/ directory present", m.store.ClaudeDirExists()},
+		{"a harness is installed", m.firstHarness() != ""},
+	}
+}
+
+// bootView renders the boot-check screen: a ✓/✗ readiness list, centered.
+func (m Model) bootView() string {
+	ok := m.mode.State("done").Style()
+	bad := m.mode.State("blocked").Style()
+	title := m.mode.Role("title").Style()
+	faint := m.mode.Role("faint").Style()
+
+	allOK := true
+	lines := []string{title.Render(brand.Leaf + " maple — boot check"), ""}
+	for _, c := range m.bootChecks() {
+		if c.ok {
+			lines = append(lines, ok.Render("✓ ")+c.label)
+		} else {
+			lines = append(lines, bad.Render("✗ ")+c.label)
+			allOK = false
+		}
+	}
+	hint := "Enter to continue · q to quit"
+	if !allOK {
+		hint = "some checks failed — Enter to continue anyway · q to quit"
+	}
+	lines = append(lines, "", faint.Render(hint))
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(m.mode.Role("border_focus").FG)).
+		Padding(1, 3).
+		Render(strings.Join(lines, "\n"))
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }
 
 // manualView renders the manual-launch modal: the command to paste when no terminal
