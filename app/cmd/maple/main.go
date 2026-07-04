@@ -23,6 +23,7 @@ import (
 	"github.com/kinncj/maple/app/internal/selfupdate"
 	"github.com/kinncj/maple/app/internal/state"
 	"github.com/kinncj/maple/app/internal/tui/dashboard"
+	reqtui "github.com/kinncj/maple/app/internal/tui/req"
 )
 
 // version is set at build time via -ldflags "-X main.version=...".
@@ -37,6 +38,10 @@ func main() {
 	switch args[0] {
 	case "init":
 		runInit(hasFlag(args[1:], "--force"))
+	case "req":
+		if err := reqtui.Run(); err != nil {
+			die(err)
+		}
 	case "update":
 		runInit(true)
 	case "labels":
@@ -107,6 +112,7 @@ func usage(w *os.File) {
 
   (no command)      run the dashboard TUI
   init [--force]    scaffold the MAPLE template into the current project
+  req               turn a free-text requirement into Gherkin stories (needs an AI harness)
   update            re-copy the template over an existing project (force)
   labels            bootstrap the canonical MAPLE label set (needs gh)
   project           create a GitHub Project v2 and wire project.config.yaml (needs gh)
