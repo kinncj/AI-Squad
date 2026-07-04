@@ -62,11 +62,15 @@ func (s *storySource) at(i int) (state.Story, bool) {
 // sessionSource adapts harness sessions into a filterable, selectable pane source.
 type sessionSource struct {
 	all    []state.Session
+	pinned map[string]string // pinned session id per source
 	filter string
 }
 
-func newSessionSource(sessions []state.Session) *sessionSource {
-	return &sessionSource{all: sessions}
+func newSessionSource(sessions []state.Session, pinned map[string]string) *sessionSource {
+	if pinned == nil {
+		pinned = map[string]string{}
+	}
+	return &sessionSource{all: sessions, pinned: pinned}
 }
 
 // sourceTag maps a session source to its two-letter dashboard badge.
@@ -97,12 +101,17 @@ func (s *sessionSource) filtered() []state.Session {
 	return out
 }
 
-// Rows renders each session as "[cc] title  Nt" (t = tool calls).
+// Rows renders each session as "● [cc] title  Nt" (● marks the pinned session for
+// its source; t = tool calls).
 func (s *sessionSource) Rows() []string {
 	f := s.filtered()
 	rows := make([]string, len(f))
 	for i, se := range f {
-		rows[i] = fmt.Sprintf("[%s] %s  %dt", sourceTag(se.Source), se.Title, se.ToolCount)
+		pin := "  "
+		if s.pinned[se.Source] == se.ID && se.ID != "" {
+			pin = "● "
+		}
+		rows[i] = fmt.Sprintf("%s[%s] %s  %dt", pin, sourceTag(se.Source), se.Title, se.ToolCount)
 	}
 	return rows
 }

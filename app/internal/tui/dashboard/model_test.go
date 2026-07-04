@@ -34,14 +34,16 @@ func (f fakeStore) PullRequests() []state.PullRequest {
 func (f fakeStore) Tests() []state.Test {
 	return []state.Test{{Path: "app/x_test.go", Framework: "go"}}
 }
-func (f fakeStore) DesignTree() []string             { return []string{"📁 wireframes", "  📄 home.md"} }
-func (f fakeStore) LogLines(n int) []string          { return []string{"ts=12:00  agent=qa"} }
-func (f fakeStore) GitChanges() []string             { return []string{"── status ──", " M app/x.go"} }
-func (f fakeStore) PipelineLines() []string          { return []string{"status  RUNNING", "stage  IMPLEMENT"} }
-func (f fakeStore) Skills() []string                 { return []string{"gh-issues", "humanizer"} }
-func (f fakeStore) Agents() []string                 { return []string{"orchestrator"} }
-func (f fakeStore) RTKHarnesses() map[string]bool    { return map[string]bool{} }
-func (f fakeStore) SetRTKHarness(string, bool) error { return nil }
+func (f fakeStore) DesignTree() []string                  { return []string{"📁 wireframes", "  📄 home.md"} }
+func (f fakeStore) LogLines(n int) []string               { return []string{"ts=12:00  agent=qa"} }
+func (f fakeStore) GitChanges() []string                  { return []string{"── status ──", " M app/x.go"} }
+func (f fakeStore) PipelineLines() []string               { return []string{"status  RUNNING", "stage  IMPLEMENT"} }
+func (f fakeStore) Skills() []string                      { return []string{"gh-issues", "humanizer"} }
+func (f fakeStore) Agents() []string                      { return []string{"orchestrator"} }
+func (f fakeStore) RTKHarnesses() map[string]bool         { return map[string]bool{} }
+func (f fakeStore) SetRTKHarness(string, bool) error      { return nil }
+func (f fakeStore) PinnedSessions() map[string]string     { return map[string]string{} }
+func (f fakeStore) SetPinnedSession(string, string) error { return nil }
 func (f fakeStore) DesignArtifacts(id string) []state.Artifact {
 	return []state.Artifact{{Path: "docs/design/wireframes/" + id + ".wireframe.md", Kind: "wireframes", Status: "pending"}}
 }
@@ -196,12 +198,56 @@ func TestHelpTogglesAndAnyKeyCloses(t *testing.T) {
 }
 
 func TestFocusShortcutKeys(t *testing.T) {
-	m := sized(t, newModel(t))
+	// Fresh model per key so focus starts on Stories (p focuses PRs there; on the
+	// Sessions pane p pins instead — tested separately).
 	for key, want := range map[string]int{"a": paneSessions, "p": panePRs, "Q": paneQA, "s": paneStories} {
+		m := sized(t, newModel(t))
 		nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
 		if got := nm.(Model).group.FocusIndex(); got != want {
 			t.Errorf("key %q focused pane %d, want %d", key, got, want)
 		}
+	}
+}
+
+// pinStore holds mutable session pins for the pin test.
+type pinStore struct {
+	fakeStore
+	pins map[string]string
+}
+
+func (p pinStore) Sessions() []state.Session {
+	return []state.Session{{ID: "sess-1", Title: "work", Source: "claude", ToolCount: 5}}
+}
+func (p pinStore) PinnedSessions() map[string]string { return p.pins }
+func (p pinStore) SetPinnedSession(source, id string) error {
+	if id == "" {
+		delete(p.pins, source)
+	} else {
+		p.pins[source] = id
+	}
+	return nil
+}
+
+func TestSessionPinToggle(t *testing.T) {
+	m, err := New("v-test", pinStore{fakeStore{n: 3}, map[string]string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = sized(t, m)
+	// Focus Sessions, then p pins the selected session.
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
+	m = nm.(Model)
+	if !strings.Contains(m.status, "pinned claude") {
+		t.Errorf("p on a session should pin it, status=%q", m.status)
+	}
+	if !strings.Contains(m.View(), "●") {
+		t.Error("pinned session should show the ● marker")
+	}
+	// p again unpins.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
+	if !strings.Contains(nm.(Model).status, "unpinned") {
+		t.Errorf("p again should unpin, status=%q", nm.(Model).status)
 	}
 }
 

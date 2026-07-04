@@ -57,18 +57,18 @@ func TestStorySourceEmpty(t *testing.T) {
 
 func TestSessionSourceRendersTagAndToolCount(t *testing.T) {
 	s := newSessionSource([]state.Session{
-		{Title: "Standardize tracking", Source: "claude", ToolCount: 293},
-		{Title: "abc…def", Source: "copilot", ToolCount: 5},
-		{Title: "oc one", Source: "opencode", ToolCount: 0},
-	})
+		{ID: "s0", Title: "Standardize tracking", Source: "claude", ToolCount: 293},
+		{ID: "s1", Title: "abc…def", Source: "copilot", ToolCount: 5},
+		{ID: "s2", Title: "oc one", Source: "opencode", ToolCount: 0},
+	}, map[string]string{"copilot": "s1"}) // s1 is pinned
 	rows := s.Rows()
-	if rows[0] != "[cc] Standardize tracking  293t" {
+	if rows[0] != "  [cc] Standardize tracking  293t" {
 		t.Errorf("row 0 = %q", rows[0])
 	}
-	if rows[1] != "[gh] abc…def  5t" {
-		t.Errorf("copilot row = %q, want [gh] tag", rows[1])
+	if rows[1] != "● [gh] abc…def  5t" {
+		t.Errorf("pinned copilot row = %q, want ● [gh] tag", rows[1])
 	}
-	if rows[2] != "[oc] oc one  0t" {
+	if rows[2] != "  [oc] oc one  0t" {
 		t.Errorf("opencode row = %q, want [oc] tag", rows[2])
 	}
 }
@@ -77,7 +77,7 @@ func TestSessionSourceFilter(t *testing.T) {
 	s := newSessionSource([]state.Session{
 		{Title: "alpha", Source: "claude"},
 		{Title: "beta", Source: "copilot"},
-	})
+	}, nil)
 	s.SetFilter("alpha")
 	if s.RowCount() != 1 {
 		t.Errorf("filter alpha matched %d, want 1", s.RowCount())

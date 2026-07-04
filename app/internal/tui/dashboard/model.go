@@ -37,6 +37,8 @@ type Store interface {
 	Agents() []string
 	RTKHarnesses() map[string]bool
 	SetRTKHarness(name string, on bool) error
+	PinnedSessions() map[string]string
+	SetPinnedSession(source, id string) error
 	DesignArtifacts(storyID string) []state.Artifact
 	ApprovalPending() string
 	ApproveGate() error
@@ -101,7 +103,7 @@ func New(version string, store Store) (Model, error) {
 		return Model{}, err
 	}
 	stories := newStorySource(store.Stories())
-	sessions := newSessionSource(store.Sessions())
+	sessions := newSessionSource(store.Sessions(), store.PinnedSessions())
 	prs := newPRSource(store.PullRequests())
 	qa := newQASource(store.Tests())
 	g := pane.NewGroup(
@@ -344,6 +346,31 @@ func (m *Model) openSession() {
 			m.trySpawn(fmt.Sprintf("PR #%d", pr.Number),
 				[]string{"gh", "pr", "view", "--web", fmt.Sprintf("%d", pr.Number)})
 		}
+	}
+}
+
+// pinFocusedSession toggles the pin on the focused session (per its harness source)
+// and refreshes the pane so the ● marker updates.
+func (m *Model) pinFocusedSession() {
+	se, ok := m.sessions.at(m.group.Focused().Selected())
+	if !ok {
+		return
+	}
+	id := se.ID
+	if m.store.PinnedSessions()[se.Source] == se.ID {
+		id = "" // already pinned → unpin
+	}
+	if err := m.store.SetPinnedSession(se.Source, id); err != nil {
+		m.status = "pin: " + err.Error()
+		return
+	}
+	sel := m.group.FocusIndex()
+	m.reload()
+	m.group.SetFocus(sel)
+	if id == "" {
+		m.status = "unpinned " + se.Source + " session"
+	} else {
+		m.status = "pinned " + se.Source + " session"
 	}
 }
 
@@ -615,7 +642,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "a":
 		m.group.SetFocus(paneSessions)
 	case "p":
-		m.group.SetFocus(panePRs)
+		// On the Sessions pane, p pins the selected session; elsewhere it focuses PRs.
+		if m.group.FocusIndex() == paneSessions {
+			m.pinFocusedSession()
+		} else {
+			m.group.SetFocus(panePRs)
+		}
 	case "Q":
 		m.group.SetFocus(paneQA)
 	case "r":
@@ -750,7 +782,7 @@ func (m *Model) reload() {
 	}
 	panes := m.group.Panes()
 	m.stories = newStorySource(m.store.Stories())
-	m.sessions = newSessionSource(m.store.Sessions())
+	m.sessions = newSessionSource(m.store.Sessions(), m.store.PinnedSessions())
 	m.qa = newQASource(m.store.Tests())
 	panes[paneStories] = pane.New("Stories", m.stories)
 	panes[paneSessions] = pane.New("Sessions", m.sessions)
