@@ -46,3 +46,4 @@ template/template/
 .playwright-mcp/
 bin/
 app/internal/tui/splash/assets/
+app/cmd/maple/template/

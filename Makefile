@@ -15,14 +15,20 @@ build-tui:
 	@echo "Built: ./maple"
 
 ## Build the rebuilt maple binary (feature/better-ui-ux; parallel to ./maple until parity)
+## app/cmd/maple/template is a symlink → ../../../template; go:embed can't follow it,
+## so swap it for a real copy for the build, then restore the symlink.
 build-app:
 	@echo "Building maple (rebuild)..."
-	@go build -ldflags="$(LDFLAGS)" -o bin/maple ./app/cmd/maple
+	@rm -f app/cmd/maple/template && cp -rL template app/cmd/maple/template
+	@go build -ldflags="$(LDFLAGS)" -o bin/maple ./app/cmd/maple; \
+		status=$$?; rm -rf app/cmd/maple/template && ln -s ../../../template app/cmd/maple/template; exit $$status
 	@echo "Built: ./bin/maple"
 
-## Run the rebuilt binary's unit tests
+## Run the rebuilt binary's unit tests (with the same template dance for the embed)
 test-app:
-	@go test ./app/...
+	@rm -f app/cmd/maple/template && cp -rL template app/cmd/maple/template
+	@go test ./app/... && go vet ./app/...; \
+		status=$$?; rm -rf app/cmd/maple/template && ln -s ../../../template app/cmd/maple/template; exit $$status
 
 ## gofmt-check the rebuilt binary sources
 lint-app:
