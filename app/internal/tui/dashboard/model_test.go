@@ -32,9 +32,11 @@ func (f fakeStore) PullRequests() []state.PullRequest {
 func (f fakeStore) Tests() []state.Test {
 	return []state.Test{{Path: "app/x_test.go", Framework: "go"}}
 }
-func (f fakeStore) ProjectName() string    { return "test-project" }
-func (f fakeStore) TaffyCount() int        { return 5 }
-func (f fakeStore) PipelineStatus() string { return "DONE" }
+func (f fakeStore) DesignTree() []string    { return []string{"📁 wireframes", "  📄 home.md"} }
+func (f fakeStore) LogLines(n int) []string { return []string{"ts=12:00  agent=qa"} }
+func (f fakeStore) ProjectName() string     { return "test-project" }
+func (f fakeStore) TaffyCount() int         { return 5 }
+func (f fakeStore) PipelineStatus() string  { return "DONE" }
 
 func newModel(t *testing.T) Model {
 	t.Helper()
@@ -219,5 +221,47 @@ func TestPendingOverlayKeySetsStatus(t *testing.T) {
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
 	if !strings.Contains(nm.(Model).status, "Design Review") {
 		t.Errorf("D should set a status about Design Review, got %q", nm.(Model).status)
+	}
+}
+
+func TestFullscreenDesignToggle(t *testing.T) {
+	m := sized(t, newModel(t))
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	m = nm.(Model)
+	if m.fullscreen != fsDesign {
+		t.Fatalf("d should open Design fullscreen, got %d", m.fullscreen)
+	}
+	if !strings.Contains(m.View(), "wireframes") {
+		t.Error("Design fullscreen should render the design tree")
+	}
+	// d again closes it.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	if nm.(Model).fullscreen != fsNone {
+		t.Error("d again should close Design")
+	}
+}
+
+func TestFullscreenLogsAndEscClose(t *testing.T) {
+	m := sized(t, newModel(t))
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	m = nm.(Model)
+	if m.fullscreen != fsLogs {
+		t.Fatalf("l should open Logs fullscreen, got %d", m.fullscreen)
+	}
+	if !strings.Contains(m.View(), "agent=qa") {
+		t.Error("Logs fullscreen should render log lines")
+	}
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if nm.(Model).fullscreen != fsNone {
+		t.Error("esc should close the fullscreen pane")
+	}
+}
+
+func TestFullscreenSwitchDToL(t *testing.T) {
+	m := sized(t, newModel(t))
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	if nm.(Model).fullscreen != fsLogs {
+		t.Error("l while Design is open should switch to Logs")
 	}
 }

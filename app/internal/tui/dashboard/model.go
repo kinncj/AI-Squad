@@ -26,25 +26,43 @@ type Store interface {
 	Sessions() []state.Session
 	PullRequests() []state.PullRequest
 	Tests() []state.Test
+	DesignTree() []string
+	LogLines(n int) []string
 	ProjectName() string
 	TaffyCount() int
 	PipelineStatus() string
 }
 
+// linesSource is a scroll-only (non-selectable) pane source backing the fullscreen
+// Design and Logs views.
+type linesSource struct{ rows []string }
+
+func (l linesSource) Rows() []string { return l.rows }
+
+// fullscreen targets.
+const (
+	fsNone = iota
+	fsDesign
+	fsLogs
+)
+
 // Model is the top-level dashboard model.
 type Model struct {
-	theme     *theme.Theme
-	mode      theme.Mode
-	group     *pane.Group
-	store     Store
-	width     int
-	height    int
-	splash    bool
-	showHelp  bool
-	filtering bool
-	filterBuf string
-	status    string
-	version   string
+	theme      *theme.Theme
+	mode       theme.Mode
+	group      *pane.Group
+	design     *pane.Pane
+	logs       *pane.Pane
+	fullscreen int
+	store      Store
+	width      int
+	height     int
+	splash     bool
+	showHelp   bool
+	filtering  bool
+	filterBuf  string
+	status     string
+	version    string
 }
 
 // New builds the dashboard model from a project store. Pass state.NewFS(".") in
@@ -60,14 +78,31 @@ func New(version string, store Store) (Model, error) {
 		pane.New("Pull Requests", newPRSource(store.PullRequests())),
 		pane.New("QA / Tests", newQASource(store.Tests())),
 	)
+	design := pane.New("Design", linesSource{store.DesignTree()})
+	logs := pane.New("Logs", linesSource{store.LogLines(500)})
+	design.SetFocus(true)
+	logs.SetFocus(true)
 	return Model{
 		theme:   th,
 		mode:    th.ActiveMode(),
 		group:   g,
+		design:  design,
+		logs:    logs,
 		store:   store,
 		splash:  true,
 		version: version,
 	}, nil
+}
+
+// fullscreenPane returns the active fullscreen pane, or nil when none is open.
+func (m Model) fullscreenPane() *pane.Pane {
+	switch m.fullscreen {
+	case fsDesign:
+		return m.design
+	case fsLogs:
+		return m.logs
+	}
+	return nil
 }
 
 func itoa(n int) string {
@@ -132,6 +167,36 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	m.status = "" // any key clears a transient status line
+
+	// Fullscreen Design/Logs: d/l toggle; while open, nav scrolls the active pane.
+	switch k {
+	case "d":
+		m.fullscreen = toggleFS(m.fullscreen, fsDesign)
+		return m, nil
+	case "l":
+		m.fullscreen = toggleFS(m.fullscreen, fsLogs)
+		return m, nil
+	}
+	if p := m.fullscreenPane(); p != nil {
+		switch k {
+		case "esc":
+			m.fullscreen = fsNone
+		case "up", "k":
+			p.ScrollBy(-1, p.VisibleRows())
+		case "down", "j":
+			p.ScrollBy(1, p.VisibleRows())
+		case "g", "home":
+			p.Top()
+		case "G", "end":
+			p.Bottom(p.VisibleRows())
+		case "?":
+			m.showHelp = true
+		case "q", "ctrl+c":
+			return m, tea.Quit
+		}
+		return m, nil
+	}
+
 	switch k {
 	case "q", "ctrl+c":
 		return m, tea.Quit
@@ -180,9 +245,17 @@ const (
 	paneQA
 )
 
+// toggleFS returns fsNone if target is already active, else target.
+func toggleFS(cur, target int) int {
+	if cur == target {
+		return fsNone
+	}
+	return target
+}
+
 // pendingOverlays maps keys to the overlays still to be ported from tui/.
 var pendingOverlays = map[string]string{
-	"d": "Design pane", "D": "Design Review", "l": "Logs pane", "C": "Git Changes",
+	"D": "Design Review", "C": "Git Changes",
 	"n": "new-story wizard", "u": "update", "F": "Skills marketplace", "x": "Quick Prompt",
 	"P": "Pipeline status", "o": "open session/PR", "S": "ship-safe", "enter": "detail popup",
 	":": "command mode",
@@ -224,6 +297,10 @@ func (m *Model) reload() {
 	panes[paneQA] = pane.New("QA / Tests", newQASource(m.store.Tests()))
 	// Rebuild the group so focus wiring stays consistent.
 	m.group = pane.NewGroup(panes...)
+	m.design = pane.New("Design", linesSource{m.store.DesignTree()})
+	m.logs = pane.New("Logs", linesSource{m.store.LogLines(500)})
+	m.design.SetFocus(true)
+	m.logs.SetFocus(true)
 }
 
 func (m Model) handleMouse(msg tea.MouseMsg) {
@@ -263,6 +340,8 @@ func (m Model) View() string {
 	body := m.grid(bodyH)
 	if m.showHelp {
 		body = m.helpView(bodyH)
+	} else if p := m.fullscreenPane(); p != nil {
+		body = p.RenderAt(0, lipgloss.Height(header), m.width, bodyH, m.mode)
 	}
 	return kittyClearImages + lipgloss.JoinVertical(lipgloss.Left, header, body, m.footer())
 }
@@ -290,6 +369,7 @@ func (m Model) helpView(bodyH int) string {
 		{"j / k · ↓ / ↑", "navigate rows"},
 		{"g / G", "top / bottom"},
 		{"s a p Q", "focus Stories / Sessions / PRs / QA"},
+		{"d / l", "Design / Logs full-screen"},
 		{"/", "filter the focused pane"},
 		{"r", "reload pane data"},
 		{"?", "toggle this help"},
@@ -298,7 +378,6 @@ func (m Model) helpView(bodyH int) string {
 	coming := [][2]string{
 		{"Enter", "open detail"},
 		{"o", "open session / PR"},
-		{"d / l", "Design / Logs full-screen"},
 		{"D / C", "Design Review / Git Changes"},
 		{"n / u / F", "new story / update / skills"},
 		{"x / P / S", "quick prompt / pipeline / ship-safe"},
