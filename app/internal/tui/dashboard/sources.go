@@ -50,6 +50,15 @@ func (s *storySource) Rows() []string {
 func (s *storySource) RowCount() int      { return len(s.filtered()) }
 func (s *storySource) SetFilter(q string) { s.filter = q }
 
+// at returns the story at the current filtered index i, if any.
+func (s *storySource) at(i int) (state.Story, bool) {
+	f := s.filtered()
+	if i < 0 || i >= len(f) {
+		return state.Story{}, false
+	}
+	return f[i], true
+}
+
 // sessionSource adapts harness sessions into a filterable, selectable pane source.
 type sessionSource struct {
 	all    []state.Session

@@ -257,6 +257,36 @@ func TestFullscreenLogsAndEscClose(t *testing.T) {
 	}
 }
 
+func TestEnterOpensStoryDetail(t *testing.T) {
+	// Point a story at a real file so the detail overlay has content.
+	m, err := New("v-test", detailStore{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = sized(t, m)
+	_ = m.View()
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = nm.(Model)
+	if m.detail == nil {
+		t.Fatal("Enter on Stories should open a detail overlay")
+	}
+	if !strings.Contains(m.View(), "Story ·") {
+		t.Error("detail overlay should show the story title")
+	}
+	// esc closes it.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if nm.(Model).detail != nil {
+		t.Error("esc should close the detail overlay")
+	}
+}
+
+// detailStore backs the Enter test with a story whose Path points at this test file.
+type detailStore struct{ fakeStore }
+
+func (detailStore) Stories() []state.Story {
+	return []state.Story{{ID: "auth-0001", Path: "model_test.go"}}
+}
+
 func TestFullscreenSwitchDToL(t *testing.T) {
 	m := sized(t, newModel(t))
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})

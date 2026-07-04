@@ -51,8 +51,10 @@ type Model struct {
 	theme      *theme.Theme
 	mode       theme.Mode
 	group      *pane.Group
+	stories    *storySource
 	design     *pane.Pane
 	logs       *pane.Pane
+	detail     *pane.Pane
 	fullscreen int
 	store      Store
 	width      int
@@ -72,8 +74,9 @@ func New(version string, store Store) (Model, error) {
 	if err != nil {
 		return Model{}, err
 	}
+	stories := newStorySource(store.Stories())
 	g := pane.NewGroup(
-		pane.New("Stories", newStorySource(store.Stories())),
+		pane.New("Stories", stories),
 		pane.New("Sessions", newSessionSource(store.Sessions())),
 		pane.New("Pull Requests", newPRSource(store.PullRequests())),
 		pane.New("QA / Tests", newQASource(store.Tests())),
@@ -86,12 +89,22 @@ func New(version string, store Store) (Model, error) {
 		theme:   th,
 		mode:    th.ActiveMode(),
 		group:   g,
+		stories: stories,
 		design:  design,
 		logs:    logs,
 		store:   store,
 		splash:  true,
 		version: version,
 	}, nil
+}
+
+// activePane returns the overlay pane taking navigation and rendering: a detail
+// overlay if open, else a fullscreen Design/Logs pane, else nil (the grid is live).
+func (m Model) activePane() *pane.Pane {
+	if m.detail != nil {
+		return m.detail
+	}
+	return m.fullscreenPane()
 }
 
 // fullscreenPane returns the active fullscreen pane, or nil when none is open.
@@ -103,6 +116,25 @@ func (m Model) fullscreenPane() *pane.Pane {
 		return m.logs
 	}
 	return nil
+}
+
+// openDetail opens a detail overlay for the focused pane's selected row.
+func (m *Model) openDetail() {
+	p := m.group.Focused()
+	if p == nil {
+		return
+	}
+	sel := p.Selected()
+	if sel < 0 {
+		return
+	}
+	switch m.group.FocusIndex() {
+	case paneStories:
+		if st, ok := m.stories.at(sel); ok {
+			m.detail = pane.New("Story · "+st.ID, linesSource{state.FileLines(st.Path)})
+			m.detail.SetFocus(true)
+		}
+	}
 }
 
 func itoa(n int) string {
@@ -168,18 +200,21 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	m.status = "" // any key clears a transient status line
 
-	// Fullscreen Design/Logs: d/l toggle; while open, nav scrolls the active pane.
+	// Fullscreen Design/Logs: d/l toggle; while any overlay is open, nav scrolls it.
 	switch k {
 	case "d":
+		m.detail = nil
 		m.fullscreen = toggleFS(m.fullscreen, fsDesign)
 		return m, nil
 	case "l":
+		m.detail = nil
 		m.fullscreen = toggleFS(m.fullscreen, fsLogs)
 		return m, nil
 	}
-	if p := m.fullscreenPane(); p != nil {
+	if p := m.activePane(); p != nil {
 		switch k {
 		case "esc":
+			m.detail = nil
 			m.fullscreen = fsNone
 		case "up", "k":
 			p.ScrollBy(-1, p.VisibleRows())
@@ -200,6 +235,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch k {
 	case "q", "ctrl+c":
 		return m, tea.Quit
+	case "enter":
+		m.openDetail()
 	case "?":
 		m.showHelp = true
 	case "/":
@@ -257,7 +294,7 @@ func toggleFS(cur, target int) int {
 var pendingOverlays = map[string]string{
 	"D": "Design Review", "C": "Git Changes",
 	"n": "new-story wizard", "u": "update", "F": "Skills marketplace", "x": "Quick Prompt",
-	"P": "Pipeline status", "o": "open session/PR", "S": "ship-safe", "enter": "detail popup",
+	"P": "Pipeline status", "o": "open session/PR", "S": "ship-safe",
 	":": "command mode",
 }
 
@@ -291,7 +328,8 @@ func (m *Model) reload() {
 		return
 	}
 	panes := m.group.Panes()
-	panes[paneStories] = pane.New("Stories", newStorySource(m.store.Stories()))
+	m.stories = newStorySource(m.store.Stories())
+	panes[paneStories] = pane.New("Stories", m.stories)
 	panes[paneSessions] = pane.New("Sessions", newSessionSource(m.store.Sessions()))
 	panes[panePRs] = pane.New("Pull Requests", newPRSource(m.store.PullRequests()))
 	panes[paneQA] = pane.New("QA / Tests", newQASource(m.store.Tests()))
@@ -340,7 +378,7 @@ func (m Model) View() string {
 	body := m.grid(bodyH)
 	if m.showHelp {
 		body = m.helpView(bodyH)
-	} else if p := m.fullscreenPane(); p != nil {
+	} else if p := m.activePane(); p != nil {
 		body = p.RenderAt(0, lipgloss.Height(header), m.width, bodyH, m.mode)
 	}
 	return kittyClearImages + lipgloss.JoinVertical(lipgloss.Left, header, body, m.footer())
@@ -369,14 +407,15 @@ func (m Model) helpView(bodyH int) string {
 		{"j / k · ↓ / ↑", "navigate rows"},
 		{"g / G", "top / bottom"},
 		{"s a p Q", "focus Stories / Sessions / PRs / QA"},
+		{"Enter", "open story detail"},
 		{"d / l", "Design / Logs full-screen"},
 		{"/", "filter the focused pane"},
 		{"r", "reload pane data"},
 		{"?", "toggle this help"},
+		{"esc", "close overlay"},
 		{"q · Ctrl+C", "quit"},
 	}
 	coming := [][2]string{
-		{"Enter", "open detail"},
 		{"o", "open session / PR"},
 		{"D / C", "Design Review / Git Changes"},
 		{"n / u / F", "new story / update / skills"},
