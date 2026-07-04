@@ -16,6 +16,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/kinncj/maple/app/internal/gh"
 	"github.com/kinncj/maple/app/internal/scaffold"
 	"github.com/kinncj/maple/app/internal/state"
 	"github.com/kinncj/maple/app/internal/tui/dashboard"
@@ -33,6 +34,14 @@ func main() {
 	switch args[0] {
 	case "init":
 		runInit(hasFlag(args[1:], "--force"))
+	case "labels":
+		if err := gh.RunLabels(); err != nil {
+			die(err)
+		}
+	case "project":
+		if err := gh.RunProject(); err != nil {
+			die(err)
+		}
 	case "version", "--version", "-v":
 		fmt.Println("maple", version)
 	case "help", "--help", "-h":
@@ -79,6 +88,8 @@ func usage(w *os.File) {
 
   (no command)   run the dashboard TUI
   init [--force] scaffold the MAPLE template into the current project
+  labels         bootstrap the canonical MAPLE label set (needs gh)
+  project        create a GitHub Project v2 and wire project.config.yaml (needs gh)
   version        print the version
 `)
 }
