@@ -21,8 +21,9 @@ type Session struct {
 // maxSessions caps how many recent sessions each source contributes.
 const maxSessions = 10
 
-// Sessions returns recent Claude Code sessions for the project at Root, newest
-// first. OpenCode and Copilot sources are added in a later iteration.
+// Sessions returns recent Claude, OpenCode, and Copilot sessions for the project at
+// Root, merged and sorted newest-first. Each source is best-effort: a missing store
+// contributes nothing.
 func (s *FS) Sessions() []Session {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -33,8 +34,13 @@ func (s *FS) Sessions() []Session {
 		return nil
 	}
 	encoded := strings.ReplaceAll(cwd, "/", "-")
-	dir := filepath.Join(home, ".claude", "projects", encoded)
-	return claudeSessions(dir)
+
+	var all []Session
+	all = append(all, claudeSessions(filepath.Join(home, ".claude", "projects", encoded))...)
+	all = append(all, openCodeSessions(home, cwd)...)
+	all = append(all, copilotSessions(home, cwd)...)
+	sort.Slice(all, func(i, j int) bool { return all[i].TS > all[j].TS })
+	return all
 }
 
 // claudeSessions reads every *.jsonl in dir as a Claude session, newest first,
