@@ -26,6 +26,12 @@ func (f fakeStore) Sessions() []state.Session {
 		{Title: "deadbeef…cafebabe", Source: "copilot", ToolCount: 42},
 	}
 }
+func (f fakeStore) PullRequests() []state.PullRequest {
+	return []state.PullRequest{{Number: 22, Title: "rework", State: "OPEN"}}
+}
+func (f fakeStore) Tests() []state.Test {
+	return []state.Test{{Path: "app/x_test.go", Framework: "go"}}
+}
 func (f fakeStore) ProjectName() string    { return "test-project" }
 func (f fakeStore) TaffyCount() int        { return 5 }
 func (f fakeStore) PipelineStatus() string { return "DONE" }

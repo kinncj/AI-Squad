@@ -20,17 +20,12 @@ import (
 	"github.com/kinncj/maple/app/internal/tui/theme"
 )
 
-// demoSource is a placeholder Selectable source. It stands in for the state adapters
-// not yet built (sessions, PRs, QA); Stories already uses the real state layer.
-type demoSource struct{ rows []string }
-
-func (d demoSource) Rows() []string { return d.rows }
-func (d demoSource) RowCount() int  { return len(d.rows) }
-
 // Store provides live project state to the dashboard. state.FS satisfies it.
 type Store interface {
 	Stories() []state.Story
 	Sessions() []state.Session
+	PullRequests() []state.PullRequest
+	Tests() []state.Test
 	ProjectName() string
 	TaffyCount() int
 	PipelineStatus() string
@@ -62,8 +57,8 @@ func New(version string, store Store) (Model, error) {
 	g := pane.NewGroup(
 		pane.New("Stories", newStorySource(store.Stories())),
 		pane.New("Sessions", newSessionSource(store.Sessions())),
-		pane.New("Pull Requests", demoSource{sample("PR #", 20)}),
-		pane.New("QA", demoSource{sample("scenario", 15)}),
+		pane.New("Pull Requests", newPRSource(store.PullRequests())),
+		pane.New("QA / Tests", newQASource(store.Tests())),
 	)
 	return Model{
 		theme:   th,
@@ -73,14 +68,6 @@ func New(version string, store Store) (Model, error) {
 		splash:  true,
 		version: version,
 	}, nil
-}
-
-func sample(prefix string, n int) []string {
-	out := make([]string, n)
-	for i := range out {
-		out[i] = prefix + " " + itoa(i+1)
-	}
-	return out
 }
 
 func itoa(n int) string {
@@ -233,6 +220,8 @@ func (m *Model) reload() {
 	panes := m.group.Panes()
 	panes[paneStories] = pane.New("Stories", newStorySource(m.store.Stories()))
 	panes[paneSessions] = pane.New("Sessions", newSessionSource(m.store.Sessions()))
+	panes[panePRs] = pane.New("Pull Requests", newPRSource(m.store.PullRequests()))
+	panes[paneQA] = pane.New("QA / Tests", newQASource(m.store.Tests()))
 	// Rebuild the group so focus wiring stays consistent.
 	m.group = pane.NewGroup(panes...)
 }

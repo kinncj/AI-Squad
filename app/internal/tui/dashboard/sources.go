@@ -100,3 +100,73 @@ func (s *sessionSource) Rows() []string {
 
 func (s *sessionSource) RowCount() int      { return len(s.filtered()) }
 func (s *sessionSource) SetFilter(q string) { s.filter = q }
+
+// prSource adapts pull requests into a filterable, selectable pane source.
+type prSource struct {
+	all    []state.PullRequest
+	filter string
+}
+
+func newPRSource(prs []state.PullRequest) *prSource { return &prSource{all: prs} }
+
+func (s *prSource) filtered() []state.PullRequest {
+	if s.filter == "" {
+		return s.all
+	}
+	q := strings.ToLower(s.filter)
+	var out []state.PullRequest
+	for _, pr := range s.all {
+		if strings.Contains(strings.ToLower(pr.Title), q) {
+			out = append(out, pr)
+		}
+	}
+	return out
+}
+
+// Rows renders each PR as "#22 title".
+func (s *prSource) Rows() []string {
+	f := s.filtered()
+	rows := make([]string, len(f))
+	for i, pr := range f {
+		rows[i] = fmt.Sprintf("#%d %s", pr.Number, pr.Title)
+	}
+	return rows
+}
+
+func (s *prSource) RowCount() int      { return len(s.filtered()) }
+func (s *prSource) SetFilter(q string) { s.filter = q }
+
+// qaSource adapts discovered tests into a filterable, selectable pane source.
+type qaSource struct {
+	all    []state.Test
+	filter string
+}
+
+func newQASource(tests []state.Test) *qaSource { return &qaSource{all: tests} }
+
+func (s *qaSource) filtered() []state.Test {
+	if s.filter == "" {
+		return s.all
+	}
+	q := strings.ToLower(s.filter)
+	var out []state.Test
+	for _, tst := range s.all {
+		if strings.Contains(strings.ToLower(tst.Path), q) || strings.Contains(tst.Framework, q) {
+			out = append(out, tst)
+		}
+	}
+	return out
+}
+
+// Rows renders each test as "[go] path".
+func (s *qaSource) Rows() []string {
+	f := s.filtered()
+	rows := make([]string, len(f))
+	for i, tst := range f {
+		rows[i] = fmt.Sprintf("[%s] %s", tst.Framework, tst.Path)
+	}
+	return rows
+}
+
+func (s *qaSource) RowCount() int      { return len(s.filtered()) }
+func (s *qaSource) SetFilter(q string) { s.filter = q }
