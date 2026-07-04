@@ -6,6 +6,7 @@ package dashboard
 
 import (
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -27,13 +28,18 @@ func (d demoSource) RowCount() int  { return len(d.rows) }
 
 // Model is the top-level dashboard model.
 type Model struct {
-	theme   *theme.Theme
-	mode    theme.Mode
-	group   *pane.Group
-	width   int
-	height  int
-	splash  bool
-	version string
+	theme     *theme.Theme
+	mode      theme.Mode
+	group     *pane.Group
+	store     state.StoryStore
+	width     int
+	height    int
+	splash    bool
+	showHelp  bool
+	filtering bool
+	filterBuf string
+	status    string
+	version   string
 }
 
 // New builds the dashboard model from a story store. Pass state.NewFS(".") in
@@ -53,6 +59,7 @@ func New(version string, store state.StoryStore) (Model, error) {
 		theme:   th,
 		mode:    th.ActiveMode(),
 		group:   g,
+		store:   store,
 		splash:  true,
 		version: version,
 	}, nil
@@ -78,14 +85,24 @@ func itoa(n int) string {
 	return string(b)
 }
 
-// Init implements tea.Model.
-func (m Model) Init() tea.Cmd { return nil }
+// splashDoneMsg auto-dismisses the splash after a short delay so it never blocks.
+type splashDoneMsg struct{}
+
+// Init implements tea.Model. It starts the splash auto-dismiss timer.
+func (m Model) Init() tea.Cmd {
+	return tea.Tick(1400*time.Millisecond, func(time.Time) tea.Msg { return splashDoneMsg{} })
+}
 
 // Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+	case splashDoneMsg:
+		if m.splash {
+			m.splash = false
+			return m, tea.ClearScreen
+		}
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	case tea.MouseMsg:
@@ -95,17 +112,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	k := msg.String()
+
+	// Splash: any key dismisses (quit still quits). ClearScreen wipes the image.
 	if m.splash {
-		// Any key dismisses the splash, except quit.
-		if k := msg.String(); k == "q" || k == "ctrl+c" {
+		if k == "q" || k == "ctrl+c" {
 			return m, tea.Quit
 		}
 		m.splash = false
+		return m, tea.ClearScreen
+	}
+
+	// Help overlay: any key closes it.
+	if m.showHelp {
+		m.showHelp = false
 		return m, nil
 	}
-	switch msg.String() {
+
+	// Filter input mode captures typing until enter/esc.
+	if m.filtering {
+		return m.handleFilterKey(msg), nil
+	}
+
+	m.status = "" // any key clears a transient status line
+	switch k {
 	case "q", "ctrl+c":
 		return m, tea.Quit
+	case "?":
+		m.showHelp = true
+	case "/":
+		m.filtering, m.filterBuf = true, m.group.Focused().Filter()
 	case "tab":
 		m.group.FocusNext()
 	case "shift+tab":
@@ -118,8 +154,74 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.group.Top()
 	case "G", "end":
 		m.group.Bottom()
+	case "s":
+		m.group.SetFocus(paneStories)
+	case "a":
+		m.group.SetFocus(paneSessions)
+	case "p":
+		m.group.SetFocus(panePRs)
+	case "Q":
+		m.group.SetFocus(paneQA)
+	case "r":
+		m.reload()
+		m.status = "reloaded"
+	default:
+		// Keys whose overlays are not yet ported in the rebuild. Registered so the
+		// surface is discoverable; each lands as its overlay is built (sub-project 5).
+		if name, ok := pendingOverlays[k]; ok {
+			m.status = name + " — not yet ported in the rebuild (press ? for the full map)"
+		}
 	}
 	return m, nil
+}
+
+// pane indices in the group, matching the New() order.
+const (
+	paneStories = iota
+	paneSessions
+	panePRs
+	paneQA
+)
+
+// pendingOverlays maps keys to the overlays still to be ported from tui/.
+var pendingOverlays = map[string]string{
+	"d": "Design pane", "D": "Design Review", "l": "Logs pane", "C": "Git Changes",
+	"n": "new-story wizard", "u": "update", "F": "Skills marketplace", "x": "Quick Prompt",
+	"P": "Pipeline status", "o": "open session/PR", "S": "ship-safe", "enter": "detail popup",
+	":": "command mode",
+}
+
+// handleFilterKey processes typing while the filter input is active.
+func (m Model) handleFilterKey(msg tea.KeyMsg) Model {
+	switch msg.String() {
+	case "esc":
+		m.filtering, m.filterBuf = false, ""
+		m.group.SetFilter("")
+	case "enter":
+		m.filtering = false
+		m.group.SetFilter(m.filterBuf)
+	case "backspace":
+		if len(m.filterBuf) > 0 {
+			r := []rune(m.filterBuf)
+			m.filterBuf = string(r[:len(r)-1])
+			m.group.SetFilter(m.filterBuf)
+		}
+	default:
+		if len(msg.Runes) > 0 {
+			m.filterBuf += string(msg.Runes)
+			m.group.SetFilter(m.filterBuf)
+		}
+	}
+	return m
+}
+
+// reload re-reads live project state into the panes.
+func (m *Model) reload() {
+	if m.store != nil {
+		m.group.Panes()[paneStories] = pane.New("Stories", newStorySource(m.store.Stories()))
+		// Rebuild the group so focus wiring stays consistent.
+		m.group = pane.NewGroup(m.group.Panes()...)
+	}
 }
 
 func (m Model) handleMouse(msg tea.MouseMsg) {
@@ -138,6 +240,11 @@ func (m Model) handleMouse(msg tea.MouseMsg) {
 	}
 }
 
+// kittyClearImages deletes all placed Kitty graphics. Prepended once we leave the
+// splash so an inline-image splash doesn't linger over the dashboard. Harmless on
+// terminals without Kitty graphics.
+const kittyClearImages = "\x1b_Ga=d\x1b\\"
+
 // View implements tea.Model.
 func (m Model) View() string {
 	if m.width == 0 || m.height == 0 {
@@ -151,7 +258,51 @@ func (m Model) View() string {
 	if bodyH < 2 {
 		bodyH = 2
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, m.header(), m.grid(bodyH), m.footer())
+	body := m.grid(bodyH)
+	if m.showHelp {
+		body = m.helpView(bodyH)
+	}
+	return kittyClearImages + lipgloss.JoinVertical(lipgloss.Left, m.header(), body, m.footer())
+}
+
+// helpView renders the full keybinding + command reference, centered in bodyH rows.
+func (m Model) helpView(bodyH int) string {
+	title := m.mode.Role("title").Style()
+	key := m.mode.Role("accent").Style()
+	desc := m.mode.Role("base").Style()
+	row := func(k, d string) string {
+		return "  " + key.Render(pad(k, 18)) + desc.Render(d)
+	}
+	lines := []string{
+		title.Render("  Keybindings"),
+		"",
+		row("Tab / Shift+Tab", "cycle panes"),
+		row("j / k  ↓ / ↑", "navigate rows"),
+		row("g / G", "jump to top / bottom"),
+		row("s  a  p  Q", "focus Stories / Sessions / PRs / QA"),
+		row("/", "filter the focused pane"),
+		row("r", "reload pane data"),
+		row("Enter", "open detail (coming)"),
+		row("o", "open session / PR (coming)"),
+		row("d / l", "Design / Logs full-screen (coming)"),
+		row("D / C", "Design Review / Git Changes (coming)"),
+		row("n / u / F", "new story / update / skills (coming)"),
+		row("x / P / S", "quick prompt / pipeline / ship-safe (coming)"),
+		row(":", "command mode (coming)"),
+		row("?", "toggle this help"),
+		row("q  Ctrl+C", "quit"),
+		"",
+		m.mode.Role("faint").Style().Render("  press any key to close"),
+	}
+	block := strings.Join(lines, "\n")
+	return lipgloss.Place(m.width, bodyH, lipgloss.Center, lipgloss.Center, block)
+}
+
+func pad(s string, w int) string {
+	if len(s) >= w {
+		return s
+	}
+	return s + strings.Repeat(" ", w-len(s))
 }
 
 // header is the top bar: brand + version on the left, context on the right.
@@ -165,10 +316,20 @@ func (m Model) header() string {
 	return bar(left, right, m.width)
 }
 
-// footer is the bottom bar: context-sensitive key hints.
+// footer is the bottom bar: the filter input when active, a transient status when
+// set, otherwise context key hints. Right side always shows "? help".
 func (m Model) footer() string {
-	help := "tab focus · ↑/↓ move · g/G top/bottom · q quit"
-	return bar(m.mode.Role("faint").Style().Render(help), "", m.width)
+	var left string
+	switch {
+	case m.filtering:
+		left = m.mode.Role("accent").Style().Render("/" + m.filterBuf + "▏")
+	case m.status != "":
+		left = m.mode.Role("subtitle").Style().Render(m.status)
+	default:
+		left = m.mode.Role("faint").Style().Render("tab focus · ↑/↓ move · / filter · r reload · q quit")
+	}
+	right := m.mode.Role("faint").Style().Render("? help")
+	return bar(left, right, m.width)
 }
 
 // bar places left and right segments on a single full-width row, filling the gap

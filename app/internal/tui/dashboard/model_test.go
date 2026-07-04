@@ -137,3 +137,72 @@ func TestViewEmptyBeforeSize(t *testing.T) {
 		t.Errorf("view before WindowSizeMsg should be empty, got %q", out)
 	}
 }
+
+func TestSplashAutoDismisses(t *testing.T) {
+	m := newModel(t)
+	nm, cmd := m.Update(splashDoneMsg{})
+	if nm.(Model).splash {
+		t.Error("splashDoneMsg should dismiss the splash")
+	}
+	if cmd == nil {
+		t.Error("dismiss should return a ClearScreen command to wipe any image")
+	}
+}
+
+func TestHelpTogglesAndAnyKeyCloses(t *testing.T) {
+	m := sized(t, newModel(t))
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+	m = nm.(Model)
+	if !m.showHelp {
+		t.Fatal("? should open help")
+	}
+	if !strings.Contains(m.View(), "Keybindings") {
+		t.Error("help view should list keybindings")
+	}
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	if nm.(Model).showHelp {
+		t.Error("any key should close help")
+	}
+}
+
+func TestFocusShortcutKeys(t *testing.T) {
+	m := sized(t, newModel(t))
+	for key, want := range map[string]int{"a": paneSessions, "p": panePRs, "Q": paneQA, "s": paneStories} {
+		nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+		if got := nm.(Model).group.FocusIndex(); got != want {
+			t.Errorf("key %q focused pane %d, want %d", key, got, want)
+		}
+	}
+}
+
+func TestFilterModeTypesAndCancels(t *testing.T) {
+	m := sized(t, newModel(t))
+	_ = m.View() // populate pane heights
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	m = nm.(Model)
+	if !m.filtering {
+		t.Fatal("/ should enter filter mode")
+	}
+	for _, r := range "story-1" {
+		nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = nm.(Model)
+	}
+	if m.filterBuf != "story-1" {
+		t.Errorf("filter buffer = %q, want story-1", m.filterBuf)
+	}
+	if !strings.Contains(m.View(), "story-1") {
+		t.Error("footer should echo the filter buffer")
+	}
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if nm.(Model).filtering {
+		t.Error("esc should exit filter mode")
+	}
+}
+
+func TestPendingOverlayKeySetsStatus(t *testing.T) {
+	m := sized(t, newModel(t))
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	if !strings.Contains(nm.(Model).status, "Design Review") {
+		t.Errorf("D should set a status about Design Review, got %q", nm.(Model).status)
+	}
+}
