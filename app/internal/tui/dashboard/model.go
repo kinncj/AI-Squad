@@ -6,6 +6,7 @@ package dashboard
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ type Store interface {
 	GitChanges() []string
 	PipelineLines() []string
 	Skills() []string
+	DesignArtifacts(storyID string) []state.Artifact
 	ProjectName() string
 	TaffyCount() int
 	PipelineStatus() string
@@ -51,27 +53,28 @@ const (
 
 // Model is the top-level dashboard model.
 type Model struct {
-	theme      *theme.Theme
-	mode       theme.Mode
-	group      *pane.Group
-	stories    *storySource
-	sessions   *sessionSource
-	qa         *qaSource
-	design     *pane.Pane
-	logs       *pane.Pane
-	detail     *pane.Pane
-	fullscreen int
-	store      Store
-	width      int
-	height     int
-	splash     bool
-	showHelp   bool
-	filtering  bool
-	filterBuf  string
-	commanding bool
-	cmdBuf     string
-	status     string
-	version    string
+	theme       *theme.Theme
+	mode        theme.Mode
+	group       *pane.Group
+	stories     *storySource
+	sessions    *sessionSource
+	qa          *qaSource
+	design      *pane.Pane
+	logs        *pane.Pane
+	detail      *pane.Pane
+	fullscreen  int
+	store       Store
+	width       int
+	height      int
+	splash      bool
+	showHelp    bool
+	filtering   bool
+	filterBuf   string
+	commanding  bool
+	cmdBuf      string
+	reviewStory string
+	status      string
+	version     string
 }
 
 // New builds the dashboard model from a project store. Pass state.NewFS(".") in
@@ -161,6 +164,44 @@ func (m *Model) setDetail(title string, lines []string) {
 	m.detail.SetFocus(true)
 }
 
+// openReview opens the design review overlay for a story and marks review mode so
+// `a` approves.
+func (m *Model) openReview(storyID string) {
+	m.reviewStory = storyID
+	m.setDetail("Design Review · "+storyID, formatArtifacts(m.store.DesignArtifacts(storyID)))
+}
+
+// approveReview approves every not-yet-approved artifact for the review story and
+// refreshes the overlay. Returns how many it approved.
+func (m *Model) approveReview() int {
+	n := 0
+	for _, a := range m.store.DesignArtifacts(m.reviewStory) {
+		if a.Status != "approved" {
+			if state.ApproveArtifact(a.Path) == nil {
+				n++
+			}
+		}
+	}
+	m.openReview(m.reviewStory) // refresh statuses
+	return n
+}
+
+// formatArtifacts renders design artifacts for the review overlay.
+func formatArtifacts(arts []state.Artifact) []string {
+	if len(arts) == 0 {
+		return []string{"(no design artifacts for this story)", "", "run the design phase first"}
+	}
+	out := []string{"[a] approve all pending · esc close", ""}
+	for _, a := range arts {
+		mark := "•"
+		if a.Status == "approved" {
+			mark = "✓"
+		}
+		out = append(out, fmt.Sprintf("%s [%s] %s — %s", mark, a.Kind, filepath.Base(a.Path), a.Status))
+	}
+	return out
+}
+
 func itoa(n int) string {
 	if n == 0 {
 		return "0"
@@ -245,6 +286,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "esc":
 			m.detail = nil
 			m.fullscreen = fsNone
+			m.reviewStory = ""
+		case "a":
+			if m.reviewStory != "" {
+				m.status = fmt.Sprintf("approved %d artifact(s)", m.approveReview())
+			}
 		case "up", "k":
 			p.ScrollBy(-1, p.VisibleRows())
 		case "down", "j":
@@ -268,6 +314,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.openDetail()
 	case "C":
 		m.setDetail("Git Changes", m.store.GitChanges())
+	case "D":
+		if m.group.FocusIndex() == paneStories {
+			if st, ok := m.stories.at(m.group.Focused().Selected()); ok {
+				m.openReview(st.ID)
+			}
+		}
 	case "P":
 		m.setDetail("Pipeline", m.store.PipelineLines())
 	case "F":
@@ -329,7 +381,6 @@ func toggleFS(cur, target int) int {
 
 // pendingOverlays maps keys to the overlays still to be ported from tui/.
 var pendingOverlays = map[string]string{
-	"D": "Design Review",
 	"n": "new-story wizard", "u": "update", "x": "Quick Prompt",
 	"o": "open session/PR", "S": "ship-safe",
 }
@@ -513,6 +564,7 @@ func (m Model) helpView(bodyH int) string {
 		{"g / G", "top / bottom"},
 		{"s a p Q", "focus Stories / Sessions / PRs / QA"},
 		{"Enter", "detail (story / session / test)"},
+		{"D", "design review (Stories; a approves)"},
 		{"C", "git changes (status + diff)"},
 		{"P / F", "pipeline status / skills"},
 		{"d / l", "Design / Logs full-screen"},

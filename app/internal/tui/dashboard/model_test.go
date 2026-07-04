@@ -37,9 +37,12 @@ func (f fakeStore) LogLines(n int) []string { return []string{"ts=12:00  agent=q
 func (f fakeStore) GitChanges() []string    { return []string{"── status ──", " M app/x.go"} }
 func (f fakeStore) PipelineLines() []string { return []string{"status  RUNNING", "stage  IMPLEMENT"} }
 func (f fakeStore) Skills() []string        { return []string{"gh-issues", "humanizer"} }
-func (f fakeStore) ProjectName() string     { return "test-project" }
-func (f fakeStore) TaffyCount() int         { return 5 }
-func (f fakeStore) PipelineStatus() string  { return "DONE" }
+func (f fakeStore) DesignArtifacts(id string) []state.Artifact {
+	return []state.Artifact{{Path: "docs/design/wireframes/" + id + ".wireframe.md", Kind: "wireframes", Status: "pending"}}
+}
+func (f fakeStore) ProjectName() string    { return "test-project" }
+func (f fakeStore) TaffyCount() int        { return 5 }
+func (f fakeStore) PipelineStatus() string { return "DONE" }
 
 func newModel(t *testing.T) Model {
 	t.Helper()
@@ -221,9 +224,29 @@ func TestFilterModeTypesAndCancels(t *testing.T) {
 
 func TestPendingOverlayKeySetsStatus(t *testing.T) {
 	m := sized(t, newModel(t))
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	if !strings.Contains(nm.(Model).status, "ship-safe") {
+		t.Errorf("S should set a status about ship-safe, got %q", nm.(Model).status)
+	}
+}
+
+func TestDesignReviewOverlay(t *testing.T) {
+	m := sized(t, newModel(t))
+	_ = m.View()
+	// D on the Stories pane (default focus) opens the review overlay.
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
-	if !strings.Contains(nm.(Model).status, "Design Review") {
-		t.Errorf("D should set a status about Design Review, got %q", nm.(Model).status)
+	m = nm.(Model)
+	if m.detail == nil || m.reviewStory == "" {
+		t.Fatal("D on Stories should open the design review overlay")
+	}
+	v := m.View()
+	if !strings.Contains(v, "Design Review") || !strings.Contains(v, "pending") {
+		t.Error("review overlay should show its title and artifact status")
+	}
+	// esc closes and clears review mode.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if nm.(Model).detail != nil || nm.(Model).reviewStory != "" {
+		t.Error("esc should close review and clear reviewStory")
 	}
 }
 
