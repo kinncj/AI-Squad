@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -42,6 +43,8 @@ type Store interface {
 	DesignArtifacts(storyID string) []state.Artifact
 	ApprovalPending() string
 	ApproveGate() error
+	RejectGate() error
+	PortalURL() string
 	ProjectName() string
 	TaffyCount() int
 	PipelineStatus() string
@@ -374,6 +377,18 @@ func (m *Model) pinFocusedSession() {
 	}
 }
 
+// browserOpen returns the OS command that opens a URL in the default browser.
+func browserOpen(url string) []string {
+	switch runtime.GOOS {
+	case "darwin":
+		return []string{"open", url}
+	case "windows":
+		return []string{"cmd", "/c", "start", url}
+	default:
+		return []string{"xdg-open", url}
+	}
+}
+
 // resumeCommand maps a session source to its resume argv.
 func resumeCommand(source string) []string {
 	switch source {
@@ -400,7 +415,11 @@ func (m *Model) setDetail(title string, lines []string) {
 func (m *Model) openPipeline() {
 	lines := m.store.PipelineLines()
 	if stage := m.store.ApprovalPending(); stage != "" {
-		lines = append([]string{"⚠ awaiting approval: " + stage + "   [a] approve gate", ""}, lines...)
+		lines = append([]string{
+			"⚠ awaiting approval: " + stage,
+			"[a] approve · [r] reject · [v] portal",
+			"",
+		}, lines...)
 	}
 	m.setDetail("Pipeline", lines)
 	m.detailKind = "pipeline"
@@ -574,6 +593,25 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.status = "approved pipeline gate"
 				} else {
 					m.status = "approve failed: " + err.Error()
+				}
+			}
+		case "r":
+			if m.detailKind == "pipeline" {
+				if m.store.ApprovalPending() == "" {
+					m.status = "no gate awaiting approval"
+				} else if err := m.store.RejectGate(); err == nil {
+					m.openPipeline()
+					m.status = "rejected pipeline gate"
+				} else {
+					m.status = "reject failed: " + err.Error()
+				}
+			}
+		case "v":
+			if m.detailKind == "pipeline" {
+				if url := m.store.PortalURL(); url != "" {
+					m.trySpawn("portal", browserOpen(url))
+				} else {
+					m.status = "no design portal running"
 				}
 			}
 		case "up", "k":
@@ -939,6 +977,9 @@ func (m Model) header() string {
 	}
 	left := leaf.Render(brand.Leaf+" maple") +
 		faint.Render(fmt.Sprintf(" %s · project: %s · theme: %s", m.version, name, m.theme.Name))
+	if strings.EqualFold(m.store.PipelineStatus(), "RATE_LIMITED") {
+		left += "  " + m.mode.State("rate_limited").Render("RATE-LIMITED")
+	}
 	right := accent.Render(fmt.Sprintf("📋 Gherkin: %d · ▶ Taffy: %d (%d running)",
 		len(m.store.Stories()), m.store.TaffyCount(), running))
 	return bar(left, right, m.width)

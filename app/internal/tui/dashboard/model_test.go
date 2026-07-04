@@ -49,6 +49,8 @@ func (f fakeStore) DesignArtifacts(id string) []state.Artifact {
 }
 func (f fakeStore) ApprovalPending() string { return "" }
 func (f fakeStore) ApproveGate() error      { return nil }
+func (f fakeStore) RejectGate() error       { return nil }
+func (f fakeStore) PortalURL() string       { return "" }
 func (f fakeStore) ProjectName() string     { return "test-project" }
 func (f fakeStore) TaffyCount() int         { return 5 }
 func (f fakeStore) PipelineStatus() string  { return "DONE" }
@@ -636,6 +638,7 @@ type gateStore struct {
 
 func (g gateStore) ApprovalPending() string { return *g.pending }
 func (g gateStore) ApproveGate() error      { *g.pending = ""; return nil }
+func (g gateStore) RejectGate() error       { *g.pending = ""; return nil }
 
 func TestPipelineApproveGate(t *testing.T) {
 	pending := "IMPLEMENT"
@@ -661,6 +664,50 @@ func TestPipelineApproveGate(t *testing.T) {
 	if !strings.Contains(m.status, "approved pipeline gate") {
 		t.Errorf("status = %q, want approved note", m.status)
 	}
+}
+
+func TestPipelineRejectGate(t *testing.T) {
+	pending := "DESIGN"
+	m, err := New("v-test", gateStore{fakeStore{n: 3}, &pending})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = sized(t, m)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("P")})
+	m = nm.(Model)
+	if !strings.Contains(m.View(), "reject") {
+		t.Error("pipeline banner should offer [r] reject")
+	}
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	m = nm.(Model)
+	if pending != "" {
+		t.Errorf("r should reject/clear the gate, pending=%q", pending)
+	}
+	if !strings.Contains(m.status, "rejected pipeline gate") {
+		t.Errorf("status = %q, want rejected note", m.status)
+	}
+}
+
+func TestRateLimitBadge(t *testing.T) {
+	m := sized(t, New2(t, rlStore{}))
+	if !strings.Contains(m.View(), "RATE-LIMITED") {
+		t.Error("header should show a RATE-LIMITED badge when the pipeline is rate-limited")
+	}
+}
+
+// rlStore reports a rate-limited pipeline.
+type rlStore struct{ fakeStore }
+
+func (rlStore) PipelineStatus() string { return "RATE_LIMITED" }
+
+// New2 builds a sized model from a store.
+func New2(t *testing.T, s Store) Model {
+	t.Helper()
+	m, err := New("v-test", s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sized(t, m)
 }
 
 func TestGitChangesOverlay(t *testing.T) {

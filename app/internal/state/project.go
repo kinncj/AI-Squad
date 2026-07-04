@@ -113,6 +113,30 @@ func (s *FS) ApproveGate() error {
 	return err
 }
 
+// RejectGate records a rejection for the pending stage (approval-rejected.txt) and
+// clears the pending gate.
+func (s *FS) RejectGate() error {
+	dir := filepath.Join(s.Root, ".claude", "state")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	stage := s.ApprovalPending()
+	if err := os.WriteFile(filepath.Join(dir, "approval-rejected.txt"), []byte(stage+"\n"), 0644); err != nil {
+		return err
+	}
+	return s.ApproveGate() // clears approval-pending.txt
+}
+
+// PortalURL returns the design-review portal URL from .claude/state/portal.txt, or
+// "" when no portal is running.
+func (s *FS) PortalURL() string {
+	data, err := os.ReadFile(filepath.Join(s.Root, ".claude", "state", "portal.txt"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
 // Agents lists the agent names (.claude/agents/*.md basenames), sorted.
 func (s *FS) Agents() []string {
 	files, _ := filepath.Glob(filepath.Join(s.Root, ".claude", "agents", "*.md"))
