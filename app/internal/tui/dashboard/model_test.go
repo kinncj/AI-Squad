@@ -41,9 +41,11 @@ func (f fakeStore) Skills() []string        { return []string{"gh-issues", "huma
 func (f fakeStore) DesignArtifacts(id string) []state.Artifact {
 	return []state.Artifact{{Path: "docs/design/wireframes/" + id + ".wireframe.md", Kind: "wireframes", Status: "pending"}}
 }
-func (f fakeStore) ProjectName() string    { return "test-project" }
-func (f fakeStore) TaffyCount() int        { return 5 }
-func (f fakeStore) PipelineStatus() string { return "DONE" }
+func (f fakeStore) ApprovalPending() string { return "" }
+func (f fakeStore) ApproveGate() error      { return nil }
+func (f fakeStore) ProjectName() string     { return "test-project" }
+func (f fakeStore) TaffyCount() int         { return 5 }
+func (f fakeStore) PipelineStatus() string  { return "DONE" }
 
 func newModel(t *testing.T) Model {
 	t.Helper()
@@ -448,6 +450,41 @@ func TestResumeCommand(t *testing.T) {
 		if len(got) != len(want) || got[0] != want[0] {
 			t.Errorf("resumeCommand(%q) = %v, want %v", src, got, want)
 		}
+	}
+}
+
+// gateStore has a pending pipeline gate that ApproveGate clears.
+type gateStore struct {
+	fakeStore
+	pending *string
+}
+
+func (g gateStore) ApprovalPending() string { return *g.pending }
+func (g gateStore) ApproveGate() error      { *g.pending = ""; return nil }
+
+func TestPipelineApproveGate(t *testing.T) {
+	pending := "IMPLEMENT"
+	m, err := New("v-test", gateStore{fakeStore{n: 3}, &pending})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = sized(t, m)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("P")})
+	m = nm.(Model)
+	if m.detailKind != "pipeline" {
+		t.Fatal("P should open the pipeline overlay")
+	}
+	if !strings.Contains(m.View(), "awaiting approval") {
+		t.Error("pipeline overlay should show the pending-gate banner")
+	}
+	// `a` approves the gate.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = nm.(Model)
+	if pending != "" {
+		t.Errorf("a should clear the gate, pending still %q", pending)
+	}
+	if !strings.Contains(m.status, "approved pipeline gate") {
+		t.Errorf("status = %q, want approved note", m.status)
 	}
 }
 

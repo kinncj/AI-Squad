@@ -34,6 +34,8 @@ type Store interface {
 	PipelineLines() []string
 	Skills() []string
 	DesignArtifacts(storyID string) []state.Artifact
+	ApprovalPending() string
+	ApproveGate() error
 	ProjectName() string
 	TaffyCount() int
 	PipelineStatus() string
@@ -78,6 +80,7 @@ type Model struct {
 	commanding  bool
 	cmdBuf      string
 	reviewStory string
+	detailKind  string
 	status      string
 	version     string
 }
@@ -219,6 +222,18 @@ func resumeCommand(source string) []string {
 func (m *Model) setDetail(title string, lines []string) {
 	m.detail = pane.New(title, linesSource{lines})
 	m.detail.SetFocus(true)
+	m.detailKind = ""
+}
+
+// openPipeline shows the pipeline overlay, with an approval banner when a human gate
+// is pending. Marks kind="pipeline" so `a` approves.
+func (m *Model) openPipeline() {
+	lines := m.store.PipelineLines()
+	if stage := m.store.ApprovalPending(); stage != "" {
+		lines = append([]string{"⚠ awaiting approval: " + stage + "   [a] approve gate", ""}, lines...)
+	}
+	m.setDetail("Pipeline", lines)
+	m.detailKind = "pipeline"
 }
 
 // openReview opens the design review overlay for a story and marks review mode so
@@ -352,8 +367,18 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.fullscreen = fsNone
 			m.reviewStory = ""
 		case "a":
-			if m.reviewStory != "" {
+			switch {
+			case m.reviewStory != "":
 				m.status = fmt.Sprintf("approved %d artifact(s)", m.approveReview())
+			case m.detailKind == "pipeline":
+				if m.store.ApprovalPending() == "" {
+					m.status = "no gate awaiting approval"
+				} else if err := m.store.ApproveGate(); err == nil {
+					m.openPipeline()
+					m.status = "approved pipeline gate"
+				} else {
+					m.status = "approve failed: " + err.Error()
+				}
 			}
 		case "up", "k":
 			p.ScrollBy(-1, p.VisibleRows())
@@ -385,7 +410,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "P":
-		m.setDetail("Pipeline", m.store.PipelineLines())
+		m.openPipeline()
 	case "F":
 		m.setDetail("Skills", m.store.Skills())
 	case "o":

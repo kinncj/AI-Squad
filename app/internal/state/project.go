@@ -93,6 +93,26 @@ func (s *FS) PipelineLines() []string {
 	return out
 }
 
+// ApprovalPending returns the stage awaiting human approval (the contents of
+// .claude/state/approval-pending.txt), or "" when no gate is pending.
+func (s *FS) ApprovalPending() string {
+	data, err := os.ReadFile(filepath.Join(s.Root, ".claude", "state", "approval-pending.txt"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// ApproveGate clears the pending human gate by deleting approval-pending.txt, which
+// signals the running pipeline to continue. Removing an absent file is not an error.
+func (s *FS) ApproveGate() error {
+	err := os.Remove(filepath.Join(s.Root, ".claude", "state", "approval-pending.txt"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
 // Skills lists the skill directories under .claude/skills, sorted.
 func (s *FS) Skills() []string {
 	entries, err := os.ReadDir(filepath.Join(s.Root, ".claude", "skills"))
