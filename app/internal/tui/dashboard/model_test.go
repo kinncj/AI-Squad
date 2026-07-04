@@ -148,8 +148,8 @@ func TestViewShowsSplashThenGrid(t *testing.T) {
 	if !strings.Contains(grid, "Stories") {
 		t.Error("grid view should show the Stories pane title")
 	}
-	if !strings.Contains(grid, "quit") {
-		t.Error("grid view should show the footer help")
+	if !strings.Contains(grid, "[Tab] cycle") {
+		t.Error("grid view should show the footer keybindings")
 	}
 	if !strings.Contains(grid, brand.Leaf) {
 		t.Error("dashboard header should show the maple leaf")

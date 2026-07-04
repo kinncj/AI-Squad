@@ -692,9 +692,10 @@ func (m Model) helpView(bodyH int) string {
 	return lipgloss.Place(m.width, bodyH, lipgloss.Center, lipgloss.Center, box)
 }
 
-// header is the top bar: the MAPLE logo + tagline, a project/theme status line, and
-// Gherkin/Taffy badges — matching the OG dashboard header.
+// header is the compact top bar: brand + project/theme on the left, Gherkin/Taffy
+// badges on the right, in a single row.
 func (m Model) header() string {
+	leaf := m.mode.Role("leaf").Style()
 	faint := m.mode.Role("faint").Style()
 	accent := m.mode.Role("accent").Style()
 
@@ -706,29 +707,32 @@ func (m Model) header() string {
 	if name == "" {
 		name = "—"
 	}
-	info := faint.Render(fmt.Sprintf("  project: %s · theme: %s · maple %s", name, m.theme.Name, m.version))
-	badges := accent.Render(fmt.Sprintf("  📋 Gherkin: %d · ▶ Taffy: %d (%d running)",
+	left := leaf.Render(brand.Leaf+" maple") +
+		faint.Render(fmt.Sprintf(" %s · project: %s · theme: %s", m.version, name, m.theme.Name))
+	right := accent.Render(fmt.Sprintf("📋 Gherkin: %d · ▶ Taffy: %d (%d running)",
 		len(m.store.Stories()), m.store.TaffyCount(), running))
-
-	return lipgloss.JoinVertical(lipgloss.Left, brand.Logo(m.mode), info, badges)
+	return bar(left, right, m.width)
 }
 
-// footer is the bottom bar: the filter input when active, a transient status when
-// set, otherwise context key hints. Right side always shows "? help".
+// footerKeys is the full main keybinding hint line (truncated to width by bar).
+const footerKeys = "[Tab] cycle · [s/a/p/Q] pane · [Enter] open · [o] resume · [D] design · [C] changes · " +
+	"[d/l] design/logs · [P] pipeline · [F] skills · [L] launch · [R] rtk · [S] ship-safe · " +
+	"[/] filter · [:] cmd · [?] help · [q] quit"
+
+// footer is the bottom bar: the filter/command input when active, a transient status
+// when set, otherwise the full keybinding hints.
 func (m Model) footer() string {
-	var left string
 	switch {
 	case m.filtering:
-		left = m.mode.Role("accent").Style().Render("/" + m.filterBuf + "▏")
+		return bar(m.mode.Role("accent").Style().Render("/"+m.filterBuf+"▏"), "", m.width)
 	case m.commanding:
-		left = m.mode.Role("accent").Style().Render(":" + m.cmdBuf + "▏")
+		return bar(m.mode.Role("accent").Style().Render(":"+m.cmdBuf+"▏"), "", m.width)
 	case m.status != "":
-		left = m.mode.Role("subtitle").Style().Render(m.status)
+		return bar(m.mode.Role("subtitle").Style().Render(m.status),
+			m.mode.Role("faint").Style().Render("[?] help"), m.width)
 	default:
-		left = m.mode.Role("faint").Style().Render("tab focus · ↑/↓ move · / filter · r reload · q quit")
+		return bar(m.mode.Role("faint").Style().Render(footerKeys), "", m.width)
 	}
-	right := m.mode.Role("faint").Style().Render("? help")
-	return bar(left, right, m.width)
 }
 
 // bar places left and right segments on a single full-width row, filling the gap
