@@ -34,6 +34,7 @@ type Store interface {
 	GitChanges() []string
 	PipelineLines() []string
 	Skills() []string
+	Agents() []string
 	DesignArtifacts(storyID string) []state.Artifact
 	ApprovalPending() string
 	ApproveGate() error
@@ -203,6 +204,38 @@ func (m *Model) openPicker(title string, items []pickItem) {
 	}
 	m.picker = pane.New(title, pickerSource{rows})
 	m.picker.SetFocus(true)
+}
+
+// firstHarness returns the first installed harness, or "".
+func (m *Model) firstHarness() string {
+	for _, h := range []string{"claude", "opencode", "copilot"} {
+		if m.available(h) {
+			return h
+		}
+	}
+	return ""
+}
+
+// openQuickPrompt offers the project's skills (/name) and agents (@name); picking one
+// launches the harness with it as the opening prompt.
+func (m *Model) openQuickPrompt() {
+	h := m.firstHarness()
+	if h == "" {
+		m.status = "no harness found (claude / opencode / copilot)"
+		return
+	}
+	var items []pickItem
+	for _, sk := range m.store.Skills() {
+		items = append(items, pickItem{"/" + sk, []string{h, "/" + sk}})
+	}
+	for _, ag := range m.store.Agents() {
+		items = append(items, pickItem{"@" + ag, []string{h, "@" + ag}})
+	}
+	if len(items) == 0 {
+		m.status = "no skills or agents found"
+		return
+	}
+	m.openPicker("Quick prompt — pick a skill or agent", items)
 }
 
 // openLauncher offers the installed harnesses to launch.
@@ -496,6 +529,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.openSession()
 	case "L":
 		m.openLauncher()
+	case "x":
+		m.openQuickPrompt()
 	case "R":
 		m.trySpawn("rtk", []string{"rtk"})
 	case "S":
@@ -557,7 +592,7 @@ func toggleFS(cur, target int) int {
 
 // pendingOverlays maps keys to the overlays still to be ported from tui/.
 var pendingOverlays = map[string]string{
-	"n": "new-story wizard", "u": "update", "x": "Quick Prompt",
+	"n": "new-story wizard", "u": "update",
 }
 
 // handleFilterKey processes typing while the filter input is active.

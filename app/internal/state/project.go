@@ -113,6 +113,17 @@ func (s *FS) ApproveGate() error {
 	return err
 }
 
+// Agents lists the agent names (.claude/agents/*.md basenames), sorted.
+func (s *FS) Agents() []string {
+	files, _ := filepath.Glob(filepath.Join(s.Root, ".claude", "agents", "*.md"))
+	out := make([]string, 0, len(files))
+	for _, f := range files {
+		out = append(out, strings.TrimSuffix(filepath.Base(f), ".md"))
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Skills lists the skill directories under .claude/skills, sorted.
 func (s *FS) Skills() []string {
 	entries, err := os.ReadDir(filepath.Join(s.Root, ".claude", "skills"))

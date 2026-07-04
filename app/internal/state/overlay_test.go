@@ -36,3 +36,10 @@ func TestSkillsMissing(t *testing.T) {
 		t.Errorf("missing skills dir should yield nil, got %v", got)
 	}
 }
+
+func TestAgents(t *testing.T) {
+	got := NewFS("testdata").Agents()
+	if len(got) != 2 || got[0] != "orchestrator" || got[1] != "qa" {
+		t.Errorf("Agents() = %v, want [orchestrator qa]", got)
+	}
+}

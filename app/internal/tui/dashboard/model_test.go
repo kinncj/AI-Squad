@@ -39,6 +39,7 @@ func (f fakeStore) LogLines(n int) []string { return []string{"ts=12:00  agent=q
 func (f fakeStore) GitChanges() []string    { return []string{"── status ──", " M app/x.go"} }
 func (f fakeStore) PipelineLines() []string { return []string{"status  RUNNING", "stage  IMPLEMENT"} }
 func (f fakeStore) Skills() []string        { return []string{"gh-issues", "humanizer"} }
+func (f fakeStore) Agents() []string        { return []string{"orchestrator"} }
 func (f fakeStore) DesignArtifacts(id string) []state.Artifact {
 	return []state.Artifact{{Path: "docs/design/wireframes/" + id + ".wireframe.md", Kind: "wireframes", Status: "pending"}}
 }
@@ -472,6 +473,37 @@ func TestLauncherPickerAndSpawn(t *testing.T) {
 	}
 	if len(launched) != 1 || launched[0] != "copilot" {
 		t.Errorf("should have launched copilot, got %v", launched)
+	}
+}
+
+func TestQuickPromptPicksSkillOrAgent(t *testing.T) {
+	m := sized(t, newModel(t))
+	m.lookPath = func(bin string) (string, error) {
+		if bin == "claude" {
+			return "/usr/bin/claude", nil
+		}
+		return "", exec.ErrNotFound
+	}
+	var launched []string
+	m.spawnFn = func(args []string) error { launched = args; return nil }
+
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	m = nm.(Model)
+	if m.picker == nil {
+		t.Fatal("x should open the quick-prompt picker")
+	}
+	// fakeStore: 2 skills + 1 agent = 3 items.
+	if len(m.pickItems) != 3 {
+		t.Errorf("picker should list skills + agents (3), got %d", len(m.pickItems))
+	}
+	if !strings.Contains(m.View(), "/gh-issues") || !strings.Contains(m.View(), "@orchestrator") {
+		t.Error("picker should show /skill and @agent entries")
+	}
+	// Launch the first skill.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = nm.(Model)
+	if len(launched) != 2 || launched[0] != "claude" || launched[1] != "/gh-issues" {
+		t.Errorf("should launch claude with /gh-issues, got %v", launched)
 	}
 }
 
