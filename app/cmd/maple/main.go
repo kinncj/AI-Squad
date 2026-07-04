@@ -12,12 +12,15 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/kinncj/maple/app/internal/gh"
+	"github.com/kinncj/maple/app/internal/resume"
 	"github.com/kinncj/maple/app/internal/scaffold"
+	"github.com/kinncj/maple/app/internal/selfupdate"
 	"github.com/kinncj/maple/app/internal/state"
 	"github.com/kinncj/maple/app/internal/tui/dashboard"
 )
@@ -34,6 +37,8 @@ func main() {
 	switch args[0] {
 	case "init":
 		runInit(hasFlag(args[1:], "--force"))
+	case "update":
+		runInit(true)
 	case "labels":
 		if err := gh.RunLabels(); err != nil {
 			die(err)
@@ -42,6 +47,20 @@ func main() {
 		if err := gh.RunProject(); err != nil {
 			die(err)
 		}
+	case "self-update", "upgrade":
+		if err := selfupdate.Run(version); err != nil {
+			die(err)
+		}
+	case "resume-session", "resume":
+		harness := ""
+		if len(args) > 1 {
+			harness = args[1]
+		}
+		if err := resume.Session(harness); err != nil {
+			die(err)
+		}
+	case "rtk-audit":
+		runRTKAudit()
 	case "version", "--version", "-v":
 		fmt.Println("maple", version)
 	case "help", "--help", "-h":
@@ -86,11 +105,15 @@ func runInit(force bool) {
 func usage(w *os.File) {
 	fmt.Fprint(w, `usage: maple [command]
 
-  (no command)   run the dashboard TUI
-  init [--force] scaffold the MAPLE template into the current project
-  labels         bootstrap the canonical MAPLE label set (needs gh)
-  project        create a GitHub Project v2 and wire project.config.yaml (needs gh)
-  version        print the version
+  (no command)      run the dashboard TUI
+  init [--force]    scaffold the MAPLE template into the current project
+  update            re-copy the template over an existing project (force)
+  labels            bootstrap the canonical MAPLE label set (needs gh)
+  project           create a GitHub Project v2 and wire project.config.yaml (needs gh)
+  resume [harness]  re-launch a pinned session (claude/copilot/opencode/cursor)
+  self-update       replace the binary with the latest GitHub release
+  rtk-audit         show RTK hook wiring and token savings
+  version           print the version
 `)
 }
 
@@ -101,6 +124,21 @@ func hasFlag(args []string, flag string) bool {
 		}
 	}
 	return false
+}
+
+// runRTKAudit shows RTK hook wiring, token savings, and the audit log.
+func runRTKAudit() {
+	rtkPath, err := exec.LookPath("rtk")
+	if err != nil {
+		die(fmt.Errorf("rtk not found — install with: maple init"))
+	}
+	for _, sub := range [][]string{{"init", "--show"}, {"gain"}, {"hook-audit"}} {
+		cmd := exec.Command(rtkPath, sub...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		_ = cmd.Run()
+		fmt.Println()
+	}
 }
 
 func nowRFC3339() string { return time.Now().Format(time.RFC3339) }
