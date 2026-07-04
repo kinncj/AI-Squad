@@ -10,7 +10,7 @@ import (
 	"github.com/kinncj/maple/app/internal/tui/brand"
 )
 
-// fakeStore returns a fixed set of stories for deterministic dashboard tests.
+// fakeStore returns fixed project state for deterministic dashboard tests.
 type fakeStore struct{ n int }
 
 func (f fakeStore) Stories() []state.Story {
@@ -20,6 +20,9 @@ func (f fakeStore) Stories() []state.Story {
 	}
 	return out
 }
+func (f fakeStore) ProjectName() string    { return "test-project" }
+func (f fakeStore) TaffyCount() int        { return 5 }
+func (f fakeStore) PipelineStatus() string { return "DONE" }
 
 func newModel(t *testing.T) Model {
 	t.Helper()

@@ -5,6 +5,7 @@
 package dashboard
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -26,12 +27,20 @@ type demoSource struct{ rows []string }
 func (d demoSource) Rows() []string { return d.rows }
 func (d demoSource) RowCount() int  { return len(d.rows) }
 
+// Store provides live project state to the dashboard. state.FS satisfies it.
+type Store interface {
+	Stories() []state.Story
+	ProjectName() string
+	TaffyCount() int
+	PipelineStatus() string
+}
+
 // Model is the top-level dashboard model.
 type Model struct {
 	theme     *theme.Theme
 	mode      theme.Mode
 	group     *pane.Group
-	store     state.StoryStore
+	store     Store
 	width     int
 	height    int
 	splash    bool
@@ -42,9 +51,9 @@ type Model struct {
 	version   string
 }
 
-// New builds the dashboard model from a story store. Pass state.NewFS(".") in
+// New builds the dashboard model from a project store. Pass state.NewFS(".") in
 // production or a fake in tests. It fails only if the embedded theme is malformed.
-func New(version string, store state.StoryStore) (Model, error) {
+func New(version string, store Store) (Model, error) {
 	th, err := theme.Load()
 	if err != nil {
 		return Model{}, err
@@ -253,8 +262,8 @@ func (m Model) View() string {
 	if m.splash {
 		return splash.Render(m.mode, m.width, m.height, "maple "+m.version)
 	}
-	// header (1 row) + body + footer (1 row).
-	bodyH := m.height - 2
+	header := m.header()
+	bodyH := m.height - lipgloss.Height(header) - 1
 	if bodyH < 2 {
 		bodyH = 2
 	}
@@ -262,58 +271,85 @@ func (m Model) View() string {
 	if m.showHelp {
 		body = m.helpView(bodyH)
 	}
-	return kittyClearImages + lipgloss.JoinVertical(lipgloss.Left, m.header(), body, m.footer())
+	return kittyClearImages + lipgloss.JoinVertical(lipgloss.Left, header, body, m.footer())
 }
 
-// helpView renders the full keybinding + command reference, centered in bodyH rows.
+// helpView renders the keybinding reference as a bordered, column-aligned box,
+// centered in bodyH rows.
 func (m Model) helpView(bodyH int) string {
-	title := m.mode.Role("title").Style()
+	const keyW = 16
 	key := m.mode.Role("accent").Style()
 	desc := m.mode.Role("base").Style()
-	row := func(k, d string) string {
-		return "  " + key.Render(pad(k, 18)) + desc.Render(d)
+	faint := m.mode.Role("faint").Style()
+
+	// row pads the key to a fixed display width first, then styles both columns so
+	// the description column aligns regardless of unicode in the key.
+	row := func(k, d string, dim bool) string {
+		ds := desc
+		if dim {
+			ds = faint
+		}
+		return key.Render(render.PadRight(k, keyW)) + "  " + ds.Render(d)
 	}
-	lines := []string{
-		title.Render("  Keybindings"),
-		"",
-		row("Tab / Shift+Tab", "cycle panes"),
-		row("j / k  ↓ / ↑", "navigate rows"),
-		row("g / G", "jump to top / bottom"),
-		row("s  a  p  Q", "focus Stories / Sessions / PRs / QA"),
-		row("/", "filter the focused pane"),
-		row("r", "reload pane data"),
-		row("Enter", "open detail (coming)"),
-		row("o", "open session / PR (coming)"),
-		row("d / l", "Design / Logs full-screen (coming)"),
-		row("D / C", "Design Review / Git Changes (coming)"),
-		row("n / u / F", "new story / update / skills (coming)"),
-		row("x / P / S", "quick prompt / pipeline / ship-safe (coming)"),
-		row(":", "command mode (coming)"),
-		row("?", "toggle this help"),
-		row("q  Ctrl+C", "quit"),
-		"",
-		m.mode.Role("faint").Style().Render("  press any key to close"),
+
+	active := [][2]string{
+		{"Tab / Shift+Tab", "cycle panes"},
+		{"j / k · ↓ / ↑", "navigate rows"},
+		{"g / G", "top / bottom"},
+		{"s a p Q", "focus Stories / Sessions / PRs / QA"},
+		{"/", "filter the focused pane"},
+		{"r", "reload pane data"},
+		{"?", "toggle this help"},
+		{"q · Ctrl+C", "quit"},
 	}
-	block := strings.Join(lines, "\n")
-	return lipgloss.Place(m.width, bodyH, lipgloss.Center, lipgloss.Center, block)
+	coming := [][2]string{
+		{"Enter", "open detail"},
+		{"o", "open session / PR"},
+		{"d / l", "Design / Logs full-screen"},
+		{"D / C", "Design Review / Git Changes"},
+		{"n / u / F", "new story / update / skills"},
+		{"x / P / S", "quick prompt / pipeline / ship-safe"},
+		{":", "command mode"},
+	}
+
+	var lines []string
+	lines = append(lines, m.mode.Role("title").Style().Render("Keybindings"), "")
+	for _, r := range active {
+		lines = append(lines, row(r[0], r[1], false))
+	}
+	lines = append(lines, "", m.mode.Role("subtitle").Style().Render("Coming in the rebuild"))
+	for _, r := range coming {
+		lines = append(lines, row(r[0], r[1], true))
+	}
+	lines = append(lines, "", faint.Render("press any key to close"))
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(m.mode.Role("border_focus").FG)).
+		Padding(1, 3).
+		Render(strings.Join(lines, "\n"))
+	return lipgloss.Place(m.width, bodyH, lipgloss.Center, lipgloss.Center, box)
 }
 
-func pad(s string, w int) string {
-	if len(s) >= w {
-		return s
-	}
-	return s + strings.Repeat(" ", w-len(s))
-}
-
-// header is the top bar: brand + version on the left, context on the right.
+// header is the top bar: the MAPLE logo + tagline, a project/theme status line, and
+// Gherkin/Taffy badges — matching the OG dashboard header.
 func (m Model) header() string {
-	left := m.mode.Role("leaf").Style().Render(brand.Leaf+" maple") +
-		m.mode.Role("faint").Style().Render(" "+m.version)
-	right := ""
-	if p := m.group.Focused(); p != nil {
-		right = m.mode.Role("subtitle").Style().Render(p.Title)
+	faint := m.mode.Role("faint").Style()
+	accent := m.mode.Role("accent").Style()
+
+	running := 0
+	if state.InFlight(m.store.PipelineStatus()) {
+		running = 1
 	}
-	return bar(left, right, m.width)
+	name := m.store.ProjectName()
+	if name == "" {
+		name = "—"
+	}
+	info := faint.Render(fmt.Sprintf("  project: %s · theme: %s · maple %s", name, m.theme.Name, m.version))
+	badges := accent.Render(fmt.Sprintf("  📋 Gherkin: %d · ▶ Taffy: %d (%d running)",
+		len(m.store.Stories()), m.store.TaffyCount(), running))
+
+	return lipgloss.JoinVertical(lipgloss.Left, brand.Logo(m.mode), info, badges)
 }
 
 // footer is the bottom bar: the filter input when active, a transient status when
