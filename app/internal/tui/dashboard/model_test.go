@@ -688,14 +688,31 @@ type portalStore struct {
 
 func (p portalStore) PortalURL() string { return p.url }
 
-func TestHeaderShowsPortalURL(t *testing.T) {
-	m := mustNew(t, portalStore{fakeStore{n: 2}, "http://127.0.0.1:7811"})
+func TestHeaderShowsClickablePortalURL(t *testing.T) {
+	url := "http://127.0.0.1:7811"
+	m := mustNew(t, portalStore{fakeStore{n: 2}, url})
 	// Wide viewport so the header isn't truncated before the portal suffix.
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 200, Height: 40})
 	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")}) // splash
 	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyEnter})                     // boot
-	if !strings.Contains(nm.(Model).View(), "7811") {
+	view := nm.(Model).View()
+	if !strings.Contains(view, "7811") {
 		t.Error("header should show the design portal URL/port")
+	}
+	// It must be an OSC-8 hyperlink so the terminal makes it clickable.
+	if !strings.Contains(view, "\x1b]8;;"+url+"\x1b\\") {
+		t.Error("portal URL should be wrapped in an OSC-8 hyperlink escape")
+	}
+}
+
+func TestHeaderPortalHyperlinkOmittedWhenNarrow(t *testing.T) {
+	url := "http://127.0.0.1:7811"
+	m := mustNew(t, portalStore{fakeStore{n: 2}, url})
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 20}) // too narrow for the URL
+	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if strings.Contains(nm.(Model).View(), "\x1b]8;;") {
+		t.Error("no OSC-8 hyperlink should be emitted when it can't fit (would corrupt on truncate)")
 	}
 }
 

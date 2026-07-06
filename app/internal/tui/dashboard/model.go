@@ -1097,12 +1097,24 @@ func (m Model) header() string {
 	if strings.EqualFold(m.store.PipelineStatus(), "RATE_LIMITED") {
 		left += "  " + m.mode.State("rate_limited").Render("RATE-LIMITED")
 	}
-	if url := m.portal(); url != "" {
-		left += accent.Render("  ⬡ " + url)
-	}
 	right := accent.Render(fmt.Sprintf("📋 Gherkin: %d · ▶ Taffy: %d (%d running)",
 		len(m.store.Stories()), m.store.TaffyCount(), running))
+	// The portal URL is a clickable OSC-8 hyperlink — but only when it fits without
+	// truncation, since render.Truncate isn't escape-aware and would corrupt the
+	// hyperlink sequence on a narrow terminal.
+	if url := m.portal(); url != "" {
+		seg := "  ⬡ " + url
+		if lipgloss.Width(left)+lipgloss.Width(seg)+lipgloss.Width(right)+1 <= m.width {
+			left += osc8(url, accent.Render(seg))
+		}
+	}
 	return bar(left, right, m.width)
+}
+
+// osc8 wraps visible text in an OSC-8 terminal hyperlink so click / ⌘-click opens
+// url. Terminals that don't support OSC-8 ignore the escapes and show the text.
+func osc8(url, text string) string {
+	return "\x1b]8;;" + url + "\x1b\\" + text + "\x1b]8;;\x1b\\"
 }
 
 // footerKeys is the full main keybinding hint line (truncated to width by bar).
