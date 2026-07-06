@@ -20,11 +20,11 @@ import (
 
 	"github.com/kinncj/maple/app/internal/gh"
 	"github.com/kinncj/maple/app/internal/resume"
-	"github.com/kinncj/maple/app/internal/tui/brand"
 	"github.com/kinncj/maple/app/internal/scaffold"
 	"github.com/kinncj/maple/app/internal/selfupdate"
 	"github.com/kinncj/maple/app/internal/state"
 	"github.com/kinncj/maple/app/internal/tui/dashboard"
+	"github.com/kinncj/maple/app/internal/tui/menu"
 	reqtui "github.com/kinncj/maple/app/internal/tui/req"
 )
 
@@ -80,18 +80,62 @@ func main() {
 }
 
 // runTUI is the no-argument entry point. Without a TTY it prints usage. When the
-// project isn't set up yet it scaffolds first (the old binary did this), then runs
-// the dashboard loop.
+// project is already set up it runs the dashboard loop; otherwise it shows the
+// interactive setup menu (Init / Requirements / Labels / Project / Help) — the old
+// binary's behaviour — and enters the dashboard once initialised.
 func runTUI() {
 	if !isTTY() {
 		usage(os.Stdout)
 		return
 	}
-	if _, err := os.Stat("project.config.yaml"); os.IsNotExist(err) {
-		fmt.Println(brand.Leaf + " maple: no project.config.yaml here — setting up MAPLE…")
-		runInit(false)
+	if initialized() {
+		runDashboardLoop()
+		return
 	}
-	runDashboardLoop()
+	runSetupMenu()
+}
+
+// runSetupMenu loops the setup menu until the project is initialised (then hands off
+// to the dashboard) or the user quits.
+func runSetupMenu() {
+	for {
+		action, err := menu.Run(version)
+		if err != nil {
+			die(err)
+		}
+		switch action {
+		case menu.ActionQuit:
+			return
+		case menu.ActionInit:
+			runInit(false)
+			if initialized() {
+				runDashboardLoop()
+				return
+			}
+		case menu.ActionUpdate:
+			runInit(true)
+		case menu.ActionReq:
+			if err := reqtui.Run(); err != nil {
+				fmt.Fprintln(os.Stderr, "req:", err)
+			}
+		case menu.ActionLabels:
+			if err := gh.RunLabels(); err != nil {
+				fmt.Fprintln(os.Stderr, "labels:", err)
+			}
+		case menu.ActionProject:
+			if err := gh.RunProject(); err != nil {
+				fmt.Fprintln(os.Stderr, "project:", err)
+			}
+		default:
+			return
+		}
+	}
+}
+
+// initialized reports whether the current directory has a MAPLE project config.
+func initialized() bool {
+	_, err := os.Stat("project.config.yaml")
+	return err == nil
 }
 
 // runDashboardLoop runs the dashboard, and when it quits requesting a follow-up
