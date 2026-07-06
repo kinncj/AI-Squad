@@ -14,7 +14,9 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -141,20 +143,29 @@ func initialized() bool {
 }
 
 // startDesignPortal picks a free port and starts the design-review portal for the
-// lifetime of the session. The script writes .claude/state/design-portal.url, which
-// the dashboard reads and shows in its header. Returns a stop func (no-op if the
-// portal script isn't present). Honours MAPLE_DESIGN_PORT.
-func startDesignPortal() func() {
+// lifetime of the session. It returns the authoritative URL (the port maple assigned,
+// so the header always matches the server maple actually started) and a stop func.
+// The URL is "" when the portal can't be started (no script, no free port, or the
+// script failed — e.g. python3 missing). Honours MAPLE_DESIGN_PORT.
+func startDesignPortal() (string, func()) {
+	noop := func() {}
 	script := "scripts/design-review-portal.sh"
 	if _, err := os.Stat(script); err != nil {
-		return func() {}
+		return "", noop
 	}
 	port := findFreePort()
 	if port == 0 {
-		return func() {}
+		return "", noop
 	}
-	_ = exec.Command("bash", script, "start", strconv.Itoa(port)).Run()
-	return func() { _ = exec.Command("bash", script, "stop").Run() }
+	// The script prints the URL on success (and exits non-zero on failure, having
+	// removed its url/pid files). Trust its exit status over any stale url file.
+	out, err := exec.Command("bash", script, "start", strconv.Itoa(port)).CombinedOutput()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "maple: design portal failed to start: %v\n%s", err, out)
+		return "", noop
+	}
+	url := fmt.Sprintf("http://127.0.0.1:%d", port)
+	return url, func() { _ = exec.Command("bash", script, "stop").Run() }
 }
 
 // findFreePort returns a free TCP port in [7800,7900), or the MAPLE_DESIGN_PORT
@@ -179,10 +190,20 @@ func findFreePort() int {
 // workflow (req/update/labels/project) runs that in-process and re-enters. Harness
 // launches never come through here — they run in the current terminal via ExecProcess.
 func runDashboardLoop() {
-	stopPortal := startDesignPortal()
+	portalURL, stopPortal := startDesignPortal()
 	defer stopPortal()
+	// Also stop the portal if the terminal goes away (SIGHUP) or we're terminated,
+	// so the python server doesn't outlive the session as an orphan.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	go func() {
+		<-sigCh
+		stopPortal()
+		os.Exit(0)
+	}()
+	defer signal.Stop(sigCh)
 	for {
-		model, err := dashboard.New(version, state.NewFS("."))
+		model, err := dashboard.New(version, state.NewFS("."), portalURL)
 		if err != nil {
 			die(err)
 		}

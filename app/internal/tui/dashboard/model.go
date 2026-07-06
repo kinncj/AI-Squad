@@ -97,6 +97,7 @@ type Model struct {
 	detailKind  string
 	status      string
 	version     string
+	portalURL   string
 	exitAction  ExitAction
 }
 
@@ -118,9 +119,11 @@ const (
 // Action reports the follow-up workflow requested when the dashboard quit.
 func (m Model) Action() ExitAction { return m.exitAction }
 
-// New builds the dashboard model from a project store. Pass state.NewFS(".") in
-// production or a fake in tests. It fails only if the embedded theme is malformed.
-func New(version string, store Store) (Model, error) {
+// New builds the dashboard model from a project store. portalURL is the design-review
+// portal URL the caller started this session (may be ""); it takes precedence over the
+// store's file-based URL so the header always matches the running server. Pass
+// state.NewFS(".") in production or a fake in tests. Fails only on a malformed theme.
+func New(version string, store Store, portalURL string) (Model, error) {
 	th, err := theme.Load()
 	if err != nil {
 		return Model{}, err
@@ -149,10 +152,20 @@ func New(version string, store Store) (Model, error) {
 		qa:       qa,
 		design:   design,
 		logs:     logs,
-		store:    store,
-		splash:   true,
-		version:  version,
+		store:     store,
+		splash:    true,
+		version:   version,
+		portalURL: portalURL,
 	}, nil
+}
+
+// portal returns the effective design-portal URL: the session URL passed to New if
+// set, otherwise the store's file-based URL.
+func (m Model) portal() string {
+	if m.portalURL != "" {
+		return m.portalURL
+	}
+	return m.store.PortalURL()
 }
 
 // activePane returns the overlay pane taking navigation and rendering: a detail
@@ -669,7 +682,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case "v":
 			if m.detailKind == "pipeline" {
-				if url := m.store.PortalURL(); url != "" {
+				if url := m.portal(); url != "" {
 					return m, m.openExternal(browserOpen(url))
 				}
 				m.status = "no design portal running"
@@ -724,7 +737,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "S":
 		return m, m.launch([]string{"npx", "ship-safe", "audit", "."})
 	case "v":
-		if url := m.store.PortalURL(); url != "" {
+		if url := m.portal(); url != "" {
 			return m, m.openExternal(browserOpen(url))
 		}
 		m.status = "no design portal running"
@@ -1084,7 +1097,7 @@ func (m Model) header() string {
 	if strings.EqualFold(m.store.PipelineStatus(), "RATE_LIMITED") {
 		left += "  " + m.mode.State("rate_limited").Render("RATE-LIMITED")
 	}
-	if url := m.store.PortalURL(); url != "" {
+	if url := m.portal(); url != "" {
 		left += accent.Render("  ⬡ " + url)
 	}
 	right := accent.Render(fmt.Sprintf("📋 Gherkin: %d · ▶ Taffy: %d (%d running)",

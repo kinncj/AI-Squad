@@ -58,7 +58,7 @@ func (f fakeStore) PipelineStatus() string    { return "DONE" }
 
 func newModel(t *testing.T) Model {
 	t.Helper()
-	m, err := New("v-test", fakeStore{n: 12})
+	m, err := New("v-test", fakeStore{n: 12}, "")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -291,7 +291,7 @@ func (p pinStore) SetPinnedSession(source, id string) error {
 }
 
 func TestSessionPinToggle(t *testing.T) {
-	m, err := New("v-test", pinStore{fakeStore{n: 3}, map[string]string{}})
+	m, err := New("v-test", pinStore{fakeStore{n: 3}, map[string]string{}}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -392,7 +392,7 @@ func TestFullscreenLogsAndEscClose(t *testing.T) {
 
 func TestEnterOpensStoryDetail(t *testing.T) {
 	// Point a story at a real file so the detail overlay has content.
-	m, err := New("v-test", detailStore{})
+	m, err := New("v-test", detailStore{}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -634,7 +634,7 @@ func (r rtkStore) SetRTKHarness(name string, v bool) error {
 
 func TestRTKToggleOverlay(t *testing.T) {
 	on := map[string]bool{}
-	m, err := New("v-test", rtkStore{fakeStore{n: 3}, on})
+	m, err := New("v-test", rtkStore{fakeStore{n: 3}, on}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -720,7 +720,7 @@ func TestPortalKeyOpensBrowser(t *testing.T) {
 
 func mustNew(t *testing.T, store Store) Model {
 	t.Helper()
-	m, err := New("v-test", store)
+	m, err := New("v-test", store, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -738,7 +738,7 @@ func (g gateStore) RejectGate() error       { *g.pending = ""; return nil }
 
 func TestPipelineApproveGate(t *testing.T) {
 	pending := "IMPLEMENT"
-	m, err := New("v-test", gateStore{fakeStore{n: 3}, &pending})
+	m, err := New("v-test", gateStore{fakeStore{n: 3}, &pending}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -764,7 +764,7 @@ func TestPipelineApproveGate(t *testing.T) {
 
 func TestPipelineRejectGate(t *testing.T) {
 	pending := "DESIGN"
-	m, err := New("v-test", gateStore{fakeStore{n: 3}, &pending})
+	m, err := New("v-test", gateStore{fakeStore{n: 3}, &pending}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -799,7 +799,7 @@ func (rlStore) PipelineStatus() string { return "RATE_LIMITED" }
 // New2 builds a sized model from a store.
 func New2(t *testing.T, s Store) Model {
 	t.Helper()
-	m, err := New("v-test", s)
+	m, err := New("v-test", s, "")
 	if err != nil {
 		t.Fatal(err)
 	}
