@@ -127,10 +127,10 @@ func (s *FS) RejectGate() error {
 	return s.ApproveGate() // clears approval-pending.txt
 }
 
-// PortalURL returns the design-review portal URL from .claude/state/portal.txt, or
-// "" when no portal is running.
+// PortalURL returns the design-review portal URL. The portal script writes it to
+// .claude/state/design-portal.url; returns "" when no portal is running.
 func (s *FS) PortalURL() string {
-	data, err := os.ReadFile(filepath.Join(s.Root, ".claude", "state", "portal.txt"))
+	data, err := os.ReadFile(filepath.Join(s.Root, ".claude", "state", "design-portal.url"))
 	if err != nil {
 		return ""
 	}

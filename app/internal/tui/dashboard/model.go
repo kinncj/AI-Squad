@@ -723,6 +723,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.openRTK()
 	case "S":
 		return m, m.launch([]string{"npx", "ship-safe", "audit", "."})
+	case "v":
+		if url := m.store.PortalURL(); url != "" {
+			return m, m.openExternal(browserOpen(url))
+		}
+		m.status = "no design portal running"
 	case "?":
 		m.showHelp = true
 	case "/":
@@ -1079,6 +1084,9 @@ func (m Model) header() string {
 	if strings.EqualFold(m.store.PipelineStatus(), "RATE_LIMITED") {
 		left += "  " + m.mode.State("rate_limited").Render("RATE-LIMITED")
 	}
+	if url := m.store.PortalURL(); url != "" {
+		left += accent.Render("  ⬡ " + url)
+	}
 	right := accent.Render(fmt.Sprintf("📋 Gherkin: %d · ▶ Taffy: %d (%d running)",
 		len(m.store.Stories()), m.store.TaffyCount(), running))
 	return bar(left, right, m.width)
@@ -1087,7 +1095,7 @@ func (m Model) header() string {
 // footerKeys is the full main keybinding hint line (truncated to width by bar).
 const footerKeys = "[Tab] cycle · [s/a/p/Q] pane · [Enter] open · [o] resume · [D] design · [C] changes · " +
 	"[d/l] design/logs · [P] pipeline · [F] skills · [L] launch · [R] rtk · [S] ship-safe · " +
-	"[/] filter · [:] cmd · [?] help · [q] quit"
+	"[v] portal · [/] filter · [:] cmd · [?] help · [q] quit"
 
 // footer is the bottom bar: the filter/command input when active, a transient status
 // when set, otherwise the full keybinding hints.

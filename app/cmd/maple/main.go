@@ -11,8 +11,10 @@ package main
 import (
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -138,10 +140,47 @@ func initialized() bool {
 	return err == nil
 }
 
+// startDesignPortal picks a free port and starts the design-review portal for the
+// lifetime of the session. The script writes .claude/state/design-portal.url, which
+// the dashboard reads and shows in its header. Returns a stop func (no-op if the
+// portal script isn't present). Honours MAPLE_DESIGN_PORT.
+func startDesignPortal() func() {
+	script := "scripts/design-review-portal.sh"
+	if _, err := os.Stat(script); err != nil {
+		return func() {}
+	}
+	port := findFreePort()
+	if port == 0 {
+		return func() {}
+	}
+	_ = exec.Command("bash", script, "start", strconv.Itoa(port)).Run()
+	return func() { _ = exec.Command("bash", script, "stop").Run() }
+}
+
+// findFreePort returns a free TCP port in [7800,7900), or the MAPLE_DESIGN_PORT
+// override, or 0 if none is available.
+func findFreePort() int {
+	if v := os.Getenv("MAPLE_DESIGN_PORT"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil && p > 0 {
+			return p
+		}
+	}
+	for port := 7800; port < 7900; port++ {
+		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err == nil {
+			ln.Close()
+			return port
+		}
+	}
+	return 0
+}
+
 // runDashboardLoop runs the dashboard, and when it quits requesting a follow-up
 // workflow (req/update/labels/project) runs that in-process and re-enters. Harness
-// launches never come through here — they spawn a new terminal and never quit.
+// launches never come through here — they run in the current terminal via ExecProcess.
 func runDashboardLoop() {
+	stopPortal := startDesignPortal()
+	defer stopPortal()
 	for {
 		model, err := dashboard.New(version, state.NewFS("."))
 		if err != nil {

@@ -66,7 +66,7 @@ func TestPortalURL(t *testing.T) {
 	}
 	dir := filepath.Join(root, ".claude", "state")
 	os.MkdirAll(dir, 0o755)
-	os.WriteFile(filepath.Join(dir, "portal.txt"), []byte("http://127.0.0.1:7802\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "design-portal.url"), []byte("http://127.0.0.1:7802\n"), 0644)
 	if got := NewFS(root).PortalURL(); got != "http://127.0.0.1:7802" {
 		t.Errorf("PortalURL = %q", got)
 	}

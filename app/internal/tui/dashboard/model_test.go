@@ -681,6 +681,52 @@ func TestResumeCommand(t *testing.T) {
 }
 
 // gateStore has a pending pipeline gate that ApproveGate clears.
+type portalStore struct {
+	fakeStore
+	url string
+}
+
+func (p portalStore) PortalURL() string { return p.url }
+
+func TestHeaderShowsPortalURL(t *testing.T) {
+	m := mustNew(t, portalStore{fakeStore{n: 2}, "http://127.0.0.1:7811"})
+	// Wide viewport so the header isn't truncated before the portal suffix.
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 200, Height: 40})
+	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")}) // splash
+	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyEnter})                     // boot
+	if !strings.Contains(nm.(Model).View(), "7811") {
+		t.Error("header should show the design portal URL/port")
+	}
+}
+
+func TestPortalKeyOpensBrowser(t *testing.T) {
+	// With a URL, v returns a (non-quit) open command.
+	m := sized(t, Model(mustNew(t, portalStore{fakeStore{n: 2}, "http://127.0.0.1:7811"})))
+	nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	if cmd == nil {
+		t.Fatal("v with a portal URL should return an open command")
+	}
+	if _, ok := cmd().(tea.QuitMsg); ok {
+		t.Error("opening the portal must not quit the dashboard")
+	}
+	// Without a URL, v just notes it.
+	m2 := sized(t, newModel(t)) // fakeStore.PortalURL == ""
+	nm2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	if !strings.Contains(nm2.(Model).status, "no design portal") {
+		t.Errorf("v without a portal should note it, got %q", nm2.(Model).status)
+	}
+	_ = nm
+}
+
+func mustNew(t *testing.T, store Store) Model {
+	t.Helper()
+	m, err := New("v-test", store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
 type gateStore struct {
 	fakeStore
 	pending *string
