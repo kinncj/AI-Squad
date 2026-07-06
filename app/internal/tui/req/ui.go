@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -16,7 +17,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	core "github.com/kinncj/maple/app/internal/req"
-	"github.com/kinncj/maple/app/internal/spawn"
 	"github.com/kinncj/maple/app/internal/tui/theme"
 )
 
@@ -412,19 +412,24 @@ func (m *model) convert(requirements string) tea.Cmd {
 
 func (m *model) launchImplementation(ai core.Tool) tea.Cmd {
 	stories := m.stories
-	return func() tea.Msg {
-		if len(stories) == 0 {
-			return doneMsg{err: fmt.Errorf("no generated stories to implement")}
-		}
-		if _, err := os.Stat(taffyPathForHarness(ai.Kind)); err != nil {
+	if len(stories) == 0 {
+		return func() tea.Msg { return doneMsg{err: fmt.Errorf("no generated stories to implement")} }
+	}
+	if _, err := os.Stat(taffyPathForHarness(ai.Kind)); err != nil {
+		return func() tea.Msg {
 			return doneMsg{err: fmt.Errorf("missing implement-stories workflow for %s. run `maple update` and try again", ai.Label)}
 		}
-		if err := writeImplementationHandoff(stories); err != nil {
-			return doneMsg{err: fmt.Errorf("failed to write gherkin handoff: %w", err)}
-		}
-		writeQuickLaunchState("pipeline-runner implement-stories", "starting", ai.Kind)
-		prompt := buildImplementationPrompt(ai.Kind, stories)
-		args := buildLaunchCmd(ai.Kind, prompt, loadPinnedSessions(), true)
-		return spawnResultMsg{err: spawn.Spawn(args)}
 	}
+	if err := writeImplementationHandoff(stories); err != nil {
+		return func() tea.Msg { return doneMsg{err: fmt.Errorf("failed to write gherkin handoff: %w", err)} }
+	}
+	writeQuickLaunchState("pipeline-runner implement-stories", "starting", ai.Kind)
+	prompt := buildImplementationPrompt(ai.Kind, stories)
+	args := buildLaunchCmd(ai.Kind, prompt, loadPinnedSessions(), true)
+	// Run the harness in the CURRENT terminal (suspend/resume), not a new window.
+	c := exec.Command(args[0], args[1:]...)
+	c.Env = os.Environ()
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		return spawnResultMsg{err: err}
+	})
 }
