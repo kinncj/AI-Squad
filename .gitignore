@@ -39,8 +39,8 @@ var/*
 /.cursor/state/
 __pycache__/
 
-# Build artifact — tui/template is a copy of ./template for go:embed, never commit it
-tui/template/
+# Cross-compiled release binaries
+dist/
 # Stale leftover from running maple init inside this repo's template/ dir
 template/template/
 .playwright-mcp/
