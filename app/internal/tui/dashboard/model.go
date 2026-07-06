@@ -99,7 +99,26 @@ type Model struct {
 	detailKind  string
 	status      string
 	version     string
+	exitAction  ExitAction
 }
+
+// ExitAction is a follow-up workflow the dashboard requests when it quits. The outer
+// runDashboardLoop runs it in-process (it needs the terminal) and re-enters the
+// dashboard afterward. Harness launches do NOT use this — they spawn a new terminal
+// via trySpawn and never quit (see the "maple never exits" invariant).
+type ExitAction int
+
+const (
+	ExitNone    ExitAction = iota
+	ExitQuit               // plain quit — no follow-up
+	ExitReq                // run `maple req`
+	ExitUpdate             // run `maple update` (init --force)
+	ExitLabels             // run `maple labels`
+	ExitProject            // run `maple project`
+)
+
+// Action reports the follow-up workflow requested when the dashboard quit.
+func (m Model) Action() ExitAction { return m.exitAction }
 
 // New builds the dashboard model from a project store. Pass state.NewFS(".") in
 // production or a fake in tests. It fails only if the embedded theme is malformed.
@@ -666,13 +685,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "x":
 		m.openQuickPrompt()
 	case "n":
-		if h := m.firstHarness(); h != "" {
-			m.trySpawn("new story", []string{h, "/spec-kit"})
-		} else {
-			m.status = "no harness found for new-story"
-		}
+		m.exitAction = ExitReq
+		return m, tea.Quit
 	case "u":
-		m.trySpawn("update", []string{"maple", "update"})
+		m.exitAction = ExitUpdate
+		return m, tea.Quit
 	case "R":
 		m.openRTK()
 	case "S":
@@ -817,15 +834,17 @@ func (m Model) runCommand(line string) (tea.Model, tea.Cmd) {
 			m.status = "unknown theme: " + fields[1]
 		}
 	case "n", "req", "story":
-		m.status = "new-story — not yet ported"
+		m.exitAction = ExitReq
+		return m, tea.Quit
 	case "u", "update":
-		m.status = "update — not yet ported"
+		m.exitAction = ExitUpdate
+		return m, tea.Quit
 	case "labels":
-		m.status = "labels — not yet ported"
+		m.exitAction = ExitLabels
+		return m, tea.Quit
 	case "project":
-		m.status = "project — not yet ported"
-	case "debug":
-		m.status = "debug — not yet ported"
+		m.exitAction = ExitProject
+		return m, tea.Quit
 	default:
 		m.status = "unknown command: :" + fields[0]
 	}

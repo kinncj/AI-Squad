@@ -16,9 +16,11 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"golang.org/x/term"
 
 	"github.com/kinncj/maple/app/internal/gh"
 	"github.com/kinncj/maple/app/internal/resume"
+	"github.com/kinncj/maple/app/internal/tui/brand"
 	"github.com/kinncj/maple/app/internal/scaffold"
 	"github.com/kinncj/maple/app/internal/selfupdate"
 	"github.com/kinncj/maple/app/internal/state"
@@ -77,15 +79,63 @@ func main() {
 	}
 }
 
+// runTUI is the no-argument entry point. Without a TTY it prints usage. When the
+// project isn't set up yet it scaffolds first (the old binary did this), then runs
+// the dashboard loop.
 func runTUI() {
-	model, err := dashboard.New(version, state.NewFS("."))
-	if err != nil {
-		die(err)
+	if !isTTY() {
+		usage(os.Stdout)
+		return
 	}
-	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
-	if _, err := p.Run(); err != nil {
-		die(err)
+	if _, err := os.Stat("project.config.yaml"); os.IsNotExist(err) {
+		fmt.Println(brand.Leaf + " maple: no project.config.yaml here — setting up MAPLE…")
+		runInit(false)
 	}
+	runDashboardLoop()
+}
+
+// runDashboardLoop runs the dashboard, and when it quits requesting a follow-up
+// workflow (req/update/labels/project) runs that in-process and re-enters. Harness
+// launches never come through here — they spawn a new terminal and never quit.
+func runDashboardLoop() {
+	for {
+		model, err := dashboard.New(version, state.NewFS("."))
+		if err != nil {
+			die(err)
+		}
+		p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
+		final, err := p.Run()
+		if err != nil {
+			die(err)
+		}
+		action := dashboard.ExitNone
+		if dm, ok := final.(dashboard.Model); ok {
+			action = dm.Action()
+		}
+		switch action {
+		case dashboard.ExitReq:
+			if err := reqtui.Run(); err != nil {
+				fmt.Fprintln(os.Stderr, "req:", err)
+			}
+		case dashboard.ExitUpdate:
+			runInit(true)
+		case dashboard.ExitLabels:
+			if err := gh.RunLabels(); err != nil {
+				fmt.Fprintln(os.Stderr, "labels:", err)
+			}
+		case dashboard.ExitProject:
+			if err := gh.RunProject(); err != nil {
+				fmt.Fprintln(os.Stderr, "project:", err)
+			}
+		default:
+			return
+		}
+	}
+}
+
+// isTTY reports whether stdin is an interactive terminal (not a pipe or /dev/null).
+func isTTY() bool {
+	return term.IsTerminal(int(os.Stdin.Fd()))
 }
 
 func runInit(force bool) {

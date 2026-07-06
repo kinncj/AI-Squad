@@ -114,6 +114,39 @@ func TestQuitFromSplashAndDashboard(t *testing.T) {
 	assertQuit(t, cmd, "dashboard q")
 }
 
+func TestExitActionsQuitWithFollowUp(t *testing.T) {
+	// key → expected follow-up action after the dashboard quits.
+	cases := map[string]ExitAction{
+		"n": ExitReq,    // new story → req flow
+		"u": ExitUpdate, // update → init --force
+	}
+	for key, want := range cases {
+		m := sized(t, newModel(t))
+		nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+		assertQuit(t, cmd, "exit-action "+key)
+		if got := nm.(Model).Action(); got != want {
+			t.Errorf("key %q: Action() = %d, want %d", key, got, want)
+		}
+	}
+}
+
+func TestCommandModeExitActions(t *testing.T) {
+	cases := map[string]ExitAction{
+		"req":     ExitReq,
+		"update":  ExitUpdate,
+		"labels":  ExitLabels,
+		"project": ExitProject,
+	}
+	for cmdName, want := range cases {
+		m := sized(t, newModel(t))
+		nm, cmd := m.runCommand(cmdName)
+		assertQuit(t, cmd, ":"+cmdName)
+		if got := nm.(Model).Action(); got != want {
+			t.Errorf(":%s → Action() = %d, want %d", cmdName, got, want)
+		}
+	}
+}
+
 func assertQuit(t *testing.T, cmd tea.Cmd, ctx string) {
 	t.Helper()
 	if cmd == nil {

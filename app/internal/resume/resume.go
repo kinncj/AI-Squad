@@ -8,8 +8,66 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 )
+
+// preferredOrder is the harness fallback order when none is requested.
+var preferredOrder = []string{"claude", "copilot", "opencode", "cursor"}
+
+// resolve picks the harness + session id and builds the launch argv from the pinned
+// sessions map. It is pure (cursorBin is injected) so it can be unit-tested. Returns
+// the chosen harness, the short id, and the argv, or an error the CLI surfaces.
+func resolve(sessions map[string]string, harness, cursorBin string) (string, string, []string, error) {
+	if len(sessions) == 0 {
+		return "", "", nil, fmt.Errorf("sessions.json is empty — navigate to the Agents pane and press [o] or [p]")
+	}
+
+	if harness == "" {
+		for _, pref := range preferredOrder {
+			if sessions[pref] != "" {
+				harness = pref
+				break
+			}
+		}
+	}
+	if harness == "" {
+		// deterministic pick of any non-preferred key
+		keys := make([]string, 0, len(sessions))
+		for k := range sessions {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		harness = keys[0]
+	}
+
+	id := sessions[harness]
+	if id == "" {
+		var available []string
+		for k, v := range sessions {
+			if v != "" {
+				available = append(available, k)
+			}
+		}
+		sort.Strings(available)
+		return "", "", nil, fmt.Errorf("no pinned session for %q\n  available: %s", harness, strings.Join(available, ", "))
+	}
+
+	var args []string
+	switch harness {
+	case "claude":
+		args = []string{"claude", "--resume", id}
+	case "opencode":
+		args = []string{"opencode", "--session", id}
+	case "copilot":
+		args = []string{"copilot", "--resume=" + id}
+	case "cursor":
+		args = []string{cursorBin}
+	default:
+		return "", "", nil, fmt.Errorf("unknown harness %q — supported: claude, copilot, opencode, cursor", harness)
+	}
+	return harness, id, args, nil
+}
 
 // Session re-launches the pinned session for harness. If harness is "", it prefers
 // the detected harness order (claude → copilot → opencode → cursor).
@@ -22,59 +80,22 @@ func Session(harness string) error {
 	if err := json.Unmarshal(data, &sessions); err != nil {
 		return fmt.Errorf("corrupt sessions file: %w", err)
 	}
-	if len(sessions) == 0 {
-		return fmt.Errorf("sessions.json is empty — navigate to the Agents pane and press [o] or [p]")
+
+	cursorBin := "cursor-agent"
+	if _, err := exec.LookPath(cursorBin); err != nil {
+		cursorBin = "cursor"
 	}
 
-	if harness == "" {
-		for _, pref := range []string{"claude", "copilot", "opencode", "cursor"} {
-			if sessions[pref] != "" {
-				harness = pref
-				break
-			}
-		}
-	}
-	if harness == "" {
-		for k := range sessions {
-			harness = k
-			break
-		}
-	}
-
-	id := sessions[harness]
-	if id == "" {
-		var available []string
-		for k, v := range sessions {
-			if v != "" {
-				available = append(available, k)
-			}
-		}
-		return fmt.Errorf("no pinned session for %q\n  available: %s", harness, strings.Join(available, ", "))
-	}
-
-	var args []string
-	switch harness {
-	case "claude":
-		args = []string{"claude", "--resume", id}
-	case "opencode":
-		args = []string{"opencode", "--session", id}
-	case "copilot":
-		args = []string{"copilot", "--resume=" + id}
-	case "cursor":
-		cursorBin := "cursor-agent"
-		if _, err := exec.LookPath(cursorBin); err != nil {
-			cursorBin = "cursor"
-		}
-		args = []string{cursorBin}
-	default:
-		return fmt.Errorf("unknown harness %q — supported: claude, copilot, opencode, cursor", harness)
+	chosen, id, args, err := resolve(sessions, harness, cursorBin)
+	if err != nil {
+		return err
 	}
 
 	short := id
 	if len(short) > 8 {
 		short = short[:8] + "…"
 	}
-	fmt.Printf("resuming %s session %s\n", harness, short)
+	fmt.Printf("resuming %s session %s\n", chosen, short)
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
