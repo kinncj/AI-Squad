@@ -6,6 +6,7 @@ package dashboard
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -15,7 +16,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/kinncj/maple/app/internal/spawn"
 	"github.com/kinncj/maple/app/internal/state"
 	"github.com/kinncj/maple/app/internal/tui/brand"
 	"github.com/kinncj/maple/app/internal/tui/pane"
@@ -79,10 +79,8 @@ type Model struct {
 	detail      *pane.Pane
 	fullscreen  int
 	store       Store
-	spawnFn     func([]string) error
+	execFn      func([]string) tea.Cmd
 	lookPath    func(string) (string, error)
-	manualCmd   string
-	showManual  bool
 	picker      *pane.Pane
 	pickItems   []pickItem
 	pickerMode  string
@@ -104,8 +102,8 @@ type Model struct {
 
 // ExitAction is a follow-up workflow the dashboard requests when it quits. The outer
 // runDashboardLoop runs it in-process (it needs the terminal) and re-enters the
-// dashboard afterward. Harness launches do NOT use this — they spawn a new terminal
-// via trySpawn and never quit (see the "maple never exits" invariant).
+// dashboard afterward. Harness launches do NOT use this — they run in the current
+// terminal via tea.ExecProcess (suspend/resume) and the dashboard never quits.
 type ExitAction int
 
 const (
@@ -338,40 +336,66 @@ func (m *Model) openLauncher() {
 	m.openPicker("Launch a harness", avail)
 }
 
-// trySpawn launches args in a new terminal. On success it notes the launch; when no
-// terminal can be driven it pops the manual-launch modal with the pasteable command.
-// The TUI never quits for a spawn.
-func (m *Model) trySpawn(label string, args []string) {
-	launch := m.spawnFn
-	if launch == nil {
-		launch = spawn.Spawn
+// execDoneMsg is delivered when a launched process exits (harness resume/launch) or
+// an external open (browser) returns. external opens don't suspend the TUI.
+type execDoneMsg struct {
+	args     []string
+	err      error
+	external bool
+}
+
+// realExec runs args in the CURRENT terminal: it suspends the dashboard, hands the
+// terminal to the process, and resumes when it exits. This is how harnesses launch —
+// in-place, never a new terminal window, and maple never truly quits.
+func realExec(args []string) tea.Cmd {
+	if len(args) == 0 {
+		return nil
 	}
-	err := launch(args)
-	switch {
-	case err == nil:
-		m.status = "launched " + label
-	case err == spawn.ErrNoTerminal:
-		m.manualCmd = strings.Join(args, " ")
-		m.showManual = true
-	default:
-		m.status = "launch failed: " + err.Error()
+	c := exec.Command(args[0], args[1:]...)
+	c.Env = os.Environ()
+	if rtk, err := exec.LookPath("rtk"); err == nil && rtk != "" {
+		c.Env = append(c.Env, "RTK_HOOK_AUDIT=1")
+	}
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		return execDoneMsg{args: args, err: err}
+	})
+}
+
+// launch runs args in the current terminal (suspend/resume). Injectable via execFn.
+func (m *Model) launch(args []string) tea.Cmd {
+	fn := m.execFn
+	if fn == nil {
+		fn = realExec
+	}
+	return fn(args)
+}
+
+// openExternal fires a detached command (e.g. opening a URL in the browser) without
+// suspending the TUI.
+func (m *Model) openExternal(args []string) tea.Cmd {
+	return func() tea.Msg {
+		if len(args) == 0 {
+			return execDoneMsg{external: true}
+		}
+		err := exec.Command(args[0], args[1:]...).Start()
+		return execDoneMsg{args: args, err: err, external: true}
 	}
 }
 
-// openSession spawns the resume command for the focused session, or opens the
+// openSession resumes the focused session in the current terminal, or opens the
 // focused PR in the browser.
-func (m *Model) openSession() {
+func (m *Model) openSession() tea.Cmd {
 	switch m.group.FocusIndex() {
 	case paneSessions:
 		if se, ok := m.sessions.at(m.group.Focused().Selected()); ok {
-			m.trySpawn(se.Source, resumeCommand(se.Source))
+			return m.launch(resumeCommand(se.Source))
 		}
 	case panePRs:
 		if pr, ok := m.prs.at(m.group.Focused().Selected()); ok {
-			m.trySpawn(fmt.Sprintf("PR #%d", pr.Number),
-				[]string{"gh", "pr", "view", "--web", fmt.Sprintf("%d", pr.Number)})
+			return m.openExternal([]string{"gh", "pr", "view", "--web", fmt.Sprintf("%d", pr.Number)})
 		}
 	}
+	return nil
 }
 
 // pinFocusedSession toggles the pin on the focused session (per its harness source)
@@ -519,6 +543,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKey(msg)
 	case tea.MouseMsg:
 		m.handleMouse(msg)
+	case execDoneMsg:
+		switch {
+		case msg.err != nil:
+			m.status = "launch failed: " + msg.err.Error()
+		case msg.external:
+			m.status = "opened " + strings.Join(msg.args, " ")
+		default:
+			m.reload() // a resumed harness may have changed state
+			m.status = "back in maple"
+		}
+		if !msg.external {
+			return m, tea.ClearScreen // the process took over the screen
+		}
 	}
 	return m, nil
 }
@@ -550,14 +587,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Manual-launch modal: any key closes it.
-	if m.showManual {
-		m.showManual = false
-		m.manualCmd = ""
-		return m, nil
-	}
-
-	// Picker overlay: navigate + Enter (spawn the choice, or toggle in rtk mode).
+	// Picker overlay: navigate + Enter (launch the choice, or toggle in rtk mode).
 	if m.picker != nil {
 		switch k {
 		case "esc":
@@ -574,7 +604,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				} else {
 					item := m.pickItems[i]
 					m.closePicker()
-					m.trySpawn(item.label, item.argv)
+					return m, m.launch(item.argv)
 				}
 			}
 		case "q", "ctrl+c":
@@ -640,10 +670,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "v":
 			if m.detailKind == "pipeline" {
 				if url := m.store.PortalURL(); url != "" {
-					m.trySpawn("portal", browserOpen(url))
-				} else {
-					m.status = "no design portal running"
+					return m, m.openExternal(browserOpen(url))
 				}
+				m.status = "no design portal running"
 			}
 		case "up", "k":
 			p.ScrollBy(-1, p.VisibleRows())
@@ -679,7 +708,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "F":
 		m.setDetail("Skills", m.store.Skills())
 	case "o":
-		m.openSession()
+		return m, m.openSession()
 	case "L":
 		m.openLauncher()
 	case "x":
@@ -693,7 +722,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "R":
 		m.openRTK()
 	case "S":
-		m.trySpawn("ship-safe", []string{"npx", "ship-safe", "audit", "."})
+		return m, m.launch([]string{"npx", "ship-safe", "audit", "."})
 	case "?":
 		m.showHelp = true
 	case "/":
@@ -913,8 +942,6 @@ func (m Model) View() string {
 	body := m.grid(bodyH)
 	if m.showHelp {
 		body = m.helpView(bodyH)
-	} else if m.showManual {
-		body = m.manualView(bodyH)
 	} else if m.picker != nil {
 		body = m.picker.RenderAt(0, lipgloss.Height(header), m.width, bodyH, m.mode)
 	} else if p := m.activePane(); p != nil {
@@ -966,20 +993,6 @@ func (m Model) bootView() string {
 		Padding(1, 3).
 		Render(strings.Join(lines, "\n"))
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
-}
-
-// manualView renders the manual-launch modal: the command to paste when no terminal
-// could be driven automatically.
-func (m Model) manualView(bodyH int) string {
-	title := m.mode.Role("title").Style().Render("Run this in a new terminal")
-	cmd := m.mode.Role("accent").Style().Render(m.manualCmd)
-	hint := m.mode.Role("faint").Style().Render("couldn't open a new terminal automatically · any key to close")
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(m.mode.Role("border_focus").FG)).
-		Padding(1, 3).
-		Render(lipgloss.JoinVertical(lipgloss.Left, title, "", cmd, "", hint))
-	return lipgloss.Place(m.width, bodyH, lipgloss.Center, lipgloss.Center, box)
 }
 
 // helpView renders the keybinding reference as a bordered, column-aligned box,

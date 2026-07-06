@@ -7,7 +7,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/kinncj/maple/app/internal/spawn"
 	"github.com/kinncj/maple/app/internal/state"
 	"github.com/kinncj/maple/app/internal/tui/brand"
 )
@@ -338,14 +337,6 @@ func TestFilterModeTypesAndCancels(t *testing.T) {
 	}
 }
 
-func TestPendingOverlayKeySetsStatus(t *testing.T) {
-	m := sized(t, newModel(t))
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
-	if !strings.Contains(nm.(Model).status, "ship-safe") {
-		t.Errorf("S should set a status about ship-safe, got %q", nm.(Model).status)
-	}
-}
-
 func TestDesignReviewOverlay(t *testing.T) {
 	m := sized(t, newModel(t))
 	_ = m.View()
@@ -510,45 +501,43 @@ func TestCommandBufferEchoedInFooter(t *testing.T) {
 	}
 }
 
-func TestSpawnSuccessSetsStatus(t *testing.T) {
+func TestOpenSessionLaunchesInTerminal(t *testing.T) {
 	m := sized(t, newModel(t))
 	var got []string
-	m.spawnFn = func(args []string) error { got = args; return nil }
-	// focus Sessions, then open (o) resumes the focused claude session.
+	m.execFn = func(args []string) tea.Cmd { got = args; return nil }
+	// focus Sessions, then open (o) resumes the focused claude session in-terminal.
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")}) // focus Sessions
 	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
-	m = nm.(Model)
 	if len(got) == 0 || got[0] != "claude" {
-		t.Errorf("o on a claude session should spawn claude, got %v", got)
-	}
-	if !strings.Contains(m.status, "launched") {
-		t.Errorf("status = %q, want a launched note", m.status)
+		t.Errorf("o on a claude session should launch claude, got %v", got)
 	}
 }
 
-func TestSpawnNoTerminalShowsManualModal(t *testing.T) {
+func TestShipSafeLaunchesInTerminal(t *testing.T) {
 	m := sized(t, newModel(t))
-	m.spawnFn = func([]string) error { return spawn.ErrNoTerminal }
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")}) // S spawns ship-safe directly
-	m = nm.(Model)
-	if !m.showManual {
-		t.Fatal("ErrNoTerminal should open the manual-launch modal")
+	var got []string
+	m.execFn = func(args []string) tea.Cmd { got = args; return nil }
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	if nm.(Model).showHelp {
+		t.Fatal("S should not open help")
 	}
-	if !strings.Contains(m.manualCmd, "ship-safe") {
-		t.Errorf("manualCmd = %q, want ship-safe", m.manualCmd)
+	if len(got) < 2 || got[0] != "npx" || got[1] != "ship-safe" {
+		t.Errorf("S should run npx ship-safe, got %v", got)
 	}
-	if !strings.Contains(m.View(), "new terminal") {
-		t.Error("manual modal should tell the user to run it in a new terminal")
+}
+
+func TestExecDoneResumesWithoutQuitting(t *testing.T) {
+	m := sized(t, newModel(t))
+	// A finished harness resume must clear the screen and NOT quit.
+	nm, cmd := m.Update(execDoneMsg{args: []string{"claude"}})
+	if cmd == nil {
+		t.Fatal("execDoneMsg should return a ClearScreen command")
 	}
-	// any key closes it — and does NOT quit.
-	nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	if nm.(Model).showManual {
-		t.Error("a key should close the manual modal")
+	if _, ok := cmd().(tea.QuitMsg); ok {
+		t.Error("resuming from a harness must never quit the dashboard")
 	}
-	if cmd != nil {
-		if _, ok := cmd().(tea.QuitMsg); ok {
-			t.Error("closing the manual modal must not quit the TUI")
-		}
+	if !strings.Contains(nm.(Model).status, "back in maple") {
+		t.Errorf("status = %q, want a resume note", nm.(Model).status)
 	}
 }
 
@@ -562,7 +551,7 @@ func TestLauncherPickerAndSpawn(t *testing.T) {
 		return "", exec.ErrNotFound
 	}
 	var launched []string
-	m.spawnFn = func(args []string) error { launched = args; return nil }
+	m.execFn = func(args []string) tea.Cmd { launched = args; return nil }
 
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("L")})
 	m = nm.(Model)
@@ -596,7 +585,7 @@ func TestQuickPromptPicksSkillOrAgent(t *testing.T) {
 		return "", exec.ErrNotFound
 	}
 	var launched []string
-	m.spawnFn = func(args []string) error { launched = args; return nil }
+	m.execFn = func(args []string) tea.Cmd { launched = args; return nil }
 
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 	m = nm.(Model)
