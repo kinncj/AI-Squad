@@ -52,9 +52,23 @@ func (s *storySource) Rows() []string {
 		if st.Priority != "" {
 			pri = " · " + st.Priority
 		}
-		rows[i] = fmt.Sprintf("%-9s %s%s%s", st.Phase, name, mark, pri)
+		rows[i] = fmt.Sprintf("%s %-9s %s%s%s", runStatusGlyph(st.RunStatus), st.Phase, name, mark, pri)
 	}
 	return rows
+}
+
+// runStatusGlyph maps a taffy-reported story status to a leading marker.
+func runStatusGlyph(status string) string {
+	switch status {
+	case "in_progress":
+		return "◐"
+	case "done":
+		return "✓"
+	case "failed":
+		return "✗"
+	default:
+		return "·"
+	}
 }
 
 func (s *storySource) RowCount() int      { return len(s.filtered()) }

@@ -221,6 +221,40 @@ func buildImplementationPrompt(harness string, stories []core.Story) string {
 	sb.WriteString("- If a story has `cucumber/*_steps.py`, continue with Python behave-style steps and do NOT switch to TypeScript `@cucumber/cucumber`.\n")
 	sb.WriteString("- Do not invent alternative test frameworks when story artifacts already define one.\n")
 	sb.WriteString("</maple-governance>\n")
+	sb.WriteString(`
+<maple-pipeline>
+You were launched from MAPLE.
+Keep .claude/state/maple.json updated as you work by writing (merge, never overwrite other keys):
+  {"taffy":"pipeline-runner implement-stories","stage":"<current step>","status":"RUNNING","updated_at":"<ISO-8601 timestamp>"}
+Set status to "DONE" when finished, "FAILED" if you cannot complete.
+
+Also track EACH story's progress in .claude/state/story-status.json (merge, never overwrite other keys):
+  {"<story directory path>":"in_progress"} when you begin a story, "done" once its tests pass, "failed" if you abandon it.
+Use the exact story directory paths listed in the handoff below (e.g. "docs/stories/<slug>-<ts>-<idx>"). The maple TUI renders these per-story.
+</maple-pipeline>
+
+<maple-progress>
+Never go silent during this TAFFY implementation run:
+- Post an immediate kickoff update before the first long-running tool/agent call.
+- Post a concise progress heartbeat every 60-120 seconds while actively running stages.
+- On each heartbeat, refresh .claude/state/maple.json updated_at and current stage.
+- Every heartbeat must include concrete progress evidence:
+  - changed files/artifacts since last update (explicit paths), or
+  - a specific blocker that prevented changes.
+- Use this heartbeat format:
+  Progress: <stage name / phase>
+  Done since last update: <brief>
+  Current action: <brief>
+  Blockers: <none or brief blocker>
+  Next update: <ETA>
+- Do not send heartbeat-only timestamp churn with no artifact/blocker details.
+- If the stage requires writing artifacts and write access/tools are unavailable, set status FAILED with a clear error and stop.
+- If blocked/waiting, state exactly what is pending and keep posting heartbeats.
+- For design-review stages, continuously produce previewable artifacts (.excalidraw/.html/.svg/.png/.jpg/.md) and keep .claude/state/design-artifacts.json updated so the review portal reflects progress live.
+- Before reporting DONE, verify and report concrete artifact paths for: app/domain changes, tests changes, and tests/features + step files.
+- If required test or gherkin artifacts are missing, set status FAILED and report missing paths.
+- If generated runtime code imports docs/, .github/, or .claude/ files by path, set status FAILED and report offending import paths.
+</maple-progress>`)
 	if u := activeDesignPortalURL(); u != "" {
 		sb.WriteString("\n<maple-design-portal>\n")
 		sb.WriteString("The MAPLE design review portal is running at: " + u + "\n")

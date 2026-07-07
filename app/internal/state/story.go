@@ -6,6 +6,7 @@ package state
 
 import (
 	"bufio"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,14 +16,15 @@ import (
 
 // Story is a Gherkin story surfaced in the dashboard.
 type Story struct {
-	ID       string
-	Title    string
-	Slug     string
-	Priority string
-	Phase    string
-	UI       bool
-	Issue    int
-	Path     string
+	ID        string
+	Title     string
+	Slug      string
+	Priority  string
+	Phase     string
+	UI        bool
+	Issue     int
+	Path      string
+	RunStatus string // taffy-reported run status: "in_progress" | "done" | "failed" | ""
 }
 
 // StoryStore reads the project's stories.
@@ -57,8 +59,44 @@ func (s *FS) Stories() []Story {
 			out = append(out, st)
 		}
 	}
+	statuses := s.storyStatuses()
+	for i := range out {
+		out[i].RunStatus = matchStoryStatus(statuses, s.Root, out[i])
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
+}
+
+// storyStatuses reads the per-story run status the taffy harness writes to
+// .claude/state/story-status.json (keyed by story directory path, dir basename, or id).
+func (s *FS) storyStatuses() map[string]string {
+	data, err := os.ReadFile(filepath.Join(s.Root, ".claude", "state", "story-status.json"))
+	if err != nil {
+		return nil
+	}
+	var m map[string]string
+	if json.Unmarshal(data, &m) != nil {
+		return nil
+	}
+	return m
+}
+
+// matchStoryStatus resolves a story's run status by trying the relative dir path, the dir
+// basename, and the id — so the harness can key by whichever it has from the handoff.
+func matchStoryStatus(m map[string]string, root string, st Story) string {
+	if len(m) == 0 {
+		return ""
+	}
+	dir := filepath.Dir(st.Path)
+	if rel, err := filepath.Rel(root, dir); err == nil {
+		if v := m[rel]; v != "" {
+			return v
+		}
+	}
+	if v := m[filepath.Base(dir)]; v != "" {
+		return v
+	}
+	return m[st.ID]
 }
 
 func parseStory(path string) (Story, bool) {

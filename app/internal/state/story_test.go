@@ -37,6 +37,31 @@ func TestStoryFrontmatterParsed(t *testing.T) {
 	}
 }
 
+func TestStoriesReadRunStatus(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "docs", "stories", "add-todo-0001")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "Story.md"), []byte("---\ntitle: \"Add Todo\"\n---\nFeature: x\n"), 0o644)
+	os.MkdirAll(filepath.Join(root, ".claude", "state"), 0o755)
+	// keyed by the relative story directory path, as the taffy prompt instructs
+	os.WriteFile(filepath.Join(root, ".claude", "state", "story-status.json"),
+		[]byte(`{"docs/stories/add-todo-0001":"in_progress"}`), 0o644)
+
+	got := NewFS(root).Stories()
+	if len(got) != 1 {
+		t.Fatalf("want 1 story, got %d", len(got))
+	}
+	if got[0].RunStatus != "in_progress" {
+		t.Errorf("RunStatus = %q, want in_progress", got[0].RunStatus)
+	}
+	// also resolvable by dir basename / id
+	os.WriteFile(filepath.Join(root, ".claude", "state", "story-status.json"),
+		[]byte(`{"add-todo-0001":"done"}`), 0o644)
+	if got := NewFS(root).Stories(); got[0].RunStatus != "done" {
+		t.Errorf("RunStatus by basename = %q, want done", got[0].RunStatus)
+	}
+}
+
 func TestStoryPhaseDefaultsAndBracketLabels(t *testing.T) {
 	got := NewFS("testdata").Stories()
 	checkout := got[1]
