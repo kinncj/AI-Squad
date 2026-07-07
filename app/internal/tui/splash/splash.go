@@ -72,8 +72,10 @@ func inlineImage(width, height int) (string, bool) {
 	if img == nil {
 		return "", false
 	}
-	// Cap the payload: a resized logo keeps the escape sequence small.
-	img = resizeImage(img, 480)
+	// Cap the payload: a resized logo keeps the escape small. Kept modest (320px) so the
+	// encoded frame stays under herdr's oversized-graphics drop threshold — herdr silently
+	// drops a frame's graphics if the payload is too large, which blanked the splash.
+	img = resizeImage(img, 320)
 
 	cols := 44
 	if cols > width-4 {

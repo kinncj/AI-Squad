@@ -71,6 +71,43 @@ func TestConfigSessionReadAndPersist(t *testing.T) {
 	}
 }
 
+func TestEnsureHerdrKittyGraphics(t *testing.T) {
+	set := func(p string) { os.Setenv("HERDR_CONFIG_PATH", p); t.Cleanup(func() { os.Unsetenv("HERDR_CONFIG_PATH") }) }
+
+	// 1. no file → created with the setting
+	p := filepath.Join(t.TempDir(), "config.toml")
+	set(p)
+	if !ensureHerdrKittyGraphics() {
+		t.Fatal("should create config and report a change")
+	}
+	if b, _ := os.ReadFile(p); !strings.Contains(string(b), "kitty_graphics = true") {
+		t.Errorf("created config missing setting:\n%s", b)
+	}
+
+	// 2. already has an explicit setting → untouched
+	p2 := filepath.Join(t.TempDir(), "config.toml")
+	os.WriteFile(p2, []byte("[experimental]\nkitty_graphics = false\n"), 0o644)
+	os.Setenv("HERDR_CONFIG_PATH", p2)
+	if ensureHerdrKittyGraphics() {
+		t.Error("must not override an explicit user setting")
+	}
+	if b, _ := os.ReadFile(p2); strings.Contains(string(b), "= true") {
+		t.Error("must not flip a user's false to true")
+	}
+
+	// 3. existing [experimental] without the key → inserted under it
+	p3 := filepath.Join(t.TempDir(), "config.toml")
+	os.WriteFile(p3, []byte("[experimental]\nallow_nested = true\n"), 0o644)
+	os.Setenv("HERDR_CONFIG_PATH", p3)
+	if !ensureHerdrKittyGraphics() {
+		t.Error("should add the key")
+	}
+	b, _ := os.ReadFile(p3)
+	if !strings.Contains(string(b), "kitty_graphics = true") || strings.Count(string(b), "[experimental]") != 1 {
+		t.Errorf("should insert under the existing section without duplicating it:\n%s", b)
+	}
+}
+
 func TestMapleSessionNameDerivesFromDir(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "Cool Repo")
 	os.MkdirAll(dir, 0o755)

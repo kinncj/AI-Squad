@@ -146,6 +146,12 @@ func wrapInHerdr() bool {
 	cwd, _ := os.Getwd()
 	session := mapleSessionName(cwd)
 
+	// herdr defaults kitty_graphics off, so maple's PNG splash (and any image a harness
+	// prints) would vanish. Enable it, then reload a running server so it applies live.
+	if ensureHerdrKittyGraphics() && herdrRunning(bin, session) {
+		_ = exec.Command(bin, "--session", session, "server", "reload-config").Run()
+	}
+
 	// herdr sessions are persistent (workspaces survive stop/delete on disk), so the old
 	// "stop then create" piled up a new workspace every launch. Instead: ensure the server,
 	// then reuse maple's own labelled workspace if it exists (recover — preserving any
@@ -176,6 +182,39 @@ func wrapInHerdr() bool {
 	attach.Stdin, attach.Stdout, attach.Stderr = os.Stdin, os.Stdout, os.Stderr
 	_ = attach.Run()
 	return true
+}
+
+// ensureHerdrKittyGraphics turns on inline images in herdr (its kitty_graphics defaults
+// off), so the splash and any harness-printed image render instead of vanishing. It creates
+// the config when absent and adds the key under [experimental] when missing, but never
+// overrides an explicit user setting. Returns true when it changed the config.
+func ensureHerdrKittyGraphics() bool {
+	path := os.Getenv("HERDR_CONFIG_PATH")
+	if path == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return false
+		}
+		path = filepath.Join(home, ".config", "herdr", "config.toml")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		_ = os.MkdirAll(filepath.Dir(path), 0o755)
+		return os.WriteFile(path, []byte("[experimental]\nkitty_graphics = true\n"), 0o644) == nil
+	}
+	body := string(data)
+	if strings.Contains(body, "kitty_graphics") {
+		return false // respect an explicit user setting
+	}
+	if strings.Contains(body, "[experimental]") {
+		body = strings.Replace(body, "[experimental]", "[experimental]\nkitty_graphics = true", 1)
+	} else {
+		if !strings.HasSuffix(body, "\n") {
+			body += "\n"
+		}
+		body += "\n[experimental]\nkitty_graphics = true\n"
+	}
+	return os.WriteFile(path, []byte(body), 0o644) == nil
 }
 
 // herdrRunning reports whether the named session's server is already up.
