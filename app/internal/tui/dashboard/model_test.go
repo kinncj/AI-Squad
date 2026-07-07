@@ -759,7 +759,7 @@ type portalStore struct {
 
 func (p portalStore) PortalURL() string { return p.url }
 
-func TestHeaderShowsClickablePortalURL(t *testing.T) {
+func TestHeaderShowsPortalURL(t *testing.T) {
 	url := "http://127.0.0.1:7811"
 	m := mustNew(t, portalStore{fakeStore{n: 2}, url})
 	// Wide viewport so the header isn't truncated before the portal suffix.
@@ -770,20 +770,10 @@ func TestHeaderShowsClickablePortalURL(t *testing.T) {
 	if !strings.Contains(view, "7811") {
 		t.Error("header should show the design portal URL/port")
 	}
-	// It must be an OSC-8 hyperlink so the terminal makes it clickable.
-	if !strings.Contains(view, "\x1b]8;;"+url+"\x1b\\") {
-		t.Error("portal URL should be wrapped in an OSC-8 hyperlink escape")
-	}
-}
-
-func TestHeaderPortalHyperlinkOmittedWhenNarrow(t *testing.T) {
-	url := "http://127.0.0.1:7811"
-	m := mustNew(t, portalStore{fakeStore{n: 2}, url})
-	nm, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 20}) // too narrow for the URL
-	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
-	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if strings.Contains(nm.(Model).View(), "\x1b]8;;") {
-		t.Error("no OSC-8 hyperlink should be emitted when it can't fit (would corrupt on truncate)")
+	// Plain text (terminal auto-detects the URL) — NOT an OSC-8 hyperlink, which caused
+	// accidental plain-click opens.
+	if strings.Contains(view, "\x1b]8;;") {
+		t.Error("portal URL must be plain text, not an OSC-8 hyperlink")
 	}
 }
 
