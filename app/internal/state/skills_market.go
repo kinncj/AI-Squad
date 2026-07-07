@@ -53,3 +53,8 @@ func (s *FS) SkillRemove(name string) []string {
 	out, _ := skillsRun("skills", "remove", name, "--all", "-y")
 	return skillsLines(out, "(removed "+name+")")
 }
+
+// ShipSafeAudit runs `npx ship-safe audit .` and returns its output as lines.
+func (s *FS) ShipSafeAudit() []string {
+	return runTest(s.Root, []string{"npx", "ship-safe", "audit", "."})
+}

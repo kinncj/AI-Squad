@@ -41,6 +41,7 @@ func (f fakeStore) RunTest(state.Test) []string      { return []string{"$ go tes
 func (f fakeStore) SkillsSearch(string) []string     { return []string{"skill-a", "skill-b"} }
 func (f fakeStore) SkillInstall(p string) []string   { return []string{"installed " + p} }
 func (f fakeStore) SkillRemove(n string) []string    { return []string{"removed " + n} }
+func (f fakeStore) ShipSafeAudit() []string           { return []string{"$ npx ship-safe audit .", "✓ passed"} }
 func (f fakeStore) DesignTree() []string                  { return []string{"📁 wireframes", "  📄 home.md"} }
 func (f fakeStore) LogLines(n int) []string               { return []string{"ts=12:00  agent=qa"} }
 func (f fakeStore) GitChanges() []string                  { return []string{"── status ──", " M app/x.go"} }
@@ -670,16 +671,23 @@ func TestOpenSessionLaunchesInTerminal(t *testing.T) {
 	}
 }
 
-func TestShipSafeLaunchesInTerminal(t *testing.T) {
+func TestShipSafeRunsIntoOverlay(t *testing.T) {
 	m := sized(t, newModel(t))
-	var got []string
-	m.execFn = func(args []string) tea.Cmd { got = args; return nil }
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
-	if nm.(Model).showHelp {
-		t.Fatal("S should not open help")
+	nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	m = nm.(Model)
+	if m.detailKind != "shipsafe" {
+		t.Fatalf("S should open the ship-safe overlay, got detailKind %q", m.detailKind)
 	}
-	if len(got) < 2 || got[0] != "npx" || got[1] != "ship-safe" {
-		t.Errorf("S should run npx ship-safe, got %v", got)
+	if cmd == nil {
+		t.Fatal("S should run the audit")
+	}
+	sm, ok := cmd().(skillsMsg)
+	if !ok {
+		t.Fatalf("S should produce a skillsMsg, got a different message")
+	}
+	nm2, _ := m.Update(sm)
+	if !strings.Contains(nm2.(Model).View(), "ship-safe") {
+		t.Error("ship-safe output should render in the overlay")
 	}
 }
 

@@ -63,6 +63,7 @@ type Store interface {
 	SkillsSearch(query string) []string
 	SkillInstall(pkg string) []string
 	SkillRemove(name string) []string
+	ShipSafeAudit() []string
 }
 
 // linesSource is a scroll-only (non-selectable) pane source backing the fullscreen
@@ -762,6 +763,11 @@ func (m *Model) skillRemoveCmd(name string) tea.Cmd {
 	return func() tea.Msg { return skillsMsg{title: "Skills · remove " + name, lines: store.SkillRemove(name)} }
 }
 
+func (m *Model) shipSafeCmd() tea.Cmd {
+	store := m.store
+	return func() tea.Msg { return skillsMsg{title: "ship-safe audit", lines: store.ShipSafeAudit()} }
+}
+
 // runTestCmd runs a single test off the UI thread and returns its output.
 func (m *Model) runTestCmd(t state.Test) tea.Cmd {
 	store := m.store
@@ -1083,7 +1089,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "H":
 		return m, m.installHerdr()
 	case "S":
-		return m, m.launch([]string{"npx", "ship-safe", "audit", "."})
+		m.setDetail("ship-safe audit", []string{"running npx ship-safe audit .…"})
+		m.detailKind = "shipsafe"
+		return m, m.shipSafeCmd()
 	case "v":
 		if url := m.portal(); url != "" {
 			return m, m.openExternal(browserOpen(url))
@@ -1297,7 +1305,9 @@ func (m Model) runCommand(line string) (tea.Model, tea.Cmd) {
 	case "R", "rtk":
 		m.openRTK()
 	case "S", "ship", "ship-safe":
-		return m, m.launch([]string{"npx", "ship-safe", "audit", "."})
+		m.setDetail("ship-safe audit", []string{"running npx ship-safe audit .…"})
+		m.detailKind = "shipsafe"
+		return m, m.shipSafeCmd()
 	case "install-herdr", "herdr", "H":
 		return m, m.installHerdr()
 	case "v", "portal":
