@@ -6,79 +6,81 @@ This file is for agents and contributors working on the MAPLE codebase itself (t
 
 ## Repository Layout
 
+The Go source lives under `app/` (BusinessRepo / Clean Architecture rebuild; the old flat
+`tui/` package is deleted). `app/cmd/maple` is the only `main` (holds the go:embed); every
+other concern is a small, tested `app/internal/*` package.
+
 ```
 .
-├── tui/                    # Go source for the maple binary (Bubble Tea TUI)
-│   ├── main.go             # CLI entry point, subcommands, runDashboardLoop
-│   ├── dashboard.go        # Model, Update(), View(), all key handlers
-│   ├── dashboard_views.go  # Every overlay/pane render function
-│   ├── test_discovery.go   # Multi-framework test scanner (QA pane)
-│   ├── terminal_spawn.go   # spawnInNewTerminal — 8-env detection chain
-│   ├── loaders.go          # File readers: stories, sessions, pipeline state, RTK registry
-│   ├── detect.go           # Tool detection (claude, opencode, gh, rtk, npx …)
-│   ├── boot.go             # Boot check screen shown before dashboard
-│   ├── init.go             # maple init — copies template files
-│   ├── pipeline_state.go   # pipelineState struct + isStale()
-│   ├── embed.go            # go:embed for tui/template/
-│   └── template/           # symlink → ../template (real copy required for go:embed)
-├── template/               # Everything copied on `maple init`
-│   ├── .claude/agents/     # Agent definitions
-│   ├── .claude/skills/     # Skill definitions (including pipeline-runner)
-│   ├── .claude/taffy/      # Named workflow YAML files
-│   ├── .opencode/          # Mirror of .claude/ for OpenCode harness
-│   ├── .github/            # Copilot instructions, workflows
-│   ├── docs/               # Story templates, pipeline, design specs
-│   ├── Makefile            # Project Makefile copied on init
-│   └── lefthook.yml        # Git hook wiring
-├── scripts/
-│   ├── install.sh          # Bash installer (macOS + Linux)
-│   └── install.ps1         # PowerShell installer (Windows)
-├── tests/                  # Test suite for the repo itself
-└── CHANGELOG.md            # Updated with every release
+├── app/
+│   ├── cmd/maple/          # main: os.Args dispatch, runDashboardLoop, runUpdate,
+│   │   ├── main.go         #   startDesignPortal, wrapInTmux, subcommand routing
+│   │   ├── embed.go        #   //go:embed all:template
+│   │   └── template/       #   symlink → ../../../template (real copy at build; see Build)
+│   └── internal/
+│       ├── state/          # FS reader: stories, sessions, PRs, tests, pipeline, gates
+│       ├── scaffold/       # maple init copy + `maple update` Plan/Apply/patch (fs.FS)
+│       ├── gh/             # maple labels / maple project (gh CLI)
+│       ├── resume/         # maple resume-session
+│       ├── selfupdate/     # maple self-update
+│       ├── harness/        # launch a harness in a tmux/wezterm/kitty split; nudge panes
+│       ├── portalsock/     # control-socket client (Hold connectivity + Emit events)
+│       ├── req/            # pure gherkin-conversion core (parse/save/convert)
+│       └── tui/
+│           ├── dashboard/  # the Bubble Tea Model, panes, overlays, key/mouse handlers
+│           ├── req/        # `maple req` UI + implement-stories launch glue
+│           ├── menu/       # setup menu (uninitialised dir)
+│           ├── pane/       # focus+scroll pane primitive (ADR-003)
+│           ├── theme/      # embedded JSON themes, roles/states
+│           ├── render/     # display-width truncate/pad (no bubbletea dep)
+│           ├── splash/     # PNG/ASCII splash
+│           └── brand/      # leaf glyph + tagline
+├── template/               # Everything copied on `maple init` (.claude/.opencode/.cursor,
+│                           #   .github, docs, scripts/design-review-portal.{sh,py}, Makefile)
+├── scripts/                # install.sh / install.ps1 / legacy `maple` bash CLI
+├── docs/                   # this repo's own specs + ADRs (ADR-002/003 = the rebuild)
+├── tests/                  # shell test suite for the repo (tests/cli, tests/template)
+└── CHANGELOG.md
 ```
 
 ---
 
 ## Build
 
-The `tui/template` directory is a **symlink** to `../template` for development. The Go `go:embed` directive cannot embed symlinks, so the build dance replaces it with a real copy before building:
+`app/cmd/maple/template` is a **symlink** to `../../../template` for development. `go:embed`
+can't follow symlinks, so the build/test targets swap it for a real copy, then restore it.
+The Makefile handles the dance:
 
 ```bash
-# From repo root (preferred — Makefile handles the dance):
-make build-tui
-
-# Manually:
-rm tui/template
-cp -rL template tui/template
-cd tui && go build -ldflags "-X main.version=$(git describe --tags --always)" -o ../maple .
-cd .. && rm -rf tui/template && ln -s ../template tui/template
+make build-tui       # → ./maple   (canonical binary, built from ./app/cmd/maple)
+make build-app       # → ./bin/maple   (same, for local dev)
+make build-tui-all   # cross-compile 5 platforms → dist/
 ```
 
-**Quick compile check** (no dance needed — just checking for errors):
+**IMPORTANT — raw `go test ./app/...` BREAKS** on the `app/cmd/maple` symlink embed
+(`pattern all:template: cannot embed irregular file template`). Always use:
 
 ```bash
-cd tui && go build -o /tmp/maple_test .
+make test-app        # does the dance, runs `go test ./app/...` + `go vet ./app/...`
 ```
 
-If `embed.go` complains about `irregular file template`, the symlink is in place and the build dance is required.
+Packages that don't import the embed (e.g. `./app/internal/harness`, `./app/internal/state`)
+can be run directly with `go test ./app/internal/<pkg>/...`. Pass `TMUX=` to keep tmux-aware
+tests hermetic.
 
 ---
 
 ## Test After Every Change
 
-Before committing any change to `tui/`:
+Before committing any change under `app/`:
 
 ```bash
-cd tui && go build -o /tmp/maple_test . && echo "OK"
+make test-app && echo OK
 ```
 
-No exceptions. If it doesn't compile, it doesn't commit.
-
-For install script changes, syntax-check before committing:
-
-```bash
-bash -n scripts/install.sh && echo "OK"
-```
+No exceptions — if it doesn't build + pass, it doesn't commit. For the portal Python:
+`python3 -c "import ast; ast.parse(open('template/scripts/design-review-portal.py').read())"`.
+For install scripts: `bash -n scripts/install.sh`.
 
 ---
 
@@ -157,55 +159,68 @@ gh issue close N --comment "Fixed in vX.Y.Z"
 
 ## Architecture: Key Invariants
 
-### Harness launching never calls `tea.Quit`
+### The dashboard is a Store-driven Bubble Tea Model
 
-`o` (open session), `L` (launcher), and the taffy overlay all use `trySpawnCmd()` — an async `tea.Cmd`. If `spawnInNewTerminal` succeeds, a status bar message appears. If it fails, the `showManualLaunch` modal shows the pasteable command. The TUI never exits for a harness launch.
+`dashboard.Model` renders from a `Store` interface (satisfied by `state.FS`). It never reads
+the filesystem directly — all project state goes through `Store` methods, so the model is
+unit-tested against fake stores. Side-effecting deps (`execFn`, `openFn`, `lookPath`,
+`notifyContinue`) are injectable package vars/fields so tests never touch a real
+terminal/browser/multiplexer.
 
-```go
-// correct
-return m, trySpawnCmd(cmd)
+### Real-time refresh: 2s local tick + 60s async net tick
 
-// wrong — breaks "maple never exits"
-m.openTarget = cmd
-m.exitAction = dashActionOpenAgent
-return m, tea.Quit
-```
+`Init` starts `tickMsg` (every 2s → `reload()` local file state, preserving pane selection via
+`pane.SetSource`) and `netTickMsg` (every 60s → async `gh` PR load → `prsLoadedMsg`). The
+header/footer read pipeline status live per render, so status/approvals update without a
+keypress. Adding a file-based state field means refreshing it in `reload()`.
+
+### Harness launch: split pane in a multiplexer, else in-terminal — never a lost maple
+
+`o`/`L`/`x`/`S`/`i` route through `Model.launch(args) → harness.LaunchInPane`. Inside
+tmux/wezterm/kitty it opens a **right-side split** (captures the pane id, titles the pane) so
+maple stays visible and the pane is addressable; zellij gets a side pane (no pane-id API);
+otherwise it falls back to `tea.ExecProcess` (suspend/resume in the current terminal). To make
+splits work in plain terminals, `runTUI` **auto-wraps maple in a styled tmux session**
+(`wrapInTmux`, opt out `MAPLE_NO_TMUX=1`). Harness launches must NOT `tea.Quit`.
+
+`tea.Quit` + `ExitAction` is only for follow-up workflows that need the whole terminal:
+`n`→req, `u`→update, `:labels`/`:project`. The outer `runDashboardLoop` runs them in-process
+and re-enters.
+
+### Approval gate is dual-signal and portal-synced
+
+A gate is pending when EITHER `.claude/state/approval-pending.txt` exists OR
+`maple.json.awaiting_approval` is set — matching the portal. `ApproveGate`/`RejectGate`
+(state pkg) delete the file AND clear `maple.json` (`awaiting_approval`→null, `PAUSED`→`RUNNING`,
+merge-preserving skill keys). On any tick where a gate just cleared — TUI **or** portal —
+`reload()` calls `notifyContinue`, which types `continue` into recorded harness panes
+(tmux/wezterm/kitty) plus, as a fallback, broadcasts to sibling tmux panes running a harness.
 
 ### `maple.json` is merge-not-overwrite
 
-`writeRecoveryMarker` and any TUI write to `maple.json` must read the existing file first, unmarshal into `map[string]interface{}`, update only its own keys (`state`, `ts`), and re-marshal. The skill owns all other fields.
+Any write to `maple.json` reads the existing file, unmarshals to a map, updates only its own
+keys, and re-marshals. The skill owns the pipeline fields; the TUI/state only reconciles
+`awaiting_approval`/`status`/`updated_at`.
 
-### `reload()` runs every 5 seconds
+### Design portal: dynamic port, control socket, SPA routing
 
-`reload()` is called on every `dashTickMsg`. It refreshes stories, sessions, QA entries, design tree, logs, pipeline state, approval pending, and pinned sessions. Adding a new file-based state field means adding it here too.
+`startDesignPortal` picks a free port (`findFreePort`, 7800–7900, `MAPLE_DESIGN_PORT` override),
+runs `scripts/design-review-portal.sh start <port>`, and passes the authoritative URL to the
+dashboard header (a clickable OSC-8 hyperlink; a plain click also opens it since mouse capture
+eats OSC-8 clicks). maple holds a Unix-socket connection (`portalsock.Hold`) so the portal shows
+live connectivity, plus a file heartbeat fallback; `maple emit` pushes events. The portal serves
+its SPA for any non-`/api/`, non-`/artifact/` path (so agent-guessed URLs don't 404).
 
-### `D` Design Review overlay
+### Story parsing handles multi-line YAML
 
-`D` (on the Stories pane) opens `designReviewView`, which reads `docs/design/{wireframes,mockups}/<story-id>.*` for the focused story (`design_review.go: loadDesignReview`). `[a]` approves the selected wireframe/mockup by rewriting its `status:` line to `approved` (`approveDesignArtifact`); when no design approval remains it deletes `approval-pending.txt` and calls `notifyAllPanesContinue()`. The overlay never calls `tea.Quit`. The design phase that produces these artifacts is target-aware (`design.target: web | tui` in `project.config.yaml`; see `template/docs/design/design-targets.md`).
-
-### `C` Git Changes overlay
-
-`C` (global) opens `gitChangesView` — a two-pane popup (`git_changes.go`): `git status --porcelain` file list ‖ per-file `git diff HEAD` preview. `j/k` move the file selection (recomputing the diff), `J/K` scroll the diff, `g/G` jump to top/bottom, `q/esc` close. Read-only — never mutates the working tree; handles clean-tree and no-git gracefully. Like every overlay, it never calls `tea.Quit`. Built end-to-end through MAPLE's own `tui` design pipeline (the first dogfood feature).
-
-### `spawnInNewTerminal` detection order
-
-Goal: always open the **same terminal the user is running MAPLE in**. If the terminal cannot be identified or its launcher is unreachable, return `errNoNewTerminal` immediately — never fall through to a different terminal.
-
-1. **Multiplexers** (cross-platform, tab support): `$ZELLIJ` → `$TMUX` → `$STY` (screen)
-2. **IPC terminals**: `$WEZTERM_PANE` → `$KITTY_PID`/`$KITTY_WINDOW_ID`
-3. **`$TERM_PROGRAM`** (canonical per-terminal value): `ghostty` · `iTerm.app` · `Apple_Terminal` · `WarpTerminal` · `Hyper`
-4. **Secondary per-session env vars**: `ITERM_SESSION_ID` → `TERM=alacritty`/`ALACRITTY_SOCKET` → `GNOME_TERMINAL_SCREEN`/`_SERVICE` → `KONSOLE_VERSION`/`KONSOLE_DBUS_*` → `TILIX_ID` → `TERMINATOR_UUID` → `WT_SESSION`
-5. → `errNoNewTerminal` (no generic OS fallback)
-
-When a terminal is identified but the binary is unreachable, return `errNoNewTerminal` rather than opening a different app. On macOS, app-bundle installs (not on PATH) are reached via `open -na AppName --args -e script`.
-
-The launch script always embeds the resolved full binary path so minimal-PATH shells (e.g. `/bin/sh` on macOS opened via Terminal.app `do script`) can find Homebrew/npm-installed tools.
-
-When `errNoNewTerminal` is returned, `trySpawnCmd` sends `spawnFailedMsg` and the manual-launch modal appears. Never swallow the error silently.
+`state.frontmatter` parses scalar keys AND multi-line block lists (`labels:` → `- item` lines),
+so `phase`/`priority`/`title` come from the real `Story.md` format. The story detail is
+syntax-highlighted (`dashboard/storyview.go`).
 
 ### Test discovery uses `filepath.WalkDir`, not `filepath.Glob`
 
-`filepath.Glob` does not support `**` in Go's stdlib — it silently matches nothing. All test detectors that need to recurse use `filepath.WalkDir`.
+`filepath.Glob` does not support `**` in Go's stdlib — it silently matches nothing. All test
+detectors that need to recurse use `filepath.WalkDir`.
 
 ---
 
@@ -213,34 +228,34 @@ When `errNoNewTerminal` is returned, `trySpawnCmd` sends `spawnFailedMsg` and th
 
 RTK is installed alongside `maple` by both `install.sh` and `maple init`. It wires a `PreToolUse` hook that compresses Bash tool output before it reaches the LLM.
 
-`maple init` calls `rtk init` via `tools.RTK` (the resolved binary path from `detect.go`). If RTK is not found, init prints a soft warning and continues — it is not required.
-
 The `R` key in the dashboard opens a per-harness RTK wiring overlay. State is saved to `.claude/state/rtk-harnesses.json`.
 
 ---
 
-## Shared State Protocol (TUI ↔ Agents)
+## Shared State Protocol (TUI ↔ Portal ↔ Agents)
 
-All communication between the TUI and running agents goes through files in `.claude/state/`:
+Communication goes through files in `.claude/state/` plus a control socket:
 
-| File | Writer | Reader | Purpose |
+| File / channel | Writer | Reader | Purpose |
 |------|--------|--------|---------|
-| `maple.json` | Skill (pipeline fields) + TUI (`state`/`ts`) | Both | Taffy pipeline progress |
-| `approval-pending.txt` | Skill | TUI | Human gate — TUI deletes to approve |
-| `sessions.json` | TUI (`p`/`o` keys) | Skill (resume logic) | Pinned session IDs per harness |
+| `maple.json` | Skill (pipeline fields) + TUI/portal (`awaiting_approval`/`status`) | All | Pipeline progress + gate |
+| `approval-pending.txt` | Skill | TUI + portal | Human gate — delete to approve |
+| `sessions.json` | TUI (`p`/`o`) | Skill (resume) | Pinned session IDs per harness |
+| `panes.json` | harness pkg (on launch) | TUI + portal | Harness pane refs (kind/target) for the "continue" nudge |
+| `design-portal.url` | portal script | — | Portal URL (header prefers the port maple assigned) |
+| `maple-alive` | TUI (2s heartbeat) | portal | Connectivity fallback |
+| `maple-sock.addr` + `maple.sock` | portal | TUI (`portalsock`) | Control socket: live connectivity + `maple emit` events |
 | `rtk-harnesses.json` | TUI (`R` overlay) | — | Which harnesses have rtk wired |
 
 ---
 
-## Open Issues (v4.10.0 — due 2026-05-31)
+## Current State
 
-| # | Title | Target |
-|---|-------|--------|
-| [#17](https://github.com/kinncj/MAPLE/issues/17) | Verify `o` key opens session end-to-end on v4.9.x | Apr 30 |
-| [#18](https://github.com/kinncj/MAPLE/issues/18) | Remove dead `dashActionOpenAgent`/`dashActionLaunch` cases | Apr 25 |
-| [#16](https://github.com/kinncj/MAPLE/issues/16) | Automate `tui/template` build dance in Makefile | May 7 |
-| [#14](https://github.com/kinncj/MAPLE/issues/14) | `manualLaunchCopied` auto-reset after 2s | May 7 |
-| [#15](https://github.com/kinncj/MAPLE/issues/15) | PostToolUse hooks for near-instant TUI refresh | May 31 |
+The TUI/CLI is the `app/`-based rebuild (ADR-002/003), developed on `feature/better-ui-ux`.
+It reached full parity with the old `tui/` and added: real-time refresh, tmux side-pane
+launch + auto-wrap, portal control socket, reviewable `maple update`, story rendering/
+highlighting. Track further work as GitHub issues on the current milestone. Do not merge or
+release without explicit direction.
 
 ---
 
