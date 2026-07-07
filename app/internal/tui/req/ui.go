@@ -16,6 +16,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/kinncj/maple/app/internal/harness"
 	core "github.com/kinncj/maple/app/internal/req"
 	"github.com/kinncj/maple/app/internal/tui/theme"
 )
@@ -99,6 +100,7 @@ type model struct {
 	cancelSend   context.CancelFunc
 	streamCh     chan tea.Msg
 	streamLog    []string
+	implNote     string
 }
 
 type doneMsg struct {
@@ -124,6 +126,9 @@ func waitFor(ch chan tea.Msg) tea.Cmd {
 type spawnResultMsg struct {
 	err error
 }
+
+// implLaunchedMsg means the harness opened in a side pane; maple stays on the stories view.
+type implLaunchedMsg struct{ harness string }
 
 // Run detects harnesses and runs the requirements TUI.
 func Run() error {
@@ -374,6 +379,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.storyCursor = 0
 		m.step = stepStories
 
+	case implLaunchedMsg:
+		m.implNote = msg.harness + " launched in a side pane → switch panes to watch it (herdr/tmux pane key)"
+		return m, nil
+
 	case spawnResultMsg:
 		if msg.err != nil {
 			m.err = fmt.Errorf("could not open a new terminal.\nRun manually:\n%s", msg.err.Error())
@@ -466,7 +475,18 @@ func (m *model) launchImplementation(ai core.Tool) tea.Cmd {
 	writeQuickLaunchState("pipeline-runner implement-stories", "starting", ai.Kind)
 	prompt := buildImplementationPrompt(ai.Kind, stories)
 	args := buildLaunchCmd(ai.Kind, prompt, loadPinnedSessions(), true)
-	// Run the harness in the CURRENT terminal (suspend/resume), not a new window.
+
+	// Prefer a side pane (same as the dashboard L key) so maple stays visible beside the
+	// harness. Only take over the current terminal when there's no multiplexer to split.
+	if harness.InMultiplexer(os.Getenv) {
+		label := ai.Label
+		return func() tea.Msg {
+			if _, _, err := harness.LaunchInPane(os.Getenv, ai.Kind, args); err != nil {
+				return spawnResultMsg{err: err}
+			}
+			return implLaunchedMsg{harness: label}
+		}
+	}
 	c := exec.Command(args[0], args[1:]...)
 	c.Env = os.Environ()
 	return tea.ExecProcess(c, func(err error) tea.Msg {

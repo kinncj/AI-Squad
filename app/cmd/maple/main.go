@@ -28,6 +28,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/kinncj/maple/app/internal/gh"
+	"github.com/kinncj/maple/app/internal/harness"
 	"github.com/kinncj/maple/app/internal/portalsock"
 	"github.com/kinncj/maple/app/internal/resume"
 	"github.com/kinncj/maple/app/internal/scaffold"
@@ -119,12 +120,7 @@ func runTUI() {
 // inMultiplexer reports whether maple is already running inside a terminal multiplexer
 // or a splittable terminal it can drive.
 func inMultiplexer() bool {
-	for _, k := range []string{"TMUX", "ZELLIJ", "WEZTERM_PANE", "KITTY_WINDOW_ID"} {
-		if os.Getenv(k) != "" {
-			return true
-		}
-	}
-	return false
+	return harness.InMultiplexer(os.Getenv)
 }
 
 // wrapInTmux relaunches maple inside a fresh, maple-styled tmux session (side-pane

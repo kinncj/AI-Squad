@@ -1,13 +1,15 @@
 // Package harness launches AI harnesses next to the maple TUI and nudges them to
-// continue past human-approval gates. When maple runs inside a multiplexer (tmux or
-// zellij) it opens the harness in a split pane/tab so the TUI stays live and the pane
-// stays addressable; on approval it types "continue" into that pane (as the user
-// would). Outside a multiplexer the caller falls back to an in-terminal launch.
-// Ported from tui/panes.go + tui/terminal_spawn.go.
+// continue past human-approval gates. When maple runs inside a multiplexer (herdr, tmux,
+// wezterm, kitty, or zellij) it opens the harness in a split pane so the TUI stays live
+// and the pane stays addressable; on approval it types "continue" into that pane (as the
+// user would). herdr is preferred when present — it is purpose-built for agent panes.
+// Outside a multiplexer the caller falls back to an in-terminal launch. Ported from
+// tui/panes.go + tui/terminal_spawn.go.
 package harness
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,8 +20,23 @@ const panesFile = ".claude/state/panes.json"
 
 // PaneRef locates a launched harness within a multiplexer so it can be signalled.
 type PaneRef struct {
-	Kind   string `json:"kind"`   // "tmux" | "zellij"
-	Target string `json:"target"` // tmux pane id, or zellij tab name
+	Kind   string `json:"kind"`   // "herdr" | "tmux" | "wezterm" | "kitty" | "zellij"
+	Target string `json:"target"` // pane id (herdr/tmux/wezterm/kitty); zellij has none
+}
+
+// multiplexerEnvVars are the environment markers that mean maple is inside a splittable
+// multiplexer, in preference order (herdr first — it is agent-native).
+var multiplexerEnvVars = []string{"HERDR_PANE_ID", "TMUX", "WEZTERM_PANE", "KITTY_WINDOW_ID", "ZELLIJ"}
+
+// InMultiplexer reports whether maple is running inside a multiplexer that LaunchInPane
+// can split. getenv is injected for tests.
+func InMultiplexer(getenv func(string) string) bool {
+	for _, k := range multiplexerEnvVars {
+		if getenv(k) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // runner runs a command, returning its stdout and error. Swapped in tests. Package
@@ -93,6 +110,24 @@ func LaunchInPane(getenv func(string) string, harness string, args []string) (Pa
 	cmd := rtkWrap(args)
 
 	switch {
+	case getenv("HERDR_PANE_ID") != "":
+		// herdr is agent-native: split beside maple, run the harness in the new pane,
+		// title it, and record the pane id so approvals can nudge it over the socket API.
+		self := getenv("HERDR_PANE_ID")
+		out, err := runner("herdr", "pane", "split", self, "--direction", "right", "--ratio", "0.5", "--focus")
+		if err != nil {
+			return PaneRef{}, true, err
+		}
+		id := parseHerdrPaneID(out)
+		if id == "" {
+			return PaneRef{}, true, fmt.Errorf("herdr: no pane id in split output")
+		}
+		if _, err := runner("herdr", "pane", "run", id, herdrCommand(cmd)); err != nil {
+			return PaneRef{}, true, err
+		}
+		_, _ = runner("herdr", "pane", "rename", id, harness)
+		return record(harness, "herdr", id), true, nil
+
 	case getenv("TMUX") != "":
 		// -h = horizontal layout → new pane to the right; -PF prints its pane id.
 		out, err := runner("tmux", append([]string{"split-window", "-h", "-PF", "#{pane_id}", "--"}, cmd...)...)
@@ -127,6 +162,44 @@ func LaunchInPane(getenv func(string) string, harness string, args []string) (Pa
 	}
 
 	return PaneRef{}, false, nil
+}
+
+// parseHerdrPaneID pulls the new pane id out of `herdr pane split` JSON, which nests it
+// at result.pane.pane_id (e.g. "w5:p2").
+func parseHerdrPaneID(out []byte) string {
+	var resp struct {
+		Result struct {
+			Pane struct {
+				PaneID string `json:"pane_id"`
+			} `json:"pane"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(out, &resp) == nil {
+		return resp.Result.Pane.PaneID
+	}
+	return ""
+}
+
+// herdrCommand joins an argv into a single shell-quoted string, because `herdr pane run`
+// types one command line into the pane's shell rather than taking argv.
+func herdrCommand(args []string) string {
+	parts := make([]string, len(args))
+	for i, a := range args {
+		parts[i] = shellQuote(a)
+	}
+	return strings.Join(parts, " ")
+}
+
+// shellQuote single-quotes a token when it holds anything the shell would interpret, so a
+// harness prompt with spaces/quotes/$ survives intact.
+func shellQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	if !strings.ContainsAny(s, " \t\n'\"\\$`*?[]{}()<>|&;#~=") {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // record saves and returns a pane ref (nudge target) for later NotifyContinue.
@@ -203,6 +276,12 @@ func sendContinue(p PaneRef) bool {
 		return false
 	}
 	switch p.Kind {
+	case "herdr":
+		if _, err := runner("herdr", "pane", "send-text", p.Target, "continue"); err != nil {
+			return false
+		}
+		_, err := runner("herdr", "pane", "send-keys", p.Target, "enter")
+		return err == nil
 	case "tmux":
 		_, err := runner("tmux", "send-keys", "-t", p.Target, "continue", "Enter")
 		return err == nil

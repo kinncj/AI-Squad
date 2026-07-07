@@ -152,6 +152,139 @@ func TestNotifyContinueBroadcastsToSiblingHarnessPanes(t *testing.T) {
 	}
 }
 
+func TestInMultiplexerHerdr(t *testing.T) {
+	herdr := func(k string) string {
+		if k == "HERDR_PANE_ID" {
+			return "w5:p1"
+		}
+		return ""
+	}
+	if !InMultiplexer(herdr) {
+		t.Error("HERDR_PANE_ID should count as a multiplexer")
+	}
+	if InMultiplexer(func(string) string { return "" }) {
+		t.Error("no multiplexer env → false")
+	}
+}
+
+func TestLaunchInPaneHerdrSplitsRunsRenames(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	swapLookPath(t, func(string) (string, error) { return "", os.ErrNotExist }) // no rtk
+
+	var calls []string
+	restore := swapRunner(func(name string, args ...string) ([]byte, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		if len(args) >= 2 && args[0] == "pane" && args[1] == "split" {
+			return []byte(`{"result":{"pane":{"pane_id":"w5:p2"},"type":"pane_info"}}`), nil
+		}
+		return nil, nil
+	})
+	defer restore()
+
+	getenv := func(k string) string {
+		if k == "HERDR_PANE_ID" {
+			return "w5:p1"
+		}
+		return ""
+	}
+	ref, ok, err := LaunchInPane(getenv, "copilot", []string{"copilot", "-p", "do it"})
+	if !ok || err != nil {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+	if ref.Kind != "herdr" || ref.Target != "w5:p2" {
+		t.Errorf("ref = %+v, want herdr/w5:p2", ref)
+	}
+	joined := strings.Join(calls, "\n")
+	if !strings.Contains(joined, "herdr pane split w5:p1 --direction right") {
+		t.Errorf("missing split: %q", joined)
+	}
+	// the prompt arg with a space must be shell-quoted into the single run string
+	if !strings.Contains(joined, "herdr pane run w5:p2 copilot -p 'do it'") {
+		t.Errorf("run should shell-quote args: %q", joined)
+	}
+	if !strings.Contains(joined, "herdr pane rename w5:p2 copilot") {
+		t.Errorf("missing rename: %q", joined)
+	}
+	if _, statErr := os.Stat(panesFile); statErr != nil {
+		t.Error("herdr pane ref should be saved to panes.json")
+	}
+}
+
+func TestLaunchInPaneHerdrPrefersOverTmux(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	swapLookPath(t, func(string) (string, error) { return "", os.ErrNotExist })
+	var first string
+	restore := swapRunner(func(name string, args ...string) ([]byte, error) {
+		if first == "" {
+			first = name
+		}
+		if name == "herdr" && len(args) >= 2 && args[1] == "split" {
+			return []byte(`{"result":{"pane":{"pane_id":"w5:p2"}}}`), nil
+		}
+		return nil, nil
+	})
+	defer restore()
+	// Both herdr and tmux present — herdr must win.
+	getenv := func(k string) string {
+		switch k {
+		case "HERDR_PANE_ID":
+			return "w5:p1"
+		case "TMUX":
+			return "/tmp/tmux/default,1,0"
+		}
+		return ""
+	}
+	ref, _, _ := LaunchInPane(getenv, "claude", []string{"claude"})
+	if ref.Kind != "herdr" {
+		t.Errorf("herdr should win over tmux, got %q", ref.Kind)
+	}
+	if first != "herdr" {
+		t.Errorf("first call should be herdr, got %q", first)
+	}
+}
+
+func TestNotifyContinueHerdrPane(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	os.MkdirAll(".claude/state", 0o755)
+	os.WriteFile(panesFile, []byte(`{"copilot":{"kind":"herdr","target":"w5:p2"}}`), 0o644)
+
+	var calls []string
+	restore := swapRunner(func(name string, args ...string) ([]byte, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		return nil, nil
+	})
+	defer restore()
+
+	n := NotifyContinue(func(string) string { return "" })
+	if n != 1 {
+		t.Errorf("want 1 nudge, got %d", n)
+	}
+	joined := strings.Join(calls, "\n")
+	if !strings.Contains(joined, "herdr pane send-text w5:p2 continue") {
+		t.Errorf("missing send-text: %q", joined)
+	}
+	if !strings.Contains(joined, "herdr pane send-keys w5:p2 enter") {
+		t.Errorf("missing send-keys enter: %q", joined)
+	}
+}
+
+func TestShellQuote(t *testing.T) {
+	cases := map[string]string{
+		"simple": "simple",
+		"a b":    "'a b'",
+		"":       "''",
+		"it's":   `'it'\''s'`,
+	}
+	for in, want := range cases {
+		if got := shellQuote(in); got != want {
+			t.Errorf("shellQuote(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 func swapRunner(fn func(string, ...string) ([]byte, error)) func() {

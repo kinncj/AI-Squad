@@ -162,9 +162,15 @@ func (m *model) storiesView(cursor string) string {
 		Render(fmt.Sprintf("  %d %s generated", count, noun))
 	timing := lipgloss.NewStyle().Foreground(p.Muted).Render(fmt.Sprintf("  in %s", elapsed))
 	sb.WriteString(title + timing + "\n")
+	if m.implNote != "" {
+		sb.WriteString(lipgloss.NewStyle().Foreground(p.Success).Render("  ✓ "+m.implNote) + "\n")
+	}
 	sb.WriteString(lipgloss.NewStyle().Foreground(p.Muted).Render("  "+strings.Repeat("─", 60)) + "\n\n")
 
 	m.storyListTop = 5
+	if m.implNote != "" {
+		m.storyListTop++ // the note occupies one extra row above the list
+	}
 
 	for i, s := range m.stories {
 		var savedNote string
