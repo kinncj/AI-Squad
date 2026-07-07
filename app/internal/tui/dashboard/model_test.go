@@ -823,6 +823,38 @@ func (s storyPathStore) Stories() []state.Story {
 	return []state.Story{{ID: "auth-reset-0001", Path: "docs/stories/auth-reset-0001/Story.md"}}
 }
 
+func TestGateClearNudgesHarness(t *testing.T) {
+	// Swap the nudge so we can observe it without touching a real multiplexer.
+	orig := notifyContinue
+	nudged := 0
+	notifyContinue = func(func(string) string) int { nudged++; return 1 }
+	defer func() { notifyContinue = orig }()
+
+	pending := "wireframe"
+	m := sized(t, mustNew(t, gateStore{fakeStore{n: 1}, &pending}))
+	// First tick observes the pending gate (no nudge yet).
+	nm, _ := m.Update(tickMsg{})
+	m = nm.(Model)
+	if nudged != 0 {
+		t.Fatalf("no nudge while the gate is still pending, got %d", nudged)
+	}
+	// The gate clears (e.g. approved in the portal); the next tick nudges once.
+	pending = ""
+	nm, _ = m.Update(tickMsg{})
+	m = nm.(Model)
+	if nudged != 1 {
+		t.Errorf("gate-clear should nudge exactly once, got %d", nudged)
+	}
+	if !strings.Contains(m.status, "nudged") {
+		t.Errorf("status should note the nudge, got %q", m.status)
+	}
+	// A further tick with no gate must not nudge again.
+	nm, _ = m.Update(tickMsg{})
+	if nudged != 1 {
+		t.Errorf("no repeat nudge once the gate stays clear, got %d", nudged)
+	}
+}
+
 func TestImplementFocusedStoryLaunches(t *testing.T) {
 	cwd, _ := os.Getwd()
 	tmp := t.TempDir()

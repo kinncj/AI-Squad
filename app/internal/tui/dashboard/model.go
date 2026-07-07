@@ -99,6 +99,7 @@ type Model struct {
 	reviewStory string
 	detailKind  string
 	storyPath   string // Story.md path of the open story detail (for `i` implement)
+	lastGate    string // last-seen pending approval stage, to detect gate-clear → nudge
 	status      string
 	version     string
 	portalURL   string
@@ -1093,7 +1094,22 @@ func (m *Model) reload() {
 	if m.detail != nil && m.detailKind == "pipeline" {
 		m.openPipeline()
 	}
+	// When a gate that was pending has just cleared — whether the user approved in the
+	// TUI or in the design portal — nudge the harness to continue. This unifies the
+	// nudge on maple's full logic (recorded panes + tmux sibling-broadcast + all
+	// terminals), so a portal approval reliably advances a yielded harness too.
+	gate := m.store.ApprovalPending()
+	if m.lastGate != "" && gate == "" {
+		if n := notifyContinue(os.Getenv); n > 0 {
+			m.status = fmt.Sprintf("gate cleared — nudged %d harness pane(s)", n)
+		}
+	}
+	m.lastGate = gate
 }
+
+// notifyContinue nudges harness panes to continue; a package var so tests can observe
+// gate-clear behaviour without touching a real multiplexer.
+var notifyContinue = harness.NotifyContinue
 
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.splash || msg.Action != tea.MouseActionPress {
