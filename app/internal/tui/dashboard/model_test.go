@@ -303,8 +303,12 @@ func TestViewShowsSplashThenGrid(t *testing.T) {
 	if !strings.Contains(grid, "Stories") {
 		t.Error("grid view should show the Stories pane title")
 	}
-	if !strings.Contains(grid, "[Tab] cycle") {
+	if !strings.Contains(grid, "[Tab] pane") {
 		t.Error("grid view should show the footer keybindings")
+	}
+	// Footer is contextual: Stories is focused by default, so its actions show.
+	if !strings.Contains(grid, "design review") {
+		t.Error("footer should show Stories-pane context keys")
 	}
 	if !strings.Contains(grid, brand.Leaf) {
 		t.Error("dashboard header should show the maple leaf")
@@ -804,10 +808,10 @@ func TestHeaderShowsPortalURL(t *testing.T) {
 	if !strings.Contains(view, "7811") {
 		t.Error("header should show the design portal URL/port")
 	}
-	// Plain text (terminal auto-detects the URL) — NOT an OSC-8 hyperlink, which caused
-	// accidental plain-click opens.
-	if strings.Contains(view, "\x1b]8;;") {
-		t.Error("portal URL must be plain text, not an OSC-8 hyperlink")
+	// The URL is a clickable OSC-8 hyperlink (safe at runtime; the earlier "auto-open"
+	// was a test executing `open`, since fixed via the openFn seam).
+	if !strings.Contains(view, "\x1b]8;;http://127.0.0.1:7811\x1b\\") {
+		t.Error("portal URL should be a clickable OSC-8 hyperlink")
 	}
 }
 

@@ -1234,24 +1234,28 @@ func (m Model) header() string {
 	if strings.EqualFold(m.store.PipelineStatus(), "RATE_LIMITED") {
 		left += "  " + m.mode.State("rate_limited").Render("RATE-LIMITED")
 	}
-	// Portal URL as plain colored text (like main): the terminal's own URL detection
-	// makes it ⌘-clickable, without the accidental plain-click opens an OSC-8 hyperlink
-	// caused. `v` still opens it deliberately.
-	if url := m.portal(); url != "" {
-		left += accent.Render("  ⬡ " + url)
-	}
 	right := accent.Render(fmt.Sprintf("📋 Gherkin: %d · ▶ Taffy: %d (%d running)",
 		len(m.store.Stories()), m.store.TaffyCount(), running))
+	// Portal URL as a clickable OSC-8 hyperlink, but only when it fits without
+	// truncation (render.Truncate isn't escape-aware and would corrupt the sequence).
+	if url := m.portal(); url != "" {
+		seg := "  ⬡ " + url
+		if lipgloss.Width(left)+lipgloss.Width(seg)+lipgloss.Width(right)+1 <= m.width {
+			left += osc8(url, accent.Render(seg))
+		}
+	}
 	return bar(left, right, m.width)
 }
 
-// footerKeys is the full main keybinding hint line (truncated to width by bar).
-const footerKeys = "[Tab] cycle · [s/a/p/Q] pane · [Enter] open · [o] resume · [D] design · [C] changes · " +
-	"[d/l] design/logs · [P] pipeline · [F] skills · [L] launch · [R] rtk · [S] ship-safe · " +
-	"[v] portal · [/] filter · [:] cmd · [?] help · [q] quit"
+// osc8 wraps visible text in an OSC-8 terminal hyperlink so ⌘/ctrl-click opens url.
+// Terminals without OSC-8 support ignore the escapes and just show the text.
+func osc8(url, text string) string {
+	return "\x1b]8;;" + url + "\x1b\\" + text + "\x1b]8;;\x1b\\"
+}
 
 // footer is the bottom bar: the filter/command input when active (with live command
-// suggestions), a transient status when set, otherwise the full keybinding hints.
+// suggestions), a transient status when set, otherwise context-aware key hints for the
+// current overlay/pane plus a live focus summary.
 func (m Model) footer() string {
 	accent := m.mode.Role("accent").Style()
 	faint := m.mode.Role("faint").Style()
@@ -1265,8 +1269,72 @@ func (m Model) footer() string {
 	case m.status != "":
 		return bar(m.mode.Role("subtitle").Style().Render(m.status), faint.Render("[?] help"), m.width)
 	default:
-		return bar(faint.Render(footerKeys), "", m.width)
+		return bar(faint.Render(m.contextKeys()), faint.Render(m.contextSummary()), m.width)
 	}
+}
+
+// contextKeys returns the key hints relevant to whatever is focused: the open overlay
+// first, else the focused pane's actions, always with the global keys.
+func (m Model) contextKeys() string {
+	const global = "[Tab] pane · [:] cmd · [?] help · [q] quit"
+	switch {
+	case m.detailKind == "pipeline":
+		return "PIPELINE  [a] approve · [r] reject · [v] portal · [esc] close"
+	case m.reviewStory != "":
+		return "DESIGN REVIEW  [a] approve artifacts · [esc] close"
+	case m.detail != nil:
+		return "[j/k] scroll · [g/G] top/bottom · [esc] close"
+	case m.fullscreen == fsDesign:
+		return "DESIGN  [j/k] scroll · [d/esc] close · " + global
+	case m.fullscreen == fsLogs:
+		return "LOGS  [j/k] scroll · [l/esc] close · " + global
+	}
+	var ctx string
+	switch m.group.FocusIndex() {
+	case paneStories:
+		ctx = "[Enter] story · [D] design review · [n] new · [P] pipeline"
+	case paneSessions:
+		ctx = "[Enter] transcript · [o] resume · [p] pin · [L] launch"
+	case panePRs:
+		ctx = "[Enter]/[o] open PR · [r] refresh"
+	case paneQA:
+		ctx = "[Enter] open test · [r] rescan"
+	}
+	return ctx + " · " + global
+}
+
+// contextSummary is the right-aligned live status: the focused pane and its position,
+// or the pipeline status when a run is active.
+func (m Model) contextSummary() string {
+	if st := m.store.PipelineStatus(); state.InFlight(st) {
+		if stage := m.store.ApprovalPending(); stage != "" {
+			return "⏸ awaiting: " + stage
+		}
+	}
+	p := m.group.Focused()
+	if p == nil {
+		return ""
+	}
+	total := m.focusedRowCount()
+	if total == 0 {
+		return p.Title + " · empty"
+	}
+	return fmt.Sprintf("%s · %d/%d", p.Title, p.Selected()+1, total)
+}
+
+// focusedRowCount returns the row count of the focused pane's source.
+func (m Model) focusedRowCount() int {
+	switch m.group.FocusIndex() {
+	case paneStories:
+		return m.stories.RowCount()
+	case paneSessions:
+		return m.sessions.RowCount()
+	case panePRs:
+		return m.prs.RowCount()
+	case paneQA:
+		return m.qa.RowCount()
+	}
+	return 0
 }
 
 // commandHint lists the commands whose names start with what's typed (all of them
