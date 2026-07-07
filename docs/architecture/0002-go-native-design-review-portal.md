@@ -121,9 +121,10 @@ Status: **accepted**
 
 ## 8. Next Steps
 
-- [ ] `app/internal/portal` server + embedded SPA + read endpoints (`/`, `/health`, `/api/state`, `/api/artifacts`, `/api/uploads`, `/artifact/…`)
-- [ ] Write endpoints: approve / reject / request-changes / upload / **stop**
-- [ ] SSE `/api/events` + in-process event bus (maple 2s tick + `maple emit` publish)
-- [ ] `maple portal serve <port>`; point `startDesignPortal` at it
-- [ ] SPA: contextual buttons, Stop workflow, sortable artifacts (localStorage)
-- [ ] Verify parity vs Python (Playwright), then delete `template/scripts/design-review-portal.{sh,py}`
+- [x] `app/internal/portal` server + embedded SPA + read endpoints
+- [x] Write endpoints: approve / reject / request-changes / upload / **stop**
+- [x] SSE `/api/events` + change-watcher event bus
+- [x] `maple portal serve <port>`; `startDesignPortal` runs it in-process
+- [x] SPA: contextual buttons, Stop workflow, sortable artifacts (localStorage)
+- [x] Verified parity vs Python (Playwright)
+- [ ] Follow-up: delete `template/scripts/design-review-portal.{sh,py}` (dead once every project is on the Go portal)
