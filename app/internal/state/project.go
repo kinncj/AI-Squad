@@ -7,7 +7,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
+
+// nowRFC3339 is the current UTC time in RFC 3339, matching the skill's timestamps.
+func nowRFC3339() string { return time.Now().UTC().Format(time.RFC3339) }
 
 // ProjectName reads project.name from project.config.yaml, or "" if absent.
 func (s *FS) ProjectName() string {
@@ -93,28 +97,37 @@ func (s *FS) PipelineLines() []string {
 	return out
 }
 
-// ApprovalPending returns the stage awaiting human approval (the contents of
-// .claude/state/approval-pending.txt), or "" when no gate is pending.
+// ApprovalPending returns the stage awaiting human approval. A gate is pending when
+// EITHER .claude/state/approval-pending.txt exists OR maple.json has a non-empty
+// awaiting_approval — matching the design portal's view so the TUI and the portal
+// always agree on whether a gate is open. Returns "" when nothing is pending.
 func (s *FS) ApprovalPending() string {
-	data, err := os.ReadFile(filepath.Join(s.Root, ".claude", "state", "approval-pending.txt"))
-	if err != nil {
-		return ""
+	if data, err := os.ReadFile(filepath.Join(s.Root, ".claude", "state", "approval-pending.txt")); err == nil {
+		if v := strings.TrimSpace(string(data)); v != "" {
+			return v
+		}
 	}
-	return strings.TrimSpace(string(data))
+	m := s.readMapleJSON()
+	if v, ok := m["awaiting_approval"].(string); ok {
+		return strings.TrimSpace(v)
+	}
+	return ""
 }
 
-// ApproveGate clears the pending human gate by deleting approval-pending.txt, which
-// signals the running pipeline to continue. Removing an absent file is not an error.
+// ApproveGate clears the pending human gate so both surfaces agree and the harness
+// continues: it deletes approval-pending.txt AND clears maple.json's awaiting_approval,
+// flipping a PAUSED status back to RUNNING (mirrors the portal's approve). Merges
+// maple.json so skill-owned keys are preserved.
 func (s *FS) ApproveGate() error {
 	err := os.Remove(filepath.Join(s.Root, ".claude", "state", "approval-pending.txt"))
-	if os.IsNotExist(err) {
-		return nil
+	if err != nil && !os.IsNotExist(err) {
+		return err
 	}
-	return err
+	return s.markResumed()
 }
 
 // RejectGate records a rejection for the pending stage (approval-rejected.txt) and
-// clears the pending gate.
+// clears the pending gate the same way ApproveGate does.
 func (s *FS) RejectGate() error {
 	dir := filepath.Join(s.Root, ".claude", "state")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -124,7 +137,47 @@ func (s *FS) RejectGate() error {
 	if err := os.WriteFile(filepath.Join(dir, "approval-rejected.txt"), []byte(stage+"\n"), 0644); err != nil {
 		return err
 	}
-	return s.ApproveGate() // clears approval-pending.txt
+	return s.ApproveGate()
+}
+
+// readMapleJSON returns maple.json as a map (empty on any error).
+func (s *FS) readMapleJSON() map[string]any {
+	m := map[string]any{}
+	if data, err := os.ReadFile(filepath.Join(s.Root, ".claude", "state", "maple.json")); err == nil {
+		_ = json.Unmarshal(data, &m)
+	}
+	return m
+}
+
+// markResumed clears awaiting_approval and flips PAUSED→RUNNING in maple.json,
+// preserving every other (skill-owned) key. No-op when there's nothing to clear.
+func (s *FS) markResumed() error {
+	path := filepath.Join(s.Root, ".claude", "state", "maple.json")
+	m := s.readMapleJSON()
+	if len(m) == 0 {
+		return nil // no maple.json — nothing to reconcile
+	}
+	changed := false
+	if v, ok := m["awaiting_approval"].(string); ok && strings.TrimSpace(v) != "" {
+		m["awaiting_approval"] = nil
+		changed = true
+	}
+	if v, ok := m["status"].(string); ok && strings.EqualFold(v, "PAUSED") {
+		m["status"] = "RUNNING"
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	m["updated_at"] = nowRFC3339()
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(data, '\n'), 0o644)
 }
 
 // PortalURL returns the design-review portal URL. The portal script writes it to
