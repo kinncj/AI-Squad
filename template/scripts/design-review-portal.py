@@ -276,6 +276,24 @@ class PortalState:
                     )
                     notified += 1
                     continue
+                if kind == "wezterm":
+                    subprocess.run(
+                        ["wezterm", "cli", "send-text", "--no-paste", "--pane-id", target, "continue\n"],
+                        check=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    notified += 1
+                    continue
+                if kind == "kitty":
+                    subprocess.run(
+                        ["kitty", "@", "send-text", "--match", "id:" + target, "continue\r"],
+                        check=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    notified += 1
+                    continue
                 if kind == "zellij":
                     subprocess.run(
                         ["zellij", "action", "go-to-tab-name", target],
