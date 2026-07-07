@@ -239,7 +239,7 @@ func (m *Model) openDetail() {
 		}
 	case paneSessions:
 		if se, ok := m.sessions.at(sel); ok {
-			m.setDetail("Session · "+se.Title, state.SessionTranscript(se.ID))
+			m.setDetail("Session · "+se.Title, state.SessionDetail(se))
 		}
 	case paneQA:
 		if tst, ok := m.qa.at(sel); ok {
@@ -462,7 +462,7 @@ func (m *Model) openSession() tea.Cmd {
 	switch m.group.FocusIndex() {
 	case paneSessions:
 		if se, ok := m.sessions.at(m.group.Focused().Selected()); ok {
-			return m.launch(resumeCommand(se.Source))
+			return m.launch(resumeCommand(se))
 		}
 	case panePRs:
 		if pr, ok := m.prs.at(m.group.Focused().Selected()); ok {
@@ -509,17 +509,29 @@ func browserOpen(url string) []string {
 	}
 }
 
-// resumeCommand maps a session source to its resume argv.
-func resumeCommand(source string) []string {
-	switch source {
+// resumeCommand maps a session to its resume argv, passing the session id so the SELECTED
+// session actually resumes (not a fresh harness). Claude records the JSONL path as the id,
+// so its bare UUID is the base filename.
+func resumeCommand(se state.Session) []string {
+	switch se.Source {
 	case "claude":
-		return []string{"claude", "--resume"}
+		uuid := strings.TrimSuffix(filepath.Base(se.ID), ".jsonl")
+		if uuid == "" || uuid == "." {
+			return []string{"claude", "--resume"}
+		}
+		return []string{"claude", "--resume", uuid}
 	case "opencode":
+		if se.ID != "" {
+			return []string{"opencode", "--session", se.ID}
+		}
 		return []string{"opencode"}
 	case "copilot":
+		if se.ID != "" {
+			return []string{"copilot", "--resume=" + se.ID}
+		}
 		return []string{"copilot"}
 	default:
-		return []string{source}
+		return []string{se.Source}
 	}
 }
 

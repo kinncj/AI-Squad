@@ -814,16 +814,24 @@ func TestRTKToggleOverlay(t *testing.T) {
 	}
 }
 
-func TestResumeCommand(t *testing.T) {
-	cases := map[string][]string{
-		"claude":   {"claude", "--resume"},
-		"opencode": {"opencode"},
-		"copilot":  {"copilot"},
+func TestResumeCommandPassesSessionID(t *testing.T) {
+	cases := []struct {
+		se   state.Session
+		want []string
+	}{
+		// claude records the JSONL path; resume needs the bare UUID
+		{state.Session{Source: "claude", ID: "/Users/x/.claude/projects/p/abc-123.jsonl"}, []string{"claude", "--resume", "abc-123"}},
+		{state.Session{Source: "opencode", ID: "ses_9"}, []string{"opencode", "--session", "ses_9"}},
+		{state.Session{Source: "copilot", ID: "07b8"}, []string{"copilot", "--resume=07b8"}},
+		// no id → fall back to a bare resume/launch
+		{state.Session{Source: "claude", ID: ""}, []string{"claude", "--resume"}},
+		{state.Session{Source: "opencode", ID: ""}, []string{"opencode"}},
+		{state.Session{Source: "pi", ID: "x"}, []string{"pi"}},
 	}
-	for src, want := range cases {
-		got := resumeCommand(src)
-		if len(got) != len(want) || got[0] != want[0] {
-			t.Errorf("resumeCommand(%q) = %v, want %v", src, got, want)
+	for _, c := range cases {
+		got := resumeCommand(c.se)
+		if strings.Join(got, " ") != strings.Join(c.want, " ") {
+			t.Errorf("resumeCommand(%+v) = %v, want %v", c.se, got, c.want)
 		}
 	}
 }

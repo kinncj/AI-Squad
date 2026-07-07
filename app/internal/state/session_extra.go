@@ -1,6 +1,7 @@
 package state
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -8,6 +9,106 @@ import (
 	"strconv"
 	"strings"
 )
+
+// SessionDetail renders a readable transcript for the detail overlay, chosen by source.
+// Claude stores a JSONL path in ID; Copilot stores an id whose events live under
+// ~/.copilot/session-state/<id>/events.jsonl; anything else falls back to a metadata
+// summary so pressing Enter never errors with "cannot read <hash>".
+func SessionDetail(se Session) []string {
+	switch se.Source {
+	case "claude":
+		return SessionTranscript(se.ID)
+	case "copilot":
+		if lines := copilotTranscript(se.ID); len(lines) > 0 {
+			return lines
+		}
+	}
+	return sessionSummary(se)
+}
+
+func sessionSummary(se Session) []string {
+	return []string{
+		"── " + se.Title,
+		"source:  " + se.Source,
+		"updated: " + se.TS,
+		"",
+		"Press o to resume this session.",
+	}
+}
+
+// copilotTranscript renders the user prompts, assistant replies, and tool calls from a
+// Copilot session's events.jsonl. Returns nil when the file is absent/unreadable.
+func copilotTranscript(id string) []string {
+	home, err := os.UserHomeDir()
+	if err != nil || id == "" {
+		return nil
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".copilot", "session-state", id, "events.jsonl"))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, raw := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		var e map[string]any
+		if json.Unmarshal([]byte(raw), &e) != nil {
+			continue
+		}
+		switch e["type"] {
+		case "user.message":
+			if c := eventContent(e); c != "" {
+				out = append(out, "▶ "+truncate(c, 76))
+			}
+		case "assistant.message":
+			if c := eventContent(e); c != "" {
+				out = append(out, "  "+truncate(c, 76))
+			}
+		case "tool.execution_start":
+			if n := eventToolName(e); n != "" {
+				out = append(out, "🔧 "+n)
+			}
+		}
+	}
+	const maxLines = 400
+	if len(out) > maxLines {
+		out = out[len(out)-maxLines:]
+	}
+	return out
+}
+
+func eventContent(e map[string]any) string {
+	data, _ := e["data"].(map[string]any)
+	if data == nil {
+		return ""
+	}
+	switch c := data["content"].(type) {
+	case string:
+		return strings.TrimSpace(strings.ReplaceAll(c, "\n", " "))
+	case []any:
+		var parts []string
+		for _, blk := range c {
+			if bm, ok := blk.(map[string]any); ok {
+				if t, _ := bm["text"].(string); t != "" {
+					parts = append(parts, t)
+				}
+			}
+		}
+		return strings.TrimSpace(strings.ReplaceAll(strings.Join(parts, " "), "\n", " "))
+	}
+	return ""
+}
+
+func eventToolName(e map[string]any) string {
+	data, _ := e["data"].(map[string]any)
+	if data == nil {
+		return ""
+	}
+	n, _ := data["toolName"].(string)
+	return n
+}
 
 // openCodeSessions reads recent OpenCode sessions for cwd from the OpenCode SQLite
 // store via the sqlite3 CLI. Best-effort: returns nil when sqlite3 or the db is
