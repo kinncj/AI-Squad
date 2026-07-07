@@ -59,7 +59,7 @@ func TestLaunchInPaneTmuxCapturesPaneID(t *testing.T) {
 		t.Errorf("ref = %+v, want tmux/%%42", ref)
 	}
 	joined := strings.Join(got, " ")
-	if !strings.Contains(joined, "tmux new-window -PF #{pane_id} -- claude /spec-kit") {
+	if !strings.Contains(joined, "tmux split-window -h -PF #{pane_id} -- claude /spec-kit") {
 		t.Errorf("tmux invocation = %q", joined)
 	}
 	// The pane ref must be persisted so NotifyContinue can find it later.
@@ -72,7 +72,7 @@ func TestNotifyContinueSendsToRecordedPanes(t *testing.T) {
 	dir := t.TempDir()
 	chdir(t, dir)
 	os.MkdirAll(".claude/state", 0o755)
-	os.WriteFile(panesFile, []byte(`{"claude":{"kind":"tmux","target":"%7"},"opencode":{"kind":"zellij","target":"maple-opencode"}}`), 0o644)
+	os.WriteFile(panesFile, []byte(`{"claude":{"kind":"tmux","target":"%7"},"opencode":{"kind":"wezterm","target":"3"}}`), 0o644)
 
 	var calls []string
 	restore := swapRunner(func(name string, args ...string) ([]byte, error) {
@@ -90,8 +90,8 @@ func TestNotifyContinueSendsToRecordedPanes(t *testing.T) {
 	if !strings.Contains(joined, "tmux send-keys -t %7 continue Enter") {
 		t.Errorf("missing tmux send-keys: %q", joined)
 	}
-	if !strings.Contains(joined, "zellij action write-chars continue") {
-		t.Errorf("missing zellij write-chars: %q", joined)
+	if !strings.Contains(joined, "wezterm cli send-text --no-paste --pane-id 3 continue") {
+		t.Errorf("missing wezterm send-text: %q", joined)
 	}
 }
 

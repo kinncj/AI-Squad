@@ -59,37 +59,60 @@ func rtkWrap(args []string) []string {
 	return args
 }
 
-// LaunchInPane opens args in a multiplexer pane/tab and records a ref keyed by
-// harness. ok=false means maple isn't inside tmux/zellij — the caller should run the
-// harness in the current terminal instead. err is set only when a multiplexer was
-// detected but the launch failed.
+// LaunchInPane opens args in a SIDE SPLIT (a pane to the right) of the current
+// multiplexer/terminal, so maple stays visible beside the harness. It records an
+// addressable ref (keyed by harness) where the terminal supports it, so approvals can
+// nudge that exact pane. ok=false means no splittable multiplexer/terminal was found —
+// the caller falls back to running in the current terminal. err is set only when a
+// split was attempted and failed.
 func LaunchInPane(getenv func(string) string, harness string, args []string) (PaneRef, bool, error) {
 	if len(args) == 0 {
 		return PaneRef{}, false, nil
 	}
 	cmd := rtkWrap(args)
 
-	if getenv("TMUX") != "" {
-		out, err := runner("tmux", append([]string{"new-window", "-PF", "#{pane_id}", "--"}, cmd...)...)
+	switch {
+	case getenv("TMUX") != "":
+		// -h = horizontal layout → new pane to the right; -PF prints its pane id.
+		out, err := runner("tmux", append([]string{"split-window", "-h", "-PF", "#{pane_id}", "--"}, cmd...)...)
 		if err != nil {
 			return PaneRef{}, true, err
 		}
-		ref := PaneRef{Kind: "tmux", Target: strings.TrimSpace(string(out))}
-		saveRef(harness, ref)
-		return ref, true, nil
-	}
+		return record(harness, "tmux", strings.TrimSpace(string(out))), true, nil
 
-	if getenv("ZELLIJ") != "" {
-		tab := "maple-" + harness
-		if _, err := runner("zellij", append([]string{"action", "new-tab", "--name", tab, "--"}, cmd...)...); err != nil {
+	case getenv("WEZTERM_PANE") != "":
+		out, err := runner("wezterm", append([]string{"cli", "split-pane", "--right", "--"}, cmd...)...)
+		if err != nil {
 			return PaneRef{}, true, err
 		}
-		ref := PaneRef{Kind: "zellij", Target: tab}
-		saveRef(harness, ref)
-		return ref, true, nil
+		return record(harness, "wezterm", strings.TrimSpace(string(out))), true, nil
+
+	case getenv("KITTY_WINDOW_ID") != "":
+		out, err := runner("kitty", append([]string{"@", "launch", "--location=vsplit", "--cwd=current", "--"}, cmd...)...)
+		if err != nil {
+			return PaneRef{}, true, err
+		}
+		return record(harness, "kitty", strings.TrimSpace(string(out))), true, nil
+
+	case getenv("ZELLIJ") != "":
+		// zellij has no per-pane id addressing, so we open a side pane but can't nudge
+		// it directly — approvals fall back to the skill's file poll. No ref recorded.
+		if _, err := runner("zellij", append([]string{"action", "new-pane", "--direction", "right", "--"}, cmd...)...); err != nil {
+			return PaneRef{}, true, err
+		}
+		return PaneRef{Kind: "zellij"}, true, nil
 	}
 
 	return PaneRef{}, false, nil
+}
+
+// record saves and returns a pane ref (nudge target) for later NotifyContinue.
+func record(harness, kind, target string) PaneRef {
+	ref := PaneRef{Kind: kind, Target: target}
+	if target != "" {
+		saveRef(harness, ref)
+	}
+	return ref
 }
 
 // nonHarnessCommands are foreground pane commands we never nudge — shells, editors,
@@ -153,18 +176,18 @@ func broadcastTmux(self string, skip map[string]bool) int {
 }
 
 func sendContinue(p PaneRef) bool {
+	if p.Target == "" {
+		return false
+	}
 	switch p.Kind {
 	case "tmux":
 		_, err := runner("tmux", "send-keys", "-t", p.Target, "continue", "Enter")
 		return err == nil
-	case "zellij":
-		if _, err := runner("zellij", "action", "go-to-tab-name", p.Target); err != nil {
-			return false
-		}
-		if _, err := runner("zellij", "action", "write-chars", "continue"); err != nil {
-			return false
-		}
-		_, err := runner("zellij", "action", "write", "13") // Enter
+	case "wezterm":
+		_, err := runner("wezterm", "cli", "send-text", "--no-paste", "--pane-id", p.Target, "continue\n")
+		return err == nil
+	case "kitty":
+		_, err := runner("kitty", "@", "send-text", "--match", "id:"+p.Target, "continue\r")
 		return err == nil
 	}
 	return false
