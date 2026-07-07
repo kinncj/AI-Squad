@@ -37,11 +37,11 @@ func (f fakeStore) ApprovePR(int) error     { return nil }
 func (f fakeStore) Tests() []state.Test {
 	return []state.Test{{Path: "app/x_test.go", Framework: "go"}}
 }
-func (f fakeStore) RunTest(state.Test) []string      { return []string{"$ go test", "ok"} }
-func (f fakeStore) SkillsSearch(string) []string     { return []string{"skill-a", "skill-b"} }
-func (f fakeStore) SkillInstall(p string) []string   { return []string{"installed " + p} }
-func (f fakeStore) SkillRemove(n string) []string    { return []string{"removed " + n} }
-func (f fakeStore) ShipSafeAudit() []string           { return []string{"$ npx ship-safe audit .", "✓ passed"} }
+func (f fakeStore) RunTest(state.Test) []string           { return []string{"$ go test", "ok"} }
+func (f fakeStore) SkillsSearch(string) []string          { return []string{"skill-a", "skill-b"} }
+func (f fakeStore) SkillInstall(p string) []string        { return []string{"installed " + p} }
+func (f fakeStore) SkillRemove(n string) []string         { return []string{"removed " + n} }
+func (f fakeStore) ShipSafeAudit() []string               { return []string{"$ npx ship-safe audit .", "✓ passed"} }
 func (f fakeStore) DesignTree() []string                  { return []string{"📁 wireframes", "  📄 home.md"} }
 func (f fakeStore) LogLines(n int) []string               { return []string{"ts=12:00  agent=qa"} }
 func (f fakeStore) GitChanges() []string                  { return []string{"── status ──", " M app/x.go"} }
@@ -55,18 +55,18 @@ func (f fakeStore) SetPinnedSession(string, string) error { return nil }
 func (f fakeStore) DesignArtifacts(id string) []state.Artifact {
 	return []state.Artifact{{Path: "docs/design/wireframes/" + id + ".wireframe.md", Kind: "wireframes", Status: "pending"}}
 }
-func (f fakeStore) ApprovalPending() string   { return "" }
-func (f fakeStore) ApproveGate() error        { return nil }
-func (f fakeStore) RejectGate() error         { return nil }
-func (f fakeStore) PortalURL() string         { return "" }
-func (f fakeStore) ProjectConfigExists() bool { return true }
-func (f fakeStore) ClaudeDirExists() bool     { return true }
-func (f fakeStore) ProjectName() string       { return "test-project" }
-func (f fakeStore) TaffyCount() int           { return 5 }
-func (f fakeStore) PipelineStatus() string             { return "DONE" }
-func (f fakeStore) Pipeline() state.Pipeline           { return state.Pipeline{Status: "DONE"} }
+func (f fakeStore) ApprovalPending() string             { return "" }
+func (f fakeStore) ApproveGate() error                  { return nil }
+func (f fakeStore) RejectGate() error                   { return nil }
+func (f fakeStore) PortalURL() string                   { return "" }
+func (f fakeStore) ProjectConfigExists() bool           { return true }
+func (f fakeStore) ClaudeDirExists() bool               { return true }
+func (f fakeStore) ProjectName() string                 { return "test-project" }
+func (f fakeStore) TaffyCount() int                     { return 5 }
+func (f fakeStore) PipelineStatus() string              { return "DONE" }
+func (f fakeStore) Pipeline() state.Pipeline            { return state.Pipeline{Status: "DONE"} }
 func (f fakeStore) MergeMapleJSON(map[string]any) error { return nil }
-func (f fakeStore) ClearPipeline() error               { return nil }
+func (f fakeStore) ClearPipeline() error                { return nil }
 
 func newModel(t *testing.T) Model {
 	t.Helper()

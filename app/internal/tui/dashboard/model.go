@@ -81,43 +81,44 @@ const (
 
 // Model is the top-level dashboard model.
 type Model struct {
-	theme       *theme.Theme
-	mode        theme.Mode
-	group       *pane.Group
-	stories     *storySource
-	sessions    *sessionSource
-	prs         *prSource
-	prNumber    int
-	prTitle     string
-	qa          *qaSource
-	design      *pane.Pane
-	logs        *pane.Pane
-	detail      *pane.Pane
-	fullscreen  int
-	store       Store
-	execFn      func([]string) tea.Cmd
-	openFn      func([]string) error // browser/URL opener; injected in tests so they never open a real browser
-	lookPath    func(string) (string, error)
-	picker      *pane.Pane
-	pickItems   []pickItem
-	pickerMode  string
-	width       int
-	height      int
-	splash      bool
-	booted      bool
-	showHelp    bool
-	filtering   bool
-	filterBuf   string
-	commanding  bool
-	cmdBuf      string
-	reviewStory string
-	detailKind  string
-	storyPath   string // Story.md path of the open story detail (for `i` implement)
-	lastGate    string // last-seen pending approval stage, to detect gate-clear → nudge
-	status      string
-	version     string
-	portalURL   string
-	exitAction  ExitAction
+	theme        *theme.Theme
+	mode         theme.Mode
+	group        *pane.Group
+	stories      *storySource
+	sessions     *sessionSource
+	prs          *prSource
+	prNumber     int
+	prTitle      string
+	qa           *qaSource
+	design       *pane.Pane
+	logs         *pane.Pane
+	detail       *pane.Pane
+	fullscreen   int
+	store        Store
+	execFn       func([]string) tea.Cmd
+	openFn       func([]string) error // browser/URL opener; injected in tests so they never open a real browser
+	lookPath     func(string) (string, error)
+	picker       *pane.Pane
+	pickItems    []pickItem
+	pickerMode   string
+	width        int
+	height       int
+	splash       bool
+	booted       bool
+	showHelp     bool
+	filtering    bool
+	filterBuf    string
+	commanding   bool
+	cmdBuf       string
+	reviewStory  string
+	reviewCursor int
+	detailKind   string
+	storyPath    string // Story.md path of the open story detail (for `i` implement)
+	lastGate     string // last-seen pending approval stage, to detect gate-clear → nudge
+	status       string
+	version      string
+	portalURL    string
+	exitAction   ExitAction
 }
 
 // ExitAction is a follow-up workflow the dashboard requests when it quits. The outer
@@ -162,15 +163,15 @@ func New(version string, store Store, portalURL string) (Model, error) {
 	design.SetFocus(true)
 	logs.SetFocus(true)
 	return Model{
-		theme:    th,
-		mode:     th.ActiveMode(),
-		group:    g,
-		stories:  stories,
-		sessions: sessions,
-		prs:      prs,
-		qa:       qa,
-		design:   design,
-		logs:     logs,
+		theme:     th,
+		mode:      th.ActiveMode(),
+		group:     g,
+		stories:   stories,
+		sessions:  sessions,
+		prs:       prs,
+		qa:        qa,
+		design:    design,
+		logs:      logs,
 		store:     store,
 		splash:    true,
 		version:   version,
@@ -675,7 +676,39 @@ func (m *Model) resumePipeline() tea.Cmd {
 // `a` approves.
 func (m *Model) openReview(storyID string) {
 	m.reviewStory = storyID
-	m.setDetail("Design Review · "+storyID, formatArtifacts(m.store.DesignArtifacts(storyID)))
+	arts := m.store.DesignArtifacts(storyID)
+	if m.reviewCursor >= len(arts) {
+		m.reviewCursor = len(arts) - 1
+	}
+	if m.reviewCursor < 0 {
+		m.reviewCursor = 0
+	}
+	m.setDetail("Design Review · "+storyID, formatArtifacts(arts, m.reviewCursor))
+}
+
+// approveSelectedReview approves just the highlighted artifact (matching main's per-artifact
+// approval). Returns 1 if it approved one, else 0.
+func (m *Model) approveSelectedReview() int {
+	arts := m.store.DesignArtifacts(m.reviewStory)
+	if m.reviewCursor < 0 || m.reviewCursor >= len(arts) {
+		return 0
+	}
+	a := arts[m.reviewCursor]
+	if a.Status == "approved" || state.ApproveArtifact(a.Path) != nil {
+		return 0
+	}
+	m.openReview(m.reviewStory)
+	return 1
+}
+
+// moveReviewCursor shifts the selected artifact and re-renders, when a review is open.
+func (m *Model) moveReviewCursor(d int) bool {
+	if m.reviewStory == "" {
+		return false
+	}
+	m.reviewCursor += d
+	m.openReview(m.reviewStory)
+	return true
 }
 
 // approveReview approves every not-yet-approved artifact for the review story and
@@ -693,18 +726,22 @@ func (m *Model) approveReview() int {
 	return n
 }
 
-// formatArtifacts renders design artifacts for the review overlay.
-func formatArtifacts(arts []state.Artifact) []string {
+// formatArtifacts renders design artifacts for the review overlay, marking the selected one.
+func formatArtifacts(arts []state.Artifact, cursor int) []string {
 	if len(arts) == 0 {
 		return []string{"(no design artifacts for this story)", "", "run the design phase first"}
 	}
-	out := []string{"[a] approve all pending · esc close", ""}
-	for _, a := range arts {
+	out := []string{"j/k select · [a] approve selected · [A] approve all · esc close", ""}
+	for i, a := range arts {
 		mark := "•"
 		if a.Status == "approved" {
 			mark = "✓"
 		}
-		out = append(out, fmt.Sprintf("%s [%s] %s — %s", mark, a.Kind, filepath.Base(a.Path), a.Status))
+		cur := "  "
+		if i == cursor {
+			cur = "▶ "
+		}
+		out = append(out, fmt.Sprintf("%s%s [%s] %s — %s", cur, mark, a.Kind, filepath.Base(a.Path), a.Status))
 	}
 	return out
 }
@@ -964,8 +1001,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "a":
 			switch {
 			case m.reviewStory != "":
-				n := m.approveReview()
-				m.status = fmt.Sprintf("approved %d artifact(s) · %s", n, continueNote(harness.NotifyContinue(os.Getenv)))
+				n := m.approveSelectedReview()
+				m.status = fmt.Sprintf("approved %d artifact · %s", n, continueNote(harness.NotifyContinue(os.Getenv)))
 			case m.detailKind == "pipeline":
 				if m.store.ApprovalPending() == "" {
 					m.status = "no gate awaiting approval"
@@ -999,7 +1036,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "A":
-			if m.detailKind == "pipeline" && strings.EqualFold(m.store.PipelineStatus(), "RATE_LIMITED") {
+			if m.reviewStory != "" {
+				n := m.approveReview()
+				m.status = fmt.Sprintf("approved all %d pending · %s", n, continueNote(harness.NotifyContinue(os.Getenv)))
+			} else if m.detailKind == "pipeline" && strings.EqualFold(m.store.PipelineStatus(), "RATE_LIMITED") {
 				next := !m.store.Pipeline().AutoResume
 				if err := m.store.MergeMapleJSON(map[string]any{"auto_resume": next}); err == nil {
 					m.openPipeline()
@@ -1021,8 +1061,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.status = "no design portal running"
 			}
 		case "up", "k":
+			if m.moveReviewCursor(-1) {
+				break
+			}
 			p.ScrollBy(-1, p.VisibleRows())
 		case "down", "j":
+			if m.moveReviewCursor(1) {
+				break
+			}
 			p.ScrollBy(1, p.VisibleRows())
 		case "g", "home":
 			p.Top()
