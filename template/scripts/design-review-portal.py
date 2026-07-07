@@ -6,9 +6,14 @@ import json
 import os
 import pathlib
 import posixpath
+import queue
 import re
 import secrets
+import socket
 import subprocess
+import sys
+import threading
+import time
 import urllib.parse
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -41,6 +46,134 @@ def read_text(path: pathlib.Path) -> str:
         return ""
 
 
+class ControlSocket:
+    """Local control channel the maple TUI (and agents) connect to. A persistent
+    connection that sent {"role":"tui"} marks maple as connected; any {"event":...}
+    line is broadcast to browser subscribers over SSE. Unix-domain socket on
+    macOS/Linux, localhost TCP on Windows. State stays file-based; this is signals."""
+
+    def __init__(self, root: pathlib.Path):
+        self.root = root
+        self.state_dir = root / ".claude" / "state"
+        self.sock_path = self.state_dir / "maple.sock"
+        self.addr_file = self.state_dir / "maple-sock.addr"
+        self._lock = threading.Lock()
+        self._tui = 0                     # open connections registered as the TUI
+        self._subs: List["queue.Queue"] = []
+        self._srv: Optional[socket.socket] = None
+        self._stop = False
+
+    # ── connectivity ─────────────────────────────────────────────────────────
+    def connected(self) -> bool:
+        with self._lock:
+            return self._tui > 0
+
+    # ── SSE fan-out ──────────────────────────────────────────────────────────
+    def subscribe(self) -> "queue.Queue":
+        q: "queue.Queue" = queue.Queue(maxsize=256)
+        with self._lock:
+            self._subs.append(q)
+        return q
+
+    def unsubscribe(self, q: "queue.Queue") -> None:
+        with self._lock:
+            if q in self._subs:
+                self._subs.remove(q)
+
+    def publish(self, event: Dict) -> None:
+        with self._lock:
+            subs = list(self._subs)
+        for q in subs:
+            try:
+                q.put_nowait(event)
+            except queue.Full:
+                pass
+
+    # ── lifecycle ────────────────────────────────────────────────────────────
+    def start(self) -> None:
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        if sys.platform == "win32":
+            srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            srv.bind(("127.0.0.1", 0))
+            addr = "tcp:127.0.0.1:%d" % srv.getsockname()[1]
+        else:
+            try:
+                self.sock_path.unlink()
+            except FileNotFoundError:
+                pass
+            srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            srv.bind(str(self.sock_path))
+            addr = "unix:%s" % self.sock_path
+        srv.listen(8)
+        self._srv = srv
+        self.addr_file.write_text(addr + "\n", encoding="utf-8")
+        threading.Thread(target=self._accept_loop, daemon=True).start()
+
+    def stop(self) -> None:
+        self._stop = True
+        if self._srv is not None:
+            try:
+                self._srv.close()
+            except OSError:
+                pass
+        for f in (self.addr_file, self.sock_path):
+            try:
+                f.unlink()
+            except (FileNotFoundError, OSError):
+                pass
+
+    def _accept_loop(self) -> None:
+        while not self._stop and self._srv is not None:
+            try:
+                conn, _ = self._srv.accept()
+            except OSError:
+                return
+            threading.Thread(target=self._client, args=(conn,), daemon=True).start()
+
+    def _client(self, conn: socket.socket) -> None:
+        is_tui = False
+        buf = b""
+        try:
+            conn.settimeout(None)
+            while not self._stop:
+                data = conn.recv(4096)
+                if not data:
+                    break
+                buf += data
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        msg = json.loads(line.decode("utf-8"))
+                    except Exception:
+                        continue
+                    if not isinstance(msg, dict):
+                        continue
+                    if msg.get("role") == "tui" and not is_tui:
+                        is_tui = True
+                        with self._lock:
+                            self._tui += 1
+                        self.publish({"event": "maple", "connected": True, "ts": now_iso()})
+                    if msg.get("event"):
+                        msg.setdefault("ts", now_iso())
+                        self.publish(msg)
+        except OSError:
+            pass
+        finally:
+            try:
+                conn.close()
+            except OSError:
+                pass
+            if is_tui:
+                with self._lock:
+                    self._tui = max(0, self._tui - 1)
+                still = self.connected()
+                self.publish({"event": "maple", "connected": still, "ts": now_iso()})
+
+
 class PortalState:
     def __init__(self, root: pathlib.Path, token_file: pathlib.Path):
         self.root = root
@@ -52,7 +185,23 @@ class PortalState:
         self.feedback_file = self.state_dir / "design-feedback.json"
         self.feedback_log = self.state_dir / "design-feedback.log"
         self.panes_file = self.state_dir / "panes.json"
+        self.alive_file = self.state_dir / "maple-alive"
         self.token_file = token_file
+        self.control: Optional[ControlSocket] = None  # set in main()
+
+    # maple_status reports whether the maple TUI is connected. The socket (a live held
+    # connection) is authoritative and survives a SIGKILL; the file heartbeat is a
+    # fallback (fresh within 6s) for when the socket isn't available.
+    def maple_status(self) -> Dict:
+        if self.control is not None and self.control.connected():
+            return {"connected": True, "source": "socket", "last_seen": now_iso()}
+        try:
+            age = time.time() - self.alive_file.stat().st_mtime
+        except OSError:
+            return {"connected": False, "source": "none", "last_seen": ""}
+        if age <= 6:
+            return {"connected": True, "source": "heartbeat", "last_seen": now_iso()}
+        return {"connected": False, "source": "heartbeat", "last_seen": ""}
 
     def token(self) -> str:
         tok = read_text(self.token_file)
@@ -80,6 +229,7 @@ class PortalState:
             "feedback": feedback,
             "uploads": self.list_uploads(),
             "declared_artifacts": self.declared_artifacts(stage),
+            "maple": self.maple_status(),
         }
 
     def pending_stage(self) -> str:
@@ -495,6 +645,9 @@ def render_index(token: str) -> str:
     .wrap {{ max-width:1200px; margin:0 auto; padding:24px; }}
     .h1 {{ font-size:24px; font-weight:700; margin:0 0 16px; }}
     .sub {{ color:var(--muted); font-size:13px; margin-bottom:16px; }}
+    .conn {{ font-size:12px; font-weight:600; padding:2px 8px; border-radius:10px; vertical-align:middle; margin-left:8px; }}
+    .conn-on {{ color:var(--ok); background:rgba(34,197,94,0.12); }}
+    .conn-off {{ color:var(--bad); background:rgba(239,68,68,0.12); }}
     .row {{ display:grid; grid-template-columns: 1fr 1fr; gap:16px; }}
     @media (max-width: 980px) {{ .row {{ grid-template-columns: 1fr; }} }}
     .card {{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }}
@@ -586,7 +739,7 @@ def render_index(token: str) -> str:
 </head>
 <body>
   <div class="wrap">
-    <div class="h1">MAPLE Design Review Portal</div>
+    <div class="h1">MAPLE Design Review Portal <span id="maple-conn" class="conn conn-off" title="maple TUI connection">● maple: offline</span></div>
     <div class="sub">Companion to TUI pipeline approvals. TUI remains the primary control surface.</div>
     <div class="row">
       <div class="card">
@@ -804,6 +957,7 @@ def render_index(token: str) -> str:
       document.getElementById("status").textContent = s.status || "-";
       document.getElementById("pending").textContent = s.approval_pending || "-";
       document.getElementById("updated").textContent = s.updated_at || "-";
+      if (s.maple) setMapleConn(s.maple.connected, s.maple.source);
       if (s.approval_pending && s.feedback && s.feedback.message) {{
         document.getElementById("feedback").value = s.feedback.message;
       }}
@@ -1214,11 +1368,33 @@ def render_index(token: str) -> str:
       }}
     }}
 
+    function setMapleConn(connected, source) {{
+      const el = document.getElementById("maple-conn");
+      if (!el) return;
+      el.className = "conn " + (connected ? "conn-on" : "conn-off");
+      const via = source && source !== "none" ? " (" + source + ")" : "";
+      el.textContent = connected ? "● maple: connected" + via : "● maple: offline";
+    }}
+
+    // Live push: maple/agents emit events over the control socket; the portal relays
+    // them here via SSE so the page updates instantly instead of only on the 4s poll.
+    function subscribeEvents() {{
+      let es;
+      try {{ es = new EventSource("/api/events"); }} catch (e) {{ return; }}
+      es.onmessage = (m) => {{
+        let ev; try {{ ev = JSON.parse(m.data); }} catch (e) {{ return; }}
+        if (ev.event === "maple") setMapleConn(!!ev.connected, "socket");
+        refreshAll().catch(() => {{}});  // any event → pull fresh state
+      }};
+      es.onerror = () => {{ /* browser auto-reconnects */ }};
+    }}
+
     refreshAll().catch(err => {{
       document.getElementById("msg").textContent = err.message;
     }});
     bindMarkdownLinks("previewBody");
     bindMarkdownLinks("modalBody");
+    subscribeEvents();
     setInterval(() => refreshAll().catch(() => {{}}), 4000);
   </script>
 </body>
@@ -1245,6 +1421,37 @@ class Handler(BaseHTTPRequestHandler):
 
     def _state(self) -> PortalState:
         return self.server.portal_state  # type: ignore[attr-defined]
+
+    def _sse(self) -> None:
+        control = getattr(self.server, "control_socket", None)
+        if control is None:
+            self._json({"error": "no control socket"}, 503)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+        q = control.subscribe()
+        try:
+            # initial connectivity snapshot so the badge is right on connect
+            snap = {"event": "maple", "connected": self._state().maple_status().get("connected", False)}
+            self.wfile.write(("data: %s\n\n" % json.dumps(snap)).encode("utf-8"))
+            self.wfile.flush()
+            while True:
+                try:
+                    ev = q.get(timeout=15)
+                    self.wfile.write(("data: %s\n\n" % json.dumps(ev)).encode("utf-8"))
+                except queue.Empty:
+                    self.wfile.write(b": keepalive\n\n")  # hold the connection open
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            control.unsubscribe(q)
+
+    def log_message(self, *args) -> None:  # quiet the default access logging
+        pass
 
     def _check_token(self) -> Optional[str]:
         token = self.headers.get("X-Maple-Token", "")
@@ -1323,6 +1530,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path.startswith("/api/state"):
             self._json(self._state().pipeline())
+            return
+        if self.path.startswith("/api/events"):
+            self._sse()
             return
         if self.path.startswith("/api/token"):
             self._json({"token": self._state().token()})
@@ -1435,10 +1645,24 @@ def main() -> None:
     root = pathlib.Path(args.root).resolve()
     token_file = pathlib.Path(args.token_file).resolve()
     state = PortalState(root=root, token_file=token_file)
+
+    control = ControlSocket(root)
+    try:
+        control.start()
+    except OSError as exc:
+        print(f"[design-portal] control socket unavailable: {exc}", flush=True)
+        control = None
+    state.control = control
+
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    server.portal_state = state  # type: ignore[attr-defined]
+    server.portal_state = state          # type: ignore[attr-defined]
+    server.control_socket = control      # type: ignore[attr-defined]
     print(f"[design-portal] listening on http://127.0.0.1:{args.port}", flush=True)
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    finally:
+        if control is not None:
+            control.stop()
 
 
 if __name__ == "__main__":
