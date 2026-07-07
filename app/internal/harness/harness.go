@@ -99,7 +99,9 @@ func LaunchInPane(getenv func(string) string, harness string, args []string) (Pa
 		if err != nil {
 			return PaneRef{}, true, err
 		}
-		return record(harness, "tmux", strings.TrimSpace(string(out))), true, nil
+		id := strings.TrimSpace(string(out))
+		_, _ = runner("tmux", "select-pane", "-t", id, "-T", harness) // pane-border title
+		return record(harness, "tmux", id), true, nil
 
 	case getenv("WEZTERM_PANE") != "":
 		out, err := runner("wezterm", append([]string{"cli", "split-pane", "--right", "--"}, cmd...)...)

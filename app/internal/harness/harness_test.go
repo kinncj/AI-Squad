@@ -51,9 +51,9 @@ func TestLaunchInPaneNoMultiplexer(t *testing.T) {
 func TestLaunchInPaneTmuxCapturesPaneID(t *testing.T) {
 	dir := t.TempDir()
 	chdir(t, dir)
-	var got []string
+	var calls []string
 	restore := swapRunner(func(name string, args ...string) ([]byte, error) {
-		got = append([]string{name}, args...)
+		calls = append(calls, name+" "+strings.Join(args, " "))
 		return []byte("%42\n"), nil
 	})
 	defer restore()
@@ -72,9 +72,12 @@ func TestLaunchInPaneTmuxCapturesPaneID(t *testing.T) {
 	if ref.Kind != "tmux" || ref.Target != "%42" {
 		t.Errorf("ref = %+v, want tmux/%%42", ref)
 	}
-	joined := strings.Join(got, " ")
+	joined := strings.Join(calls, "\n")
 	if !strings.Contains(joined, "tmux split-window -h -PF #{pane_id} -- claude /spec-kit") {
-		t.Errorf("tmux invocation = %q", joined)
+		t.Errorf("split-window call missing: %q", joined)
+	}
+	if !strings.Contains(joined, "tmux select-pane -t %42 -T claude") {
+		t.Errorf("pane should be titled with the harness name: %q", joined)
 	}
 	// The pane ref must be persisted so NotifyContinue can find it later.
 	if _, statErr := os.Stat(panesFile); statErr != nil {

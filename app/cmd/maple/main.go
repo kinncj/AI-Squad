@@ -100,11 +100,75 @@ func runTUI() {
 		usage(os.Stdout)
 		return
 	}
+	// Make maple a mini agentic IDE: if we're not already in a multiplexer, relaunch
+	// inside a configured tmux session so harnesses open as side panes. Opt out with
+	// MAPLE_NO_TMUX=1 (then harnesses run in-terminal / suspend).
+	if !inMultiplexer() && os.Getenv("MAPLE_NO_TMUX") == "" {
+		if wrapInTmux() {
+			return
+		}
+	}
 	if initialized() {
 		runDashboardLoop()
 		return
 	}
 	runSetupMenu()
+}
+
+// inMultiplexer reports whether maple is already running inside a terminal multiplexer
+// or a splittable terminal it can drive.
+func inMultiplexer() bool {
+	for _, k := range []string{"TMUX", "ZELLIJ", "WEZTERM_PANE", "KITTY_WINDOW_ID"} {
+		if os.Getenv(k) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// wrapInTmux relaunches maple inside a fresh, maple-styled tmux session (side-pane
+// borders, a status bar with pane-jump hints) and attaches to it. Returns false (so the
+// caller proceeds normally) when tmux isn't available or the session can't be created.
+func wrapInTmux() bool {
+	tmux, err := exec.LookPath("tmux")
+	if err != nil {
+		return false
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	const session = "maple"
+	_ = exec.Command(tmux, "kill-session", "-t", session).Run() // clear a stale one
+	if err := exec.Command(tmux, "new-session", "-d", "-s", session, self).Run(); err != nil {
+		return false
+	}
+	configureMapleTmux(tmux, session)
+	fmt.Println(brand.Leaf + " starting maple in tmux — harnesses open in a side pane · C-b ←/→ to switch")
+	attach := exec.Command(tmux, "attach", "-t", session)
+	attach.Stdin, attach.Stdout, attach.Stderr = os.Stdin, os.Stdout, os.Stderr
+	_ = attach.Run()
+	return true
+}
+
+// configureMapleTmux styles the maple session: pane-border titles (so you can see
+// which pane is maple vs a harness), mouse on, and a status bar showing how to switch
+// panes. Scoped to the maple session — never touches the user's global tmux config.
+func configureMapleTmux(tmux, s string) {
+	opts := [][]string{
+		{"set-option", "-t", s, "mouse", "on"},
+		{"set-option", "-t", s, "-w", "pane-border-status", "top"},
+		{"set-option", "-t", s, "-w", "pane-border-format", " #{?pane_active,#[bold]▸ ,}#{pane_title} "},
+		{"set-option", "-t", s, "status-style", "bg=default"},
+		{"set-option", "-t", s, "status-left", "#[bold] 🍁 maple #[default]"},
+		{"set-option", "-t", s, "status-left-length", "24"},
+		{"set-option", "-t", s, "status-right", "#[dim]C-b ←/→ switch · C-b z zoom · C-b d detach "},
+		{"set-option", "-t", s, "status-right-length", "60"},
+		{"select-pane", "-t", s, "-T", "maple"},
+	}
+	for _, o := range opts {
+		_ = exec.Command(tmux, o...).Run()
+	}
 }
 
 // runSetupMenu loops the setup menu until the project is initialised (then hands off
