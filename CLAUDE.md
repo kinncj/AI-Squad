@@ -186,8 +186,11 @@ otherwise it falls back to `tea.ExecProcess` (suspend/resume in the current term
 is the preferred backend but always optional — never bundled, never required (see
 `docs/architecture/0001-herdr-primary-multiplexer.md`). The `maple req` "Implement via TAFFY"
 launch shares this path (side pane when in a multiplexer, else in-terminal). To make splits
-work in plain terminals, `runTUI` **auto-wraps maple in a styled tmux session** (`wrapInTmux`,
-opt out `MAPLE_NO_TMUX=1`; no herdr auto-wrap yet). Harness launches must NOT `tea.Quit`.
+work in plain terminals, `runTUI` **auto-wraps maple into a multiplexer** when not already
+in one: `wrapInHerdr` first (isolated persistent `maple` herdr session — stop-stale → headless
+`server` → `workspace create` → sentinel+`wait output` → `exec maple` → attach; opt out
+`MAPLE_NO_HERDR=1`), else `wrapInTmux` (styled tmux session; opt out `MAPLE_NO_TMUX=1`). Harness
+launches must NOT `tea.Quit`.
 
 `tea.Quit` + `ExitAction` is only for follow-up workflows that need the whole terminal:
 `n`→req, `u`→update, `:labels`/`:project`. The outer `runDashboardLoop` runs them in-process

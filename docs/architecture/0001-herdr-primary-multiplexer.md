@@ -44,10 +44,11 @@ primary backend when present.
   dashboard `L` key, so it opens beside maple instead of taking over the terminal.
 - No new compile-time dependency: shell out to the `herdr` binary, same as tmux.
 
+**Goals (added):**
+- On startup outside any multiplexer, auto-wrap maple *into* herdr when installed, in
+  preference to tmux — so herdr is the default, not just the in-session backend.
+
 **Non-Goals:**
-- Auto-wrapping maple *into* a new herdr session on startup (the tmux `wrapInTmux` analog).
-  herdr owns a persistent server/session lifecycle that is materially different from
-  `tmux new-session`; wrapping into it is deferred to a later ADR.
 - Feeding herdr's native agent-state UI (`pane report-agent`). Attractive follow-up, out of
   scope here.
 - Bundling or installing herdr from maple's installer.
@@ -71,6 +72,16 @@ Backend operations map to the herdr CLI (all output is newline-delimited JSON):
 reused by `main.inMultiplexer()` (so startup auto-wrap skips when already in herdr) and by
 `req.launchImplementation` (so TAFFY launches into a side pane when a multiplexer exists,
 else falls back to the in-terminal `tea.ExecProcess`).
+
+**Startup auto-wrap.** When maple starts outside any multiplexer, `runTUI` wraps it into one
+before showing the TUI: `wrapInHerdr` first, then `wrapInTmux`. herdr has no `tmux
+new-session <cmd>` equivalent — a headless server starts with no panes — so `wrapInHerdr`
+uses an isolated persistent session named `maple`: stop any stale `maple` session → start a
+headless `herdr --session maple server` → `workspace create` (returns `result.root_pane.pane_id`)
+→ echo a sentinel and `herdr wait output --match` until the pane's shell is live → `pane run
+<id> "exec maple"` → `herdr --session maple` to attach. The exec'd maple inherits the pane's
+`HERDR_PANE_ID`, so it does not re-wrap. Any failed step stops the session and falls back to
+tmux. Opt out with `MAPLE_NO_HERDR=1`.
 
 ```mermaid
 flowchart TD
@@ -154,6 +165,6 @@ Status: **accepted**
 - [x] herdr branch in `LaunchInPane` + nudge in `sendContinue` + `InMultiplexer` helper
 - [x] TAFFY "Implement" launches into a side pane via `LaunchInPane`
 - [x] Unit tests (fake runner) + live round-trip proof against herdr 0.7.2
-- [ ] Follow-up ADR: auto-wrap maple into a herdr session on startup (herdr analog of `wrapInTmux`)
+- [x] Startup auto-wrap into an isolated `maple` herdr session (`wrapInHerdr`), preferred over tmux
 - [ ] Follow-up: report harness state to herdr via `pane report-agent` (native blocked/working/done UI)
 - [ ] Follow-up: herdr sibling-pane broadcast for harnesses maple did not launch
