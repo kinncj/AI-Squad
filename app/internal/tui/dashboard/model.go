@@ -828,6 +828,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "enter":
+		// On the Sessions pane, Enter resumes the harness (like o) — not a transcript dump.
+		if m.group.FocusIndex() == paneSessions {
+			return m, m.openSession()
+		}
 		m.openDetail()
 	case "C":
 		m.setDetail("Git Changes", m.store.GitChanges())
