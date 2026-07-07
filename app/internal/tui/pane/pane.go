@@ -171,6 +171,39 @@ func (p *Pane) SortKey() string {
 	return keys[p.sortIdx%len(keys)]
 }
 
+// SetSource swaps the pane's backing source in place, preserving the current filter,
+// selection, and scroll offset (clamped to the new row count). Used by live reloads so
+// a periodic refresh never resets the user's cursor or scroll position.
+func (p *Pane) SetSource(src Source) {
+	p.src = src
+	if f, ok := src.(Filterable); ok && p.filter != "" {
+		f.SetFilter(p.filter)
+	}
+	n := p.rowCount()
+	if !p.selectable() {
+		p.sel = -1
+	} else if p.sel < 0 {
+		p.sel = 0
+	}
+	if n == 0 {
+		p.sel = clampSelZero(p.selectable())
+		p.offset = 0
+		return
+	}
+	if p.sel >= n {
+		p.sel = n - 1
+	}
+	p.offset = clamp(p.offset, 0, p.maxOffset(p.contentH))
+}
+
+// clampSelZero returns 0 for a selectable empty source, -1 otherwise.
+func clampSelZero(selectable bool) int {
+	if selectable {
+		return 0
+	}
+	return -1
+}
+
 // SetFocus toggles the focus ring.
 func (p *Pane) SetFocus(b bool) { p.focused = b }
 

@@ -537,9 +537,41 @@ func itoa(n int) string {
 // splashDoneMsg auto-dismisses the splash after a short delay so it never blocks.
 type splashDoneMsg struct{}
 
-// Init implements tea.Model. It starts the splash auto-dismiss timer.
+// tickMsg drives the local file-state refresh; netTickMsg drives the slower network
+// (gh PR) refresh; prsLoadedMsg carries the async PR result back to the model.
+type tickMsg struct{}
+type netTickMsg struct{}
+type prsLoadedMsg struct{ prs []state.PullRequest }
+
+// Refresh cadences: local file reads are cheap and drive real-time approval/pipeline
+// feedback; the network refresh (gh) is far slower so it runs infrequently and async.
+const (
+	tickInterval    = 2 * time.Second
+	netTickInterval = 60 * time.Second
+)
+
+func tickCmd() tea.Cmd {
+	return tea.Tick(tickInterval, func(time.Time) tea.Msg { return tickMsg{} })
+}
+func netTickCmd() tea.Cmd {
+	return tea.Tick(netTickInterval, func(time.Time) tea.Msg { return netTickMsg{} })
+}
+
+// loadPRsCmd fetches pull requests off the render path (gh is slow / network-bound).
+func (m Model) loadPRsCmd() tea.Cmd {
+	store := m.store
+	return func() tea.Msg { return prsLoadedMsg{prs: store.PullRequests()} }
+}
+
+// Init implements tea.Model. It starts the splash timer and the refresh ticks, and
+// kicks off the first async PR load.
 func (m Model) Init() tea.Cmd {
-	return tea.Tick(1400*time.Millisecond, func(time.Time) tea.Msg { return splashDoneMsg{} })
+	return tea.Batch(
+		tea.Tick(1400*time.Millisecond, func(time.Time) tea.Msg { return splashDoneMsg{} }),
+		tickCmd(),
+		netTickCmd(),
+		m.loadPRsCmd(),
+	)
 }
 
 // Update implements tea.Model.
@@ -552,6 +584,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.splash = false
 			return m, tea.ClearScreen
 		}
+	case tickMsg:
+		// Real-time local refresh: pipeline status, approvals, stories, sessions,
+		// tests, design, logs — so the dashboard reflects file/process changes without
+		// a keypress. The header reads status live each render; this refreshes panes.
+		if !m.splash {
+			m.reload()
+		}
+		return m, tickCmd()
+	case netTickMsg:
+		return m, tea.Batch(m.loadPRsCmd(), netTickCmd())
+	case prsLoadedMsg:
+		m.prs = newPRSource(msg.prs)
+		m.group.Panes()[panePRs].SetSource(m.prs)
+		return m, nil
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	case tea.MouseMsg:
@@ -775,6 +821,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		m.reload()
 		m.status = "reloaded"
+		return m, m.loadPRsCmd()
 	default:
 		// Keys whose overlays are not yet ported in the rebuild. Registered so the
 		// surface is discoverable; each lands as its overlay is built (sub-project 5).
@@ -899,25 +946,26 @@ func (m Model) runCommand(line string) (tea.Model, tea.Cmd) {
 }
 
 // reload re-reads live project state into the panes.
+// reload refreshes the local (file-based) project state in place, preserving each
+// pane's selection and scroll. It never touches the network — PRs refresh separately
+// on the slower net tick. When the pipeline overlay is open it re-reads it so stage
+// changes and approvals show live.
 func (m *Model) reload() {
 	if m.store == nil {
 		return
 	}
-	panes := m.group.Panes()
 	m.stories = newStorySource(m.store.Stories())
 	m.sessions = newSessionSource(m.store.Sessions(), m.store.PinnedSessions())
 	m.qa = newQASource(m.store.Tests())
-	panes[paneStories] = pane.New("Stories", m.stories)
-	panes[paneSessions] = pane.New("Sessions", m.sessions)
-	m.prs = newPRSource(m.store.PullRequests())
-	panes[panePRs] = pane.New("Pull Requests", m.prs)
-	panes[paneQA] = pane.New("QA / Tests", m.qa)
-	// Rebuild the group so focus wiring stays consistent.
-	m.group = pane.NewGroup(panes...)
-	m.design = pane.New("Design", linesSource{m.store.DesignTree()})
-	m.logs = pane.New("Logs", linesSource{m.store.LogLines(500)})
-	m.design.SetFocus(true)
-	m.logs.SetFocus(true)
+	panes := m.group.Panes()
+	panes[paneStories].SetSource(m.stories)
+	panes[paneSessions].SetSource(m.sessions)
+	panes[paneQA].SetSource(m.qa)
+	m.design.SetSource(linesSource{m.store.DesignTree()})
+	m.logs.SetSource(linesSource{m.store.LogLines(500)})
+	if m.detailKind == "pipeline" {
+		m.openPipeline()
+	}
 }
 
 func (m Model) handleMouse(msg tea.MouseMsg) {

@@ -167,6 +167,52 @@ func TestTabCyclesFocus(t *testing.T) {
 	}
 }
 
+// liveStore lets a test mutate the pipeline status + story count between ticks.
+type liveStore struct {
+	fakeStore
+	status *string
+	nStory *int
+}
+
+func (l liveStore) PipelineStatus() string { return *l.status }
+func (l liveStore) Stories() []state.Story {
+	out := make([]state.Story, *l.nStory)
+	for i := range out {
+		out[i] = state.Story{ID: "s" + itoa(i+1)}
+	}
+	return out
+}
+
+func TestTickRefreshesLiveStateAndKeepsSelection(t *testing.T) {
+	status, n := "RUNNING", 5
+	m := sized(t, mustNew(t, liveStore{fakeStore{n: 5}, &status, &n}))
+	_ = m.View()
+	// Move selection down twice on the Stories pane.
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = nm.(Model)
+	if m.group.Panes()[paneStories].Selected() != 2 {
+		t.Fatalf("precondition: selection should be 2, got %d", m.group.Panes()[paneStories].Selected())
+	}
+	// The pipeline status changes underneath us (a harness advanced).
+	status = "DONE"
+	n = 8
+	nm, cmd := m.Update(tickMsg{})
+	m = nm.(Model)
+	// Tick reschedules itself.
+	if cmd == nil {
+		t.Error("tick should reschedule itself")
+	}
+	// Live status is reflected in the header without a keypress.
+	if !strings.Contains(m.View(), "Gherkin: 8") {
+		t.Error("tick should refresh the story count shown in the header")
+	}
+	// Selection is preserved across the refresh.
+	if got := m.group.Panes()[paneStories].Selected(); got != 2 {
+		t.Errorf("tick must preserve selection, got %d want 2", got)
+	}
+}
+
 func TestArrowMovesSelectionOnFocusedPane(t *testing.T) {
 	m := sized(t, newModel(t))
 	// Render once so the focused pane knows its visible height.
