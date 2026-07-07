@@ -36,6 +36,7 @@ type Store interface {
 	PRDetail(number int) []string
 	ApprovePR(number int) error
 	Tests() []state.Test
+	RunTest(t state.Test) []string
 	DesignTree() []string
 	LogLines(n int) []string
 	GitChanges() []string
@@ -735,6 +736,17 @@ func (m *Model) loadPRDetailCmd(n int) tea.Cmd {
 	return func() tea.Msg { return prDetailMsg{number: n, lines: store.PRDetail(n)} }
 }
 
+type testOutMsg struct {
+	path  string
+	lines []string
+}
+
+// runTestCmd runs a single test off the UI thread and returns its output.
+func (m *Model) runTestCmd(t state.Test) tea.Cmd {
+	store := m.store
+	return func() tea.Msg { return testOutMsg{path: t.Path, lines: store.RunTest(t)} }
+}
+
 // Refresh cadences: local file reads are cheap and drive real-time approval/pipeline
 // feedback; the network refresh (gh) is far slower so it runs infrequently and async.
 const (
@@ -794,6 +806,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.detailKind == "pr" && m.prNumber == msg.number {
 			m.setDetail("PR #"+strconv.Itoa(msg.number)+" · "+m.prTitle, msg.lines)
 			m.detailKind = "pr"
+		}
+		return m, nil
+	case testOutMsg:
+		if m.detailKind == "testout" {
+			m.setDetail("Test · "+msg.path, msg.lines)
+			m.detailKind = "testout"
 		}
 		return m, nil
 	case tea.KeyMsg:
@@ -1073,6 +1091,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "Q":
 		m.group.SetFocus(paneQA)
 	case "r":
+		// On the QA pane, r runs the selected test into an output overlay; elsewhere it reloads.
+		if m.group.FocusIndex() == paneQA {
+			if tst, ok := m.qa.at(m.group.Focused().Selected()); ok {
+				m.setDetail("Test · "+tst.Path, []string{"running " + tst.Path + "…"})
+				m.detailKind = "testout"
+				return m, m.runTestCmd(tst)
+			}
+		}
 		m.reload()
 		m.status = "reloaded"
 		return m, m.loadPRsCmd()
@@ -1610,7 +1636,7 @@ func (m Model) contextKeys() string {
 	case panePRs:
 		ctx = "[Enter] detail · [a] approve · [o] open in browser · [r] refresh"
 	case paneQA:
-		ctx = "[Enter] open test · [r] rescan"
+		ctx = "[Enter] open test · [r] run test → output"
 	}
 	return ctx + " · " + global
 }

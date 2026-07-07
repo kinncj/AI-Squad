@@ -37,6 +37,7 @@ func (f fakeStore) ApprovePR(int) error     { return nil }
 func (f fakeStore) Tests() []state.Test {
 	return []state.Test{{Path: "app/x_test.go", Framework: "go"}}
 }
+func (f fakeStore) RunTest(state.Test) []string { return []string{"$ go test", "ok"} }
 func (f fakeStore) DesignTree() []string                  { return []string{"📁 wireframes", "  📄 home.md"} }
 func (f fakeStore) LogLines(n int) []string               { return []string{"ts=12:00  agent=qa"} }
 func (f fakeStore) GitChanges() []string                  { return []string{"── status ──", " M app/x.go"} }

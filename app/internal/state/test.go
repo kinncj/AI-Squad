@@ -1,16 +1,62 @@
 package state
 
 import (
+	"context"
 	"io/fs"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Test is a discovered test file surfaced in the QA pane.
 type Test struct {
 	Path      string
-	Framework string // "go", "bdd", "js", "py", "rb"
+	Framework string   // "go", "bdd", "js", "py", "rb"
+	RunCmd    []string // argv to run just this test, or nil if unknown
+}
+
+// testRunCmd builds the argv to run a single test by framework, relative to the repo root.
+func testRunCmd(framework, rel string) []string {
+	switch framework {
+	case "go":
+		return []string{"go", "test", "-v", "./" + filepath.ToSlash(filepath.Dir(rel))}
+	case "py":
+		return []string{"python3", "-m", "pytest", "-v", rel}
+	case "js":
+		return []string{"npx", "jest", "--no-coverage", rel}
+	case "bdd":
+		return []string{"npx", "cucumber-js", rel}
+	case "rb":
+		return []string{"bundle", "exec", "rspec", rel}
+	}
+	return nil
+}
+
+// RunTest executes a discovered test and returns its output as lines, relative to Root.
+func (s *FS) RunTest(t Test) []string { return runTest(s.Root, t.RunCmd) }
+
+// runTest executes a test's run command from root and returns its combined output as lines.
+func runTest(root string, cmd []string) []string {
+	if len(cmd) == 0 {
+		return []string{"(no run command available for this test)"}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
+	c.Dir = root
+	out, err := c.CombinedOutput()
+	lines := []string{"$ " + strings.Join(cmd, " "), ""}
+	lines = append(lines, strings.Split(strings.TrimRight(string(out), "\n"), "\n")...)
+	if ctx.Err() == context.DeadlineExceeded {
+		lines = append(lines, "", "(timed out after 5m)")
+	} else if err != nil {
+		lines = append(lines, "", "✗ exit: "+err.Error())
+	} else {
+		lines = append(lines, "", "✓ passed")
+	}
+	return lines
 }
 
 // skipDirs are never descended into during test discovery.
@@ -48,7 +94,7 @@ func discoverTests(root string) []Test {
 			if e != nil {
 				rel = path
 			}
-			out = append(out, Test{Path: rel, Framework: fw})
+			out = append(out, Test{Path: rel, Framework: fw, RunCmd: testRunCmd(fw, rel)})
 		}
 		return nil
 	})
