@@ -863,7 +863,7 @@ def render_index(token: str) -> str:
       <div class="h1">MAPLE Design Review</div>
       <span id="maple-conn" class="conn conn-off" title="maple TUI connection">● maple: offline</span>
     </div>
-    <div class="sub">Live companion to the TUI pipeline · approve stages, review artifacts, upload references. The TUI stays the primary control surface.</div>
+    <div class="sub">Live companion to the TUI pipeline · approve stages, review artifacts, upload references. The TUI stays the primary control surface. &nbsp;<span style="color:var(--dim)">keys: <b>a</b> approve · <b>r</b> reject · <b>c</b> changes · <b>u</b> upload · <b>g</b> refresh</span></div>
     <div class="row">
       <div class="card">
         <div class="label">Workflow</div><div id="wf" class="value">-</div>
@@ -1613,6 +1613,22 @@ def render_index(token: str) -> str:
     bindMarkdownLinks("modalBody");
     subscribeEvents();
     setInterval(() => refreshAll().catch(() => {{}}), 4000);
+
+    // TUI-style keyboard shortcuts (ignored while typing in a field or a modal is open).
+    document.addEventListener("keydown", (e) => {{
+      const tag = (document.activeElement && document.activeElement.tagName) || "";
+      if (tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const modal = document.getElementById("artifactModal");
+      if (modal && modal.classList.contains("open")) {{
+        if (e.key === "Escape") {{ e.preventDefault(); closeArtifactModal(); }}
+        return;
+      }}
+      const k = e.key.toLowerCase();
+      const map = {{ a: approveStage, r: rejectStage, c: requestChanges, g: refreshAll, ".": refreshAll }};
+      if (k === "u") {{ e.preventDefault(); document.getElementById("uploadInput").click(); return; }}
+      if (map[k]) {{ e.preventDefault(); map[k](); }}
+    }});
   </script>
 </body>
 </html>"""
