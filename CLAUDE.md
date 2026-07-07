@@ -23,7 +23,7 @@ other concern is a small, tested `app/internal/*` package.
 │       ├── gh/             # maple labels / maple project (gh CLI)
 │       ├── resume/         # maple resume-session
 │       ├── selfupdate/     # maple self-update
-│       ├── harness/        # launch a harness in a tmux/wezterm/kitty split; nudge panes
+│       ├── harness/        # launch a harness in a herdr/tmux/wezterm/kitty split; nudge panes
 │       ├── portalsock/     # control-socket client (Hold connectivity + Emit events)
 │       ├── req/            # pure gherkin-conversion core (parse/save/convert)
 │       └── tui/
@@ -176,12 +176,18 @@ keypress. Adding a file-based state field means refreshing it in `reload()`.
 
 ### Harness launch: split pane in a multiplexer, else in-terminal — never a lost maple
 
-`o`/`L`/`x`/`S`/`i` route through `Model.launch(args) → harness.LaunchInPane`. Inside
+`o`/`L`/`x`/`S`/`i` route through `Model.launch(args) → harness.LaunchInPane`. Backend
+detection is **herdr-first** (`harness.InMultiplexer`, env order `HERDR_PANE_ID`, `TMUX`,
+`WEZTERM_PANE`, `KITTY_WINDOW_ID`, `ZELLIJ`). Inside **herdr** it splits via the socket-API
+CLI (`herdr pane split → run → rename`, id parsed from `result.pane.pane_id`); inside
 tmux/wezterm/kitty it opens a **right-side split** (captures the pane id, titles the pane) so
 maple stays visible and the pane is addressable; zellij gets a side pane (no pane-id API);
-otherwise it falls back to `tea.ExecProcess` (suspend/resume in the current terminal). To make
-splits work in plain terminals, `runTUI` **auto-wraps maple in a styled tmux session**
-(`wrapInTmux`, opt out `MAPLE_NO_TMUX=1`). Harness launches must NOT `tea.Quit`.
+otherwise it falls back to `tea.ExecProcess` (suspend/resume in the current terminal). herdr
+is the preferred backend but always optional — never bundled, never required (see
+`docs/architecture/0001-herdr-primary-multiplexer.md`). The `maple req` "Implement via TAFFY"
+launch shares this path (side pane when in a multiplexer, else in-terminal). To make splits
+work in plain terminals, `runTUI` **auto-wraps maple in a styled tmux session** (`wrapInTmux`,
+opt out `MAPLE_NO_TMUX=1`; no herdr auto-wrap yet). Harness launches must NOT `tea.Quit`.
 
 `tea.Quit` + `ExitAction` is only for follow-up workflows that need the whole terminal:
 `n`→req, `u`→update, `:labels`/`:project`. The outer `runDashboardLoop` runs them in-process
@@ -194,7 +200,8 @@ A gate is pending when EITHER `.claude/state/approval-pending.txt` exists OR
 (state pkg) delete the file AND clear `maple.json` (`awaiting_approval`→null, `PAUSED`→`RUNNING`,
 merge-preserving skill keys). On any tick where a gate just cleared — TUI **or** portal —
 `reload()` calls `notifyContinue`, which types `continue` into recorded harness panes
-(tmux/wezterm/kitty) plus, as a fallback, broadcasts to sibling tmux panes running a harness.
+(herdr `pane send-text`+`send-keys enter`, tmux/wezterm/kitty send-text) plus, as a fallback,
+broadcasts to sibling tmux panes running a harness.
 
 ### `maple.json` is merge-not-overwrite
 
