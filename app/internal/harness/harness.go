@@ -31,8 +31,10 @@ var runner = func(name string, args ...string) ([]byte, error) {
 // lookPath is exec.LookPath, swappable in tests.
 var lookPath = exec.LookPath
 
-// Key maps a launch argv to a stable harness key.
+// Key maps a launch argv to a stable harness key, seeing past a leading `env VAR=VAL`
+// wrapper (added for rtk) so the real harness name is found.
 func Key(args []string) string {
+	args = skipEnv(args)
 	if len(args) == 0 {
 		return ""
 	}
@@ -50,9 +52,28 @@ func Key(args []string) string {
 	}
 }
 
-// rtkWrap prepends `env RTK_HOOK_AUDIT=1` when rtk is installed, matching how maple
-// runs harnesses so their output is token-compressed.
+// skipEnv drops a leading `env` and any VAR=VAL assignment tokens.
+func skipEnv(args []string) []string {
+	for len(args) > 0 {
+		if filepath.Base(args[0]) == "env" {
+			args = args[1:]
+			continue
+		}
+		if i := strings.IndexByte(args[0], '='); i > 0 && !strings.ContainsAny(args[0], "/ ") {
+			args = args[1:]
+			continue
+		}
+		break
+	}
+	return args
+}
+
+// rtkWrap prepends `env RTK_HOOK_AUDIT=1` when rtk is installed, matching how maple runs
+// harnesses so their output is token-compressed — unless args are already env-wrapped.
 func rtkWrap(args []string) []string {
+	if len(args) > 0 && filepath.Base(args[0]) == "env" {
+		return args
+	}
 	if p, _ := lookPath("rtk"); p != "" {
 		return append([]string{"env", "RTK_HOOK_AUDIT=1"}, args...)
 	}

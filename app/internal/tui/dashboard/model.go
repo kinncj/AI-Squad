@@ -389,14 +389,18 @@ func (m *Model) launch(args []string) tea.Cmd {
 	if m.execFn != nil {
 		return m.execFn(args)
 	}
-	if _, inPane, err := harness.LaunchInPane(os.Getenv, harness.Key(args), args); inPane {
+	name := harness.Key(args)
+	ref, inPane, err := harness.LaunchInPane(os.Getenv, name, args)
+	if inPane {
 		if err != nil {
-			m.status = "pane launch failed: " + err.Error()
+			m.status = "split failed (" + ref.Kind + "): " + err.Error()
 		} else {
-			m.status = "launched " + args[0] + " in a pane · approve gates with [P] then [a]"
+			m.status = "opened " + name + " in a " + ref.Kind + " split pane · [P]→[a] to approve gates"
 		}
 		return nil
 	}
+	// No tmux/zellij/wezterm/kitty detected — run in this terminal (suspends maple).
+	m.status = "no multiplexer — running " + name + " in this terminal; use tmux for a side pane"
 	return realExec(args)
 }
 

@@ -24,6 +24,20 @@ func TestKey(t *testing.T) {
 	if Key(nil) != "" {
 		t.Error("Key(nil) should be empty")
 	}
+	// Sees past an env VAR=VAL wrapper (added for rtk).
+	if got := Key([]string{"env", "RTK_HOOK_AUDIT=1", "copilot", "-i", "x"}); got != "copilot" {
+		t.Errorf("Key past env wrapper = %q, want copilot", got)
+	}
+}
+
+func TestRtkWrapDoesNotDoubleWrap(t *testing.T) {
+	swapLookPath(t, func(string) (string, error) { return "/usr/bin/rtk", nil })
+	// Already env-wrapped → returned unchanged (no second env prefix).
+	in := []string{"env", "RTK_HOOK_AUDIT=1", "claude"}
+	got := rtkWrap(in)
+	if len(got) != len(in) {
+		t.Errorf("rtkWrap double-wrapped: %v", got)
+	}
 }
 
 func TestLaunchInPaneNoMultiplexer(t *testing.T) {
