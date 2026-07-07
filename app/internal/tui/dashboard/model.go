@@ -60,6 +60,9 @@ type Store interface {
 	Pipeline() state.Pipeline
 	MergeMapleJSON(map[string]any) error
 	ClearPipeline() error
+	SkillsSearch(query string) []string
+	SkillInstall(pkg string) []string
+	SkillRemove(name string) []string
 }
 
 // linesSource is a scroll-only (non-selectable) pane source backing the fullscreen
@@ -741,6 +744,24 @@ type testOutMsg struct {
 	lines []string
 }
 
+type skillsMsg struct {
+	title string
+	lines []string
+}
+
+func (m *Model) skillsSearchCmd(q string) tea.Cmd {
+	store := m.store
+	return func() tea.Msg { return skillsMsg{title: "Skills · search: " + q, lines: store.SkillsSearch(q)} }
+}
+func (m *Model) skillInstallCmd(pkg string) tea.Cmd {
+	store := m.store
+	return func() tea.Msg { return skillsMsg{title: "Skills · install " + pkg, lines: store.SkillInstall(pkg)} }
+}
+func (m *Model) skillRemoveCmd(name string) tea.Cmd {
+	store := m.store
+	return func() tea.Msg { return skillsMsg{title: "Skills · remove " + name, lines: store.SkillRemove(name)} }
+}
+
 // runTestCmd runs a single test off the UI thread and returns its output.
 func (m *Model) runTestCmd(t state.Test) tea.Cmd {
 	store := m.store
@@ -813,6 +834,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setDetail("Test · "+msg.path, msg.lines)
 			m.detailKind = "testout"
 		}
+		return m, nil
+	case skillsMsg:
+		m.setDetail(msg.title, msg.lines)
+		m.detailKind = "skills"
 		return m, nil
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -1033,7 +1058,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "P":
 		m.openPipeline()
 	case "F":
-		m.setDetail("Skills", m.store.Skills())
+		lines := append([]string{
+			"Installed skills · :skills-search <q> to find · :skill-add <pkg> · :skill-remove <name>",
+			"",
+		}, m.store.Skills()...)
+		m.setDetail("Skills", lines)
+		m.detailKind = "skills"
 	case "o":
 		return m, m.openSession()
 	case "L":
@@ -1190,6 +1220,7 @@ var commandNames = []string{
 	"quit", "reload", "help", "pipeline", "changes", "design", "logs", "review",
 	"skills", "launch", "resume", "prompt", "rtk", "ship", "portal", "filter",
 	"theme", "req", "update", "labels", "project", "install-herdr",
+	"skills-search", "skill-add", "skill-remove",
 }
 
 // runCommand dispatches a `:` command line. Accepts the full action vocabulary plus
@@ -1226,7 +1257,37 @@ func (m Model) runCommand(line string) (tea.Model, tea.Cmd) {
 		m.detail, m.detailKind = nil, ""
 		m.fullscreen = toggleFS(m.fullscreen, fsLogs)
 	case "F", "skills":
-		m.setDetail("Skills", m.store.Skills())
+		lines := append([]string{
+			"Installed skills (`:skills-search <q>` to find more · `:skill-add <pkg>` · `:skill-remove <name>`):",
+			"",
+		}, m.store.Skills()...)
+		m.setDetail("Skills", lines)
+		m.detailKind = "skills"
+	case "skills-search", "search-skills":
+		q := strings.Join(fields[1:], " ")
+		if q == "" {
+			m.status = "usage: :skills-search <query>"
+			break
+		}
+		m.setDetail("Skills · searching "+q, []string{"searching skills marketplace…"})
+		m.detailKind = "skills"
+		return m, m.skillsSearchCmd(q)
+	case "skill-add", "skill-install":
+		if len(fields) < 2 {
+			m.status = "usage: :skill-add <package>"
+			break
+		}
+		m.setDetail("Skills · installing "+fields[1], []string{"installing…"})
+		m.detailKind = "skills"
+		return m, m.skillInstallCmd(fields[1])
+	case "skill-remove", "skill-rm":
+		if len(fields) < 2 {
+			m.status = "usage: :skill-remove <name>"
+			break
+		}
+		m.setDetail("Skills · removing "+fields[1], []string{"removing…"})
+		m.detailKind = "skills"
+		return m, m.skillRemoveCmd(fields[1])
 	case "L", "launch", "launcher":
 		m.openLauncher()
 	case "o", "open", "resume":
