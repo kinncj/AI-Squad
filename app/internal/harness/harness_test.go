@@ -271,6 +271,49 @@ func TestNotifyContinueHerdrPane(t *testing.T) {
 	}
 }
 
+func TestNotifyContinueHerdrSessionScoped(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	os.MkdirAll(".claude/state", 0o755)
+	os.WriteFile(panesFile, []byte(`{"copilot":{"kind":"herdr","target":"wB:p2","session":"maple-lolz"}}`), 0o644)
+
+	var calls []string
+	restore := swapRunner(func(name string, args ...string) ([]byte, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		return nil, nil
+	})
+	defer restore()
+
+	NotifyContinue(func(string) string { return "" })
+	joined := strings.Join(calls, "\n")
+	// the recorded session must be passed explicitly so the nudge hits the right socket
+	if !strings.Contains(joined, "herdr --session maple-lolz pane send-text wB:p2 continue") {
+		t.Errorf("nudge should target the recorded session: %q", joined)
+	}
+	if !strings.Contains(joined, "herdr --session maple-lolz pane send-keys wB:p2 enter") {
+		t.Errorf("send-keys should be session-scoped: %q", joined)
+	}
+}
+
+func TestHerdrSessionFromSocketPath(t *testing.T) {
+	cases := map[string]string{
+		"/Users/x/.config/herdr/sessions/maple-lolz/herdr.sock": "maple-lolz",
+		"/Users/x/.config/herdr/herdr.sock":                     "", // default session
+		"": "",
+	}
+	for sock, want := range cases {
+		got := herdrSession(func(k string) string {
+			if k == "HERDR_SOCKET_PATH" {
+				return sock
+			}
+			return ""
+		})
+		if got != want {
+			t.Errorf("herdrSession(%q) = %q, want %q", sock, got, want)
+		}
+	}
+}
+
 func TestShellQuote(t *testing.T) {
 	cases := map[string]string{
 		"simple": "simple",

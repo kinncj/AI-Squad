@@ -264,18 +264,22 @@ class PortalState:
                 continue
             kind = str(pane.get("kind", "") or "").strip()
             target = str(pane.get("target", "") or "").strip()
+            session = str(pane.get("session", "") or "").strip()
             if not kind or not target:
                 continue
             try:
                 if kind == "herdr":
+                    # scope to the recorded session so the nudge hits the right socket even
+                    # though this subprocess may not have inherited HERDR_SOCKET_PATH.
+                    sess = ["--session", session] if session else []
                     subprocess.run(
-                        ["herdr", "pane", "send-text", target, "continue"],
+                        ["herdr", *sess, "pane", "send-text", target, "continue"],
                         check=True,
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                     )
                     subprocess.run(
-                        ["herdr", "pane", "send-keys", target, "enter"],
+                        ["herdr", *sess, "pane", "send-keys", target, "enter"],
                         check=True,
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,

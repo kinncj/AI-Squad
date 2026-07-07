@@ -20,8 +20,33 @@ const panesFile = ".claude/state/panes.json"
 
 // PaneRef locates a launched harness within a multiplexer so it can be signalled.
 type PaneRef struct {
-	Kind   string `json:"kind"`   // "herdr" | "tmux" | "wezterm" | "kitty" | "zellij"
-	Target string `json:"target"` // pane id (herdr/tmux/wezterm/kitty); zellij has none
+	Kind    string `json:"kind"`              // "herdr" | "tmux" | "wezterm" | "kitty" | "zellij"
+	Target  string `json:"target"`            // pane id (herdr/tmux/wezterm/kitty); zellij has none
+	Session string `json:"session,omitempty"` // herdr session name, so the nudge targets the right socket
+}
+
+// herdrSession derives the herdr session name from HERDR_SOCKET_PATH
+// (…/sessions/<name>/herdr.sock). Empty means the default session. Recorded at launch so
+// the nudge can pass `--session <name>` explicitly instead of relying on a nudging process
+// (e.g. the portal subprocess) inheriting HERDR_SOCKET_PATH.
+func herdrSession(getenv func(string) string) string {
+	sock := getenv("HERDR_SOCKET_PATH")
+	const marker = "/sessions/"
+	if i := strings.Index(sock, marker); i >= 0 {
+		rest := sock[i+len(marker):]
+		if j := strings.IndexByte(rest, '/'); j > 0 {
+			return rest[:j]
+		}
+	}
+	return ""
+}
+
+// herdrArgs returns the leading `herdr` args that pin a session, or none for the default.
+func herdrArgs(session string) []string {
+	if session != "" {
+		return []string{"--session", session}
+	}
+	return nil
 }
 
 // multiplexerEnvVars are the environment markers that mean maple is inside a splittable
@@ -126,7 +151,9 @@ func LaunchInPane(getenv func(string) string, harness string, args []string) (Pa
 			return PaneRef{}, true, err
 		}
 		_, _ = runner("herdr", "pane", "rename", id, harness)
-		return record(harness, "herdr", id), true, nil
+		ref := PaneRef{Kind: "herdr", Target: id, Session: herdrSession(getenv)}
+		saveRef(harness, ref)
+		return ref, true, nil
 
 	case getenv("TMUX") != "":
 		// -h = horizontal layout → new pane to the right; -PF prints its pane id.
@@ -277,10 +304,12 @@ func sendContinue(p PaneRef) bool {
 	}
 	switch p.Kind {
 	case "herdr":
-		if _, err := runner("herdr", "pane", "send-text", p.Target, "continue"); err != nil {
+		st := append(herdrArgs(p.Session), "pane", "send-text", p.Target, "continue")
+		if _, err := runner("herdr", st...); err != nil {
 			return false
 		}
-		_, err := runner("herdr", "pane", "send-keys", p.Target, "enter")
+		sk := append(herdrArgs(p.Session), "pane", "send-keys", p.Target, "enter")
+		_, err := runner("herdr", sk...)
 		return err == nil
 	case "tmux":
 		_, err := runner("tmux", "send-keys", "-t", p.Target, "continue", "Enter")
