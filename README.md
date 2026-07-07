@@ -23,11 +23,16 @@
 curl -fsSL https://raw.githubusercontent.com/kinncj/MAPLE/main/scripts/install.sh | bash
 ```
 
-Installs `maple` and `rtk` to `~/.tools/maple/bin/`. Add to `PATH`:
+Installs `maple` and `rtk` to `~/.tools/maple/bin/`, and installs [`herdr`](https://herdr.dev)
+(agent-native terminal multiplexer maple prefers for harness side-panes) via its official
+installer. Add maple to `PATH`:
 
 ```bash
 echo 'export PATH="$HOME/.tools/maple/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
 ```
+
+Skip the extras if you don't want them: `--skip-rtk` and/or `--skip-herdr` (or `SKIP_RTK=1` /
+`SKIP_HERDR=1`). herdr is optional — without it maple falls back to tmux.
 
 **Windows** (PowerShell):
 
@@ -90,13 +95,27 @@ MAPLE works across all four AI coding harnesses. Agents, skills, and TAFFY workf
 
 ## The `maple` Dashboard
 
-Run `maple` inside any project initialized with `maple init`. Recommended: open inside **tmux** or **zellij** so harnesses launch in new tabs without closing the dashboard.
+Run `maple` inside any project initialized with `maple init`. maple runs as a **mini agentic
+IDE**: harnesses launch in a **side pane** next to the dashboard, and approvals nudge them to
+continue. To do that it needs a multiplexer — and if you're not already in one, maple wraps
+itself in one for you on startup.
+
+Backend preference: **[herdr](https://herdr.dev) → tmux → wezterm → kitty → zellij**. herdr is
+agent-native (per-pane addressing + socket API for the continue-nudge) so maple prefers it when
+installed; otherwise it auto-wraps in a styled tmux session. You don't have to do anything —
+just run `maple`. To pick your own, start the multiplexer first:
 
 ```bash
-tmux new-session -s work   # then: maple
+herdr                       # then: maple   (preferred — installed by the maple installer)
+# or
+tmux new-session -s work    # then: maple
 # or
 zellij                      # then: maple
 ```
+
+Opt out of auto-wrap per backend: `MAPLE_NO_HERDR=1` and/or `MAPLE_NO_TMUX=1`. With both off,
+harnesses run in the current terminal (suspend/resume). See
+[ADR 0001](docs/architecture/0001-herdr-primary-multiplexer.md) for the full design.
 
 ### Keybindings
 
@@ -108,7 +127,7 @@ zellij                      # then: maple
 | `Enter` | Open detail (story, session, PR, test file) |
 | `o` | Open selected session + auto-pin it |
 | `p` | Pin selected session to `.claude/state/sessions.json` |
-| `L` | Launch overlay — pick harness, type optional command, open in new tab |
+| `L` | Launch overlay — pick harness, type optional command, open in a side pane (herdr/tmux/wezterm/kitty) |
 | `x` | TAFFY picker — select a workflow, skill, or agent to launch |
 | `P` | Pipeline status — live view of active TAFFY run; `[a]` approve gate, `[v]` open design-review portal, `[c]` clear stale |
 | `n` | Requirements wizard → new Gherkin story |

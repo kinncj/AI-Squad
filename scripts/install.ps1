@@ -1,7 +1,8 @@
 param(
     [string]$Version    = "",
     [string]$InstallDir = "$env:USERPROFILE\.tools\maple\bin",
-    [switch]$SkipRtk
+    [switch]$SkipRtk,
+    [switch]$SkipHerdr
 )
 
 $ErrorActionPreference = "Stop"
@@ -92,6 +93,29 @@ try {
                 Write-Host "~ rtk install failed — install manually:"
                 Write-Host "    https://github.com/rtk-ai/rtk (download rtk-x86_64-pc-windows-msvc.zip)"
                 Write-Host "    or use WSL and run: curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh"
+            }
+        }
+        Write-Host ""
+    }
+
+    # ── Install herdr (agent-native terminal multiplexer) ───────────────────────
+    # maple prefers herdr as its split-pane backend when present (else tmux):
+    # harnesses open in a herdr side pane and approvals nudge them over its socket API.
+    if (-not $SkipHerdr) {
+        if (Get-Command herdr -ErrorAction SilentlyContinue) {
+            Write-Host "✓ herdr already installed"
+        } else {
+            Write-Host "Installing herdr terminal multiplexer..."
+            try {
+                Invoke-RestMethod https://herdr.dev/install.ps1 | Invoke-Expression
+                if (Get-Command herdr -ErrorAction SilentlyContinue) {
+                    Write-Host "✓ herdr installed"
+                } else {
+                    Write-Host "~ herdr installed but not on PATH — start a new shell, or see https://herdr.dev"
+                }
+            } catch {
+                Write-Host "~ herdr install failed — install manually:"
+                Write-Host '    powershell -ExecutionPolicy Bypass -c "irm https://herdr.dev/install.ps1 | iex"'
             }
         }
         Write-Host ""
