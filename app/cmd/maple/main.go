@@ -9,6 +9,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -31,6 +32,7 @@ import (
 	"github.com/kinncj/maple/app/internal/scaffold"
 	"github.com/kinncj/maple/app/internal/selfupdate"
 	"github.com/kinncj/maple/app/internal/state"
+	"github.com/kinncj/maple/app/internal/tui/brand"
 	"github.com/kinncj/maple/app/internal/tui/dashboard"
 	"github.com/kinncj/maple/app/internal/tui/menu"
 	reqtui "github.com/kinncj/maple/app/internal/tui/req"
@@ -53,7 +55,7 @@ func main() {
 			die(err)
 		}
 	case "update":
-		runInit(true)
+		runUpdate(hasFlag(args[1:], "--yes") || hasFlag(args[1:], "-y"), hasFlag(args[1:], "--diff"))
 	case "labels":
 		if err := gh.RunLabels(); err != nil {
 			die(err)
@@ -123,7 +125,7 @@ func runSetupMenu() {
 				return
 			}
 		case menu.ActionUpdate:
-			runInit(true)
+			runUpdate(false, false)
 		case menu.ActionReq:
 			if err := reqtui.Run(); err != nil {
 				fmt.Fprintln(os.Stderr, "req:", err)
@@ -264,7 +266,7 @@ func runDashboardLoop() {
 				fmt.Fprintln(os.Stderr, "req:", err)
 			}
 		case dashboard.ExitUpdate:
-			runInit(true)
+			runUpdate(false, false)
 		case dashboard.ExitLabels:
 			if err := gh.RunLabels(); err != nil {
 				fmt.Fprintln(os.Stderr, "labels:", err)
@@ -284,16 +286,21 @@ func isTTY() bool {
 	return term.IsTerminal(int(os.Stdin.Fd()))
 }
 
-func runInit(force bool) {
+// templateFS returns the embedded MAPLE template tree.
+func templateFS() fs.FS {
 	tpl, err := fs.Sub(embeddedTemplate, "template")
 	if err != nil {
 		die(err)
 	}
+	return tpl
+}
+
+func runInit(force bool) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		die(err)
 	}
-	written, err := scaffold.Run(tpl, cwd, force, nowRFC3339())
+	written, err := scaffold.Run(templateFS(), cwd, force, nowRFC3339())
 	if err != nil {
 		die(err)
 	}
@@ -303,13 +310,114 @@ func runInit(force bool) {
 	fmt.Printf("maple: initialised %d file(s) in %s\n", len(written), cwd)
 }
 
+// runUpdate previews the files an update would add/replace/patch, shows a diff on
+// request, and applies only after the user confirms. --yes applies without prompting;
+// --diff prints every diff up front.
+func runUpdate(autoYes, showDiff bool) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		die(err)
+	}
+	if !initialized() {
+		fmt.Println("maple: no project here — run `maple init` first")
+		return
+	}
+	plan, err := scaffold.PlanUpdate(templateFS(), cwd)
+	if err != nil {
+		die(err)
+	}
+	if plan.Empty() {
+		fmt.Println(brand.Leaf + " maple: already up to date — nothing to change")
+		return
+	}
+	printUpdatePlan(plan)
+	if showDiff {
+		printUpdateDiffs(plan)
+	}
+
+	if autoYes {
+		applyUpdate(plan, cwd)
+		return
+	}
+	if !isTTY() {
+		fmt.Println("\nnot a TTY — re-run in a terminal, or `maple update --yes` to apply.")
+		return
+	}
+	in := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Print("\nApply update? [y]es / [n]o / [d]iff: ")
+		line, _ := in.ReadString('\n')
+		switch strings.ToLower(strings.TrimSpace(line)) {
+		case "y", "yes":
+			applyUpdate(plan, cwd)
+			return
+		case "d", "diff":
+			printUpdateDiffs(plan)
+		case "n", "no", "":
+			fmt.Println("update cancelled — nothing changed")
+			return
+		}
+	}
+}
+
+func applyUpdate(plan *scaffold.Plan, cwd string) {
+	written, err := plan.Apply(cwd)
+	if err != nil {
+		die(err)
+	}
+	fmt.Printf("✓ updated %d file(s)\n", len(written))
+}
+
+// printUpdatePlan lists the planned changes grouped by kind, with counts.
+func printUpdatePlan(plan *scaffold.Plan) {
+	added, changed, patched := plan.Summary()
+	fmt.Printf("%s maple update — %d add · %d replace · %d patch\n\n", brand.Leaf, added, changed, patched)
+	for _, c := range plan.Changes {
+		fmt.Printf("  %-8s %s\n", c.Kind.String(), c.Path)
+	}
+	fmt.Println("\nproject.config.yaml and your Makefile targets are preserved.")
+}
+
+// printUpdateDiffs shows a unified diff per changed/patched file via the system diff.
+func printUpdateDiffs(plan *scaffold.Plan) {
+	for _, c := range plan.Changes {
+		if c.Kind == scaffold.Added {
+			fmt.Printf("\n=== %s (new file, %d bytes) ===\n", c.Path, len(c.New))
+			continue
+		}
+		fmt.Printf("\n=== %s (%s) ===\n", c.Path, c.Kind.String())
+		fmt.Print(unifiedDiff(c.Path, c.Old, c.New))
+	}
+}
+
+// unifiedDiff renders a `diff -u` between old and new via the system diff tool, or a
+// terse note when diff is unavailable.
+func unifiedDiff(path string, oldB, newB []byte) string {
+	a, err1 := os.CreateTemp("", "maple-old-*")
+	b, err2 := os.CreateTemp("", "maple-new-*")
+	if err1 != nil || err2 != nil {
+		return "  (diff unavailable)\n"
+	}
+	defer os.Remove(a.Name())
+	defer os.Remove(b.Name())
+	a.Write(oldB)
+	a.Close()
+	b.Write(newB)
+	b.Close()
+	out, err := exec.Command("diff", "-u", "--label", "current/"+path, "--label", "new/"+path, a.Name(), b.Name()).CombinedOutput()
+	if err != nil && len(out) == 0 {
+		return "  (diff tool unavailable)\n"
+	}
+	return string(out)
+}
+
 func usage(w *os.File) {
 	fmt.Fprint(w, `usage: maple [command]
 
   (no command)      run the dashboard TUI
   init [--force]    scaffold the MAPLE template into the current project
   req               turn a free-text requirement into Gherkin stories (needs an AI harness)
-  update            re-copy the template over an existing project (force)
+  update [--yes]    preview + apply template changes (Makefile section-patched)
   labels            bootstrap the canonical MAPLE label set (needs gh)
   project           create a GitHub Project v2 and wire project.config.yaml (needs gh)
   resume [harness]  re-launch a pinned session (claude/copilot/opencode/cursor)
