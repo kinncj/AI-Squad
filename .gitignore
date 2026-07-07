@@ -45,7 +45,6 @@ dist/
 template/template/
 .playwright-mcp/
 bin/
-app/internal/tui/splash/assets/
 app/cmd/maple/template/
 
 # Go build artifacts (canonical binary + local dev + cross-compile)
