@@ -165,9 +165,10 @@ func wrapInTmux() bool {
 func configureMapleTmux(tmux, s string) {
 	opts := [][]string{
 		{"set-option", "-t", s, "mouse", "on"},
-		// Keep a pane visible if its harness exits/errors, so the output is readable
-		// instead of the pane vanishing (close it with the tmux kill-pane binding).
-		{"set-option", "-t", s, "-w", "remain-on-exit", "on"},
+		// Close a pane when its process exits instead of leaving a dead-pane corpse —
+		// quitting maple or a harness should tear the pane down cleanly. If maple exits
+		// while a harness is still running, the harness pane just takes over.
+		{"set-option", "-t", s, "-w", "remain-on-exit", "off"},
 		{"set-option", "-t", s, "-w", "pane-border-status", "top"},
 		{"set-option", "-t", s, "-w", "pane-border-format", " #{?pane_active,#[bold]▸ ,}#{pane_title} "},
 		{"set-option", "-t", s, "status-style", "bg=default"},
