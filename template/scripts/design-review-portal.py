@@ -267,6 +267,21 @@ class PortalState:
             if not kind or not target:
                 continue
             try:
+                if kind == "herdr":
+                    subprocess.run(
+                        ["herdr", "pane", "send-text", target, "continue"],
+                        check=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    subprocess.run(
+                        ["herdr", "pane", "send-keys", target, "enter"],
+                        check=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    notified += 1
+                    continue
                 if kind == "tmux":
                     subprocess.run(
                         ["tmux", "send-keys", "-t", target, "continue", "Enter"],
