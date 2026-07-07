@@ -820,7 +820,7 @@ func TestPipelineApproveGate(t *testing.T) {
 	if pending != "" {
 		t.Errorf("a should clear the gate, pending still %q", pending)
 	}
-	if !strings.Contains(m.status, "approved pipeline gate") {
+	if !strings.HasPrefix(m.status, "approved") {
 		t.Errorf("status = %q, want approved note", m.status)
 	}
 }
@@ -842,7 +842,7 @@ func TestPipelineRejectGate(t *testing.T) {
 	if pending != "" {
 		t.Errorf("r should reject/clear the gate, pending=%q", pending)
 	}
-	if !strings.Contains(m.status, "rejected pipeline gate") {
+	if !strings.HasPrefix(m.status, "rejected") {
 		t.Errorf("status = %q, want rejected note", m.status)
 	}
 }

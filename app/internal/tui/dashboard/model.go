@@ -16,6 +16,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/kinncj/maple/app/internal/harness"
 	"github.com/kinncj/maple/app/internal/state"
 	"github.com/kinncj/maple/app/internal/tui/brand"
 	"github.com/kinncj/maple/app/internal/tui/pane"
@@ -374,13 +375,32 @@ func realExec(args []string) tea.Cmd {
 	})
 }
 
-// launch runs args in the current terminal (suspend/resume). Injectable via execFn.
+// launch starts a harness. Inside a multiplexer (tmux/zellij) it opens a split
+// pane/tab so the TUI stays live and the pane stays addressable for approval nudges;
+// otherwise it runs in the current terminal (suspend/resume). execFn, when set (tests),
+// short-circuits to the in-terminal path so tests never touch a real multiplexer.
 func (m *Model) launch(args []string) tea.Cmd {
-	fn := m.execFn
-	if fn == nil {
-		fn = realExec
+	if m.execFn != nil {
+		return m.execFn(args)
 	}
-	return fn(args)
+	if _, inPane, err := harness.LaunchInPane(os.Getenv, harness.Key(args), args); inPane {
+		if err != nil {
+			m.status = "pane launch failed: " + err.Error()
+		} else {
+			m.status = "launched " + args[0] + " in a pane · approve gates with [P] then [a]"
+		}
+		return nil
+	}
+	return realExec(args)
+}
+
+// continueNote describes how the just-approved harness will proceed, given how many
+// live panes accepted a "continue" nudge.
+func continueNote(nudged int) string {
+	if nudged > 0 {
+		return fmt.Sprintf("nudged %d harness pane(s) to continue", nudged)
+	}
+	return "harness continues on its next poll (≤2s)"
 }
 
 // openExternal fires a detached command (e.g. opening a URL in the browser) without
@@ -704,13 +724,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "a":
 			switch {
 			case m.reviewStory != "":
-				m.status = fmt.Sprintf("approved %d artifact(s)", m.approveReview())
+				n := m.approveReview()
+				m.status = fmt.Sprintf("approved %d artifact(s) · %s", n, continueNote(harness.NotifyContinue()))
 			case m.detailKind == "pipeline":
 				if m.store.ApprovalPending() == "" {
 					m.status = "no gate awaiting approval"
 				} else if err := m.store.ApproveGate(); err == nil {
 					m.openPipeline()
-					m.status = "approved pipeline gate"
+					m.status = "approved · " + continueNote(harness.NotifyContinue())
 				} else {
 					m.status = "approve failed: " + err.Error()
 				}
@@ -721,7 +742,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.status = "no gate awaiting approval"
 				} else if err := m.store.RejectGate(); err == nil {
 					m.openPipeline()
-					m.status = "rejected pipeline gate"
+					m.status = "rejected · " + continueNote(harness.NotifyContinue())
 				} else {
 					m.status = "reject failed: " + err.Error()
 				}
