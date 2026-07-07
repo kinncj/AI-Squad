@@ -803,9 +803,60 @@ def render_index(token: str) -> str:
     }}
     .modal-close {{ background: var(--card2); color:var(--text); border-color:var(--line); }}
     .modal-body {{ padding: 16px; overflow: auto; min-height: 200px; }}
+    /* ── Splash / loading overlay (maple charm) ── */
+    #splash {{
+      position: fixed; inset: 0; z-index: 10000;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+      background: radial-gradient(1100px 560px at 50% 32%, rgba(122,162,247,.14), transparent 60%),
+                  radial-gradient(800px 420px at 50% 90%, rgba(187,154,247,.08), transparent 60%), var(--bg);
+      transition: opacity .55s ease, visibility .55s ease;
+    }}
+    #splash.hide {{ opacity: 0; visibility: hidden; pointer-events: none; }}
+    #splash .leaf {{ font-size: 78px; line-height:1; animation: leaf-float 3s ease-in-out infinite; filter: drop-shadow(0 10px 26px rgba(158,206,106,.45)); }}
+    #splash .word {{
+      font-size: 48px; font-weight: 900; letter-spacing: -.03em; margin-top: 4px;
+      background: linear-gradient(92deg, var(--accent), var(--purple) 62%, var(--cyan));
+      -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+      animation: rise .7s ease both;
+    }}
+    #splash .tag {{ color: var(--muted); font-size: 12px; letter-spacing:.34em; text-transform:uppercase; animation: rise .7s .08s ease both; }}
+    #splash .bar {{ width: 220px; height: 4px; border-radius: 999px; background: var(--card2); overflow: hidden; margin-top: 10px; }}
+    #splash .bar > i {{ display:block; height:100%; width:40%; border-radius:999px; background: linear-gradient(90deg, var(--accent), var(--purple)); animation: slide 1.15s ease-in-out infinite; }}
+    @keyframes leaf-float {{ 0%,100% {{ transform: translateY(0) rotate(-5deg); }} 50% {{ transform: translateY(-13px) rotate(5deg); }} }}
+    @keyframes rise {{ from {{ opacity:0; transform: translateY(12px); }} to {{ opacity:1; transform:none; }} }}
+    @keyframes slide {{ 0% {{ transform: translateX(-130%); }} 100% {{ transform: translateX(330%); }} }}
+    /* markdown extras */
+    .md table {{ border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 13px; }}
+    .md th, .md td {{ border: 1px solid var(--line); padding: 7px 10px; text-align: left; }}
+    .md th {{ background: var(--bg2); color: var(--accent); font-weight: 700; }}
+    .md tr:nth-child(even) td {{ background: rgba(122,162,247,.04); }}
+    .md hr {{ border: 0; border-top: 1px solid var(--line); margin: 16px 0; }}
+    .md del {{ color: var(--muted); }}
+    .md img {{ max-width: 100%; border-radius: 8px; }}
+    /* gherkin highlighting */
+    .gherkin {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; }}
+    .gk-feature {{ color: var(--accent); font-weight: 700; }}
+    .gk-scenario {{ color: var(--purple); font-weight: 700; }}
+    .gk-given {{ color: var(--ok); }}
+    .gk-when {{ color: var(--warn); }}
+    .gk-then {{ color: var(--cyan); }}
+    .gk-and {{ color: var(--muted); }}
+    .gk-tag {{ color: var(--purple); }}
+    .gk-comment {{ color: var(--dim); }}
+    .gk-table {{ color: var(--muted); }}
+    /* artifact filters */
+    .filters {{ display:flex; gap:6px; flex-wrap:wrap; margin: 10px 0 4px; }}
+    .filters button {{ background: var(--inset); color: var(--muted); border:1px solid var(--line); padding:4px 11px; border-radius:999px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }}
+    .filters button.active {{ background: rgba(122,162,247,.14); color: var(--accent); border-color: rgba(122,162,247,.4); }}
   </style>
 </head>
 <body>
+  <div id="splash">
+    <div class="leaf">🍁</div>
+    <div class="word">MAPLE</div>
+    <div class="tag">Design Review</div>
+    <div class="bar"><i></i></div>
+  </div>
   <div class="wrap">
     <div class="brand">
       <span class="leaf">🍁</span>
@@ -835,6 +886,7 @@ def render_index(token: str) -> str:
       </div>
       <div class="card">
         <div class="label">Artifacts</div>
+        <div id="filters" class="filters"></div>
         <div id="artifacts" class="list"></div>
         <div class="preview">
           <div class="preview-head">
@@ -876,10 +928,34 @@ def render_index(token: str) -> str:
     function renderInlineMarkdown(text) {{
       let out = esc(text || "");
       out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+      out = out.replace(/!\\[([^\\]]*)\\]\\(([^\\s)]+)\\)/g, '<img alt="$1" src="$2" />');
       out = out.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
+      out = out.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+      out = out.replace(/~~([^~]+)~~/g, '<del>$1</del>');
       out = out.replace(/\\*([^*]+)\\*/g, '<em>$1</em>');
       out = out.replace(/\\[([^\\]]+)\\]\\(([^\\s)]+)\\)/g, '<a href="$2" class="md-link" rel="noreferrer noopener">$1</a>');
       return out;
+    }}
+
+    // renderGherkin colourises Given/When/Then, Feature/Scenario, tags, tables — matching
+    // the TUI's story highlighting so .feature files read the same in the portal.
+    function renderGherkin(text) {{
+      const rows = String(text || "").replace(/\\r\\n/g, "\\n").split("\\n").map((raw) => {{
+        const line = esc(raw);
+        const t = raw.trim();
+        let cls = "";
+        if (/^#/.test(t)) cls = "gk-comment";
+        else if (/^@/.test(t)) cls = "gk-tag";
+        else if (/^(Feature|Background|Rule):/i.test(t)) cls = "gk-feature";
+        else if (/^(Scenario Outline|Scenario|Example|Examples):/i.test(t)) cls = "gk-scenario";
+        else if (/^Given\\b/i.test(t)) cls = "gk-given";
+        else if (/^When\\b/i.test(t)) cls = "gk-when";
+        else if (/^Then\\b/i.test(t)) cls = "gk-then";
+        else if (/^(And|But)\\b/i.test(t)) cls = "gk-and";
+        else if (/^\\|/.test(t)) cls = "gk-table";
+        return cls ? `<span class="${{cls}}">${{line}}</span>` : line;
+      }});
+      return `<div class="gherkin">${{rows.join("\\n")}}</div>`;
     }}
 
     function renderMarkdown(md) {{
@@ -890,10 +966,29 @@ def render_index(token: str) -> str:
       let codeLines = [];
       let inUl = false;
       let inOl = false;
+      let inTable = false;
+      let tableRows = [];
 
       const flushLists = () => {{
         if (inUl) {{ htmlOut += "</ul>"; inUl = false; }}
         if (inOl) {{ htmlOut += "</ol>"; inOl = false; }}
+      }};
+
+      const flushTable = () => {{
+        if (!inTable) return;
+        const rows = tableRows;
+        inTable = false; tableRows = [];
+        const cells = (r) => r.trim().replace(/^\\|/, "").replace(/\\|$/, "").split("|").map((c) => c.trim());
+        const isSep = (r) => /-/.test(r) && /^[\\s:|-]+$/.test(r.trim());
+        if (rows.length >= 2 && isSep(rows[1])) {{
+          let tbl = "<table><thead><tr>" + cells(rows[0]).map((c) => `<th>${{renderInlineMarkdown(c)}}</th>`).join("") + "</tr></thead><tbody>";
+          for (let i = 2; i < rows.length; i++) {{
+            tbl += "<tr>" + cells(rows[i]).map((c) => `<td>${{renderInlineMarkdown(c)}}</td>`).join("") + "</tr>";
+          }}
+          htmlOut += tbl + "</tbody></table>";
+        }} else {{
+          for (const r of rows) htmlOut += `<p>${{renderInlineMarkdown(r.trim())}}</p>`;
+        }}
       }};
 
       const flushCode = () => {{
@@ -901,6 +996,8 @@ def render_index(token: str) -> str:
         const codeText = codeLines.join("\\n");
         if (codeLang === "mermaid") {{
           htmlOut += `<pre class="mermaid-source">${{esc(codeText)}}</pre>`;
+        }} else if (codeLang === "gherkin" || codeLang === "feature" || codeLang === "cucumber") {{
+          htmlOut += renderGherkin(codeText);
         }} else {{
           htmlOut += `<pre><code>${{esc(codeText)}}</code></pre>`;
         }}
@@ -928,9 +1025,21 @@ def render_index(token: str) -> str:
           codeLines.push(line);
           continue;
         }}
+        if (trimmed.startsWith("|")) {{
+          flushLists();
+          inTable = true;
+          tableRows.push(trimmed);
+          continue;
+        }}
+        if (inTable) {{ flushTable(); }}
         if (!trimmed) {{
           flushLists();
           htmlOut += "<p></p>";
+          continue;
+        }}
+        if (/^(-{{3,}}|\\*{{3,}}|_{{3,}})$/.test(trimmed)) {{
+          flushLists();
+          htmlOut += "<hr>";
           continue;
         }}
         if (/^#{{1,4}}\\s+/.test(trimmed)) {{
@@ -959,6 +1068,7 @@ def render_index(token: str) -> str:
         htmlOut += `<p>${{renderInlineMarkdown(trimmed)}}</p>`;
       }}
       flushCode();
+      flushTable();
       flushLists();
       htmlOut += "</div>";
       return htmlOut;
@@ -1045,14 +1155,39 @@ def render_index(token: str) -> str:
       }}
 
       const a = await api("/api/artifacts");
+      window._artifacts = a.items || [];
+      renderArtifacts();
+      const up = await api("/api/uploads");
+      renderUploads(up.items || []);
+    }}
+
+    let _artFilter = "all";
+    function renderArtifacts() {{
+      const items = window._artifacts || [];
       const box = document.getElementById("artifacts");
+      const filters = document.getElementById("filters");
       box.innerHTML = "";
+      filters.innerHTML = "";
+      if (items.length) {{
+        const kinds = Array.from(new Set(items.map((i) => i.kind || "file"))).sort();
+        const mk = (key, label) => {{
+          const b = document.createElement("button");
+          b.textContent = label;
+          if (_artFilter === key) b.className = "active";
+          b.addEventListener("click", () => {{ _artFilter = key; renderArtifacts(); }});
+          filters.appendChild(b);
+        }};
+        mk("all", "all · " + items.length);
+        for (const k of kinds) mk(k, k + " · " + items.filter((i) => (i.kind || "file") === k).length);
+      }}
+      const shown = items.filter((i) => _artFilter === "all" || (i.kind || "file") === _artFilter);
       let selected = null;
-      if (!a.items || a.items.length === 0) {{
-        box.innerHTML = '<div class="item"><span>No artifacts found yet for this stage. Expected: previewable files (.excalidraw/.html/.svg/.png/.jpg/.md) and optional .claude/state/design-artifacts.json manifest.</span></div>';
-        setPreview(null);
+      if (!shown.length) {{
+        box.innerHTML = '<div class="empty">' + (items.length
+          ? "No artifacts match this filter."
+          : "No artifacts yet for this stage. Expected previewable files (.excalidraw/.html/.svg/.png/.jpg/.md).") + "</div>";
       }} else {{
-        for (const item of a.items) {{
+        for (const item of shown) {{
           const row = document.createElement("div");
           row.className = "item";
           const left = document.createElement("span");
@@ -1072,14 +1207,10 @@ def render_index(token: str) -> str:
           row.appendChild(left);
           row.appendChild(right);
           box.appendChild(row);
-          if (!selected && isPreviewable(item)) {{
-            selected = item;
-          }}
+          if (!selected && isPreviewable(item)) selected = item;
         }}
       }}
       setPreview(selected);
-      const up = await api("/api/uploads");
-      renderUploads(up.items || []);
     }}
 
     function isPreviewable(item) {{
@@ -1467,8 +1598,16 @@ def render_index(token: str) -> str:
       es.onerror = () => {{ /* browser auto-reconnects */ }};
     }}
 
-    refreshAll().catch(err => {{
+    function hideSplash() {{
+      const s = document.getElementById("splash");
+      if (s) s.classList.add("hide");
+    }}
+    // Keep the splash up briefly for charm, then reveal the app (also hides once the
+    // first state load resolves, whichever is sooner).
+    const _splashTimer = setTimeout(hideSplash, 1200);
+    refreshAll().then(() => {{ clearTimeout(_splashTimer); setTimeout(hideSplash, 400); }}).catch(err => {{
       document.getElementById("msg").textContent = err.message;
+      hideSplash();
     }});
     bindMarkdownLinks("previewBody");
     bindMarkdownLinks("modalBody");
