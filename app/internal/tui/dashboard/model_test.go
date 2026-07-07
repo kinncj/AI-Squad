@@ -782,6 +782,11 @@ func (r rtkStore) SetRTKHarness(name string, v bool) error {
 
 func TestRTKToggleOverlay(t *testing.T) {
 	on := map[string]bool{}
+	var ran [][]string
+	oldRunner := rtkInitRunner
+	rtkInitRunner = func(flags []string) (string, error) { ran = append(ran, flags); return "", nil }
+	defer func() { rtkInitRunner = oldRunner }()
+
 	m, err := New("v-test", rtkStore{fakeStore{n: 3}, on}, "")
 	if err != nil {
 		t.Fatal(err)
@@ -792,19 +797,28 @@ func TestRTKToggleOverlay(t *testing.T) {
 	if m.picker == nil || m.pickerMode != "rtk" {
 		t.Fatal("R should open the rtk toggle overlay")
 	}
-	if !strings.Contains(m.View(), "○ claude") {
+	if !strings.Contains(m.View(), "○ Claude") {
 		t.Errorf("rtk overlay should show claude as off:\n%s", m.View())
 	}
-	// Enter toggles the focused (first = claude) harness on, keeping the picker open.
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// Enter runs `rtk init …` async for the focused (first = claude) harness.
+	nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = nm.(Model)
+	if cmd == nil {
+		t.Fatal("Enter should launch rtk init")
+	}
+	msg := cmd() // execute the async rtk init
+	if len(ran) != 1 || strings.Join(ran[0], " ") != "init -g" {
+		t.Errorf("should run `rtk init -g` for claude, got %v", ran)
+	}
+	nm, _ = m.Update(msg) // deliver rtkInitDoneMsg
 	m = nm.(Model)
 	if !on["claude"] {
-		t.Error("Enter should wire claude")
+		t.Error("rtk init completion should wire claude")
 	}
 	if m.picker == nil {
-		t.Error("toggle should keep the picker open")
+		t.Error("wiring should keep the picker open")
 	}
-	if !strings.Contains(m.View(), "✓ claude") {
+	if !strings.Contains(m.View(), "✓ Claude") {
 		t.Errorf("rtk overlay should now show claude wired:\n%s", m.View())
 	}
 	// esc closes.

@@ -297,8 +297,52 @@ func (m *Model) closePicker() {
 	m.picker, m.pickItems, m.pickerMode = nil, nil, ""
 }
 
-// rtkHarnesses are the harnesses rtk can wire, in display order.
-var rtkHarnesses = []string{"claude", "opencode", "copilot", "cursor"}
+// rtkHarnessDef is a harness rtk can wire, with the exact `rtk` args that wire it. Mirrors
+// main's allRTKHarnesses so toggling actually runs `rtk init …`, not just records intent.
+type rtkHarnessDef struct {
+	key   string
+	name  string
+	flags []string
+}
+
+var rtkHarnessDefs = []rtkHarnessDef{
+	{"claude", "Claude Code / Copilot (default)", []string{"init", "-g"}},
+	{"gemini", "Gemini CLI", []string{"init", "-g", "--gemini"}},
+	{"codex", "Codex (OpenAI)", []string{"init", "-g", "--codex"}},
+	{"cursor", "Cursor", []string{"init", "--agent", "cursor"}},
+	{"windsurf", "Windsurf", []string{"init", "--agent", "windsurf"}},
+	{"cline", "Cline / Roo Code", []string{"init", "--agent", "cline"}},
+	{"kilocode", "Kilo Code", []string{"init", "--agent", "kilocode"}},
+	{"antigravity", "Google Antigravity", []string{"init", "--agent", "antigravity"}},
+}
+
+// rtkInitRunner runs `rtk <flags>`; swapped in tests.
+var rtkInitRunner = func(flags []string) (string, error) {
+	p, err := exec.LookPath("rtk")
+	if err != nil {
+		return "", fmt.Errorf("rtk not found")
+	}
+	out, err := exec.Command(p, flags...).CombinedOutput()
+	return strings.TrimSpace(string(out)), err
+}
+
+type rtkInitDoneMsg struct {
+	key string
+	err string
+}
+
+func rtkInitCmd(def rtkHarnessDef) tea.Cmd {
+	return func() tea.Msg {
+		if out, err := rtkInitRunner(def.flags); err != nil {
+			msg := out
+			if msg == "" {
+				msg = err.Error()
+			}
+			return rtkInitDoneMsg{key: def.key, err: msg}
+		}
+		return rtkInitDoneMsg{key: def.key}
+	}
+}
 
 // openRTK shows the rtk per-harness toggle overlay.
 func (m *Model) openRTK() {
@@ -309,26 +353,33 @@ func (m *Model) openRTK() {
 // rebuildRTK renders the rtk toggle list with ✓/○ marks from current state.
 func (m *Model) rebuildRTK(sel int) {
 	on := m.store.RTKHarnesses()
-	items := make([]pickItem, len(rtkHarnesses))
-	for i, h := range rtkHarnesses {
+	items := make([]pickItem, len(rtkHarnessDefs))
+	for i, h := range rtkHarnessDefs {
 		mark := "○"
-		if on[h] {
+		if on[h.key] {
 			mark = "✓"
 		}
-		items[i] = pickItem{label: mark + " " + h, id: h}
+		items[i] = pickItem{label: mark + " " + h.name, id: h.key}
 	}
-	m.setPicker("RTK harnesses — [Enter] toggle · [esc] close", items, sel)
+	m.setPicker("RTK harnesses — [Enter] wire/unwire · [esc] close", items, sel)
 }
 
-// toggleRTK flips the wired state of the item at i and refreshes the list.
-func (m *Model) toggleRTK(i int) {
-	h := m.pickItems[i].id
-	on := m.store.RTKHarnesses()
-	if err := m.store.SetRTKHarness(h, !on[h]); err != nil {
-		m.status = "rtk: " + err.Error()
-		return
+// toggleRTK wires (runs `rtk init …`) or unwires the harness at i. Wiring runs async and
+// records the state on completion; unwiring just clears the record.
+func (m *Model) toggleRTK(i int) tea.Cmd {
+	if i < 0 || i >= len(rtkHarnessDefs) {
+		return nil
 	}
+	def := rtkHarnessDefs[i]
+	if m.store.RTKHarnesses()[def.key] {
+		_ = m.store.SetRTKHarness(def.key, false)
+		m.status = "unwired rtk for " + def.key
+		m.rebuildRTK(i)
+		return nil
+	}
+	m.status = "wiring rtk for " + def.key + "…"
 	m.rebuildRTK(i)
+	return rtkInitCmd(def)
 }
 
 // firstHarness returns the first installed harness, or "".
@@ -688,6 +739,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.external {
 			return m, tea.ClearScreen // the process took over the screen
 		}
+
+	case rtkInitDoneMsg:
+		if msg.err != "" {
+			m.status = "rtk init " + msg.key + ": " + msg.err
+		} else {
+			_ = m.store.SetRTKHarness(msg.key, true)
+			m.status = "✓ rtk wired for " + msg.key
+			if m.pickerMode == "rtk" && m.picker != nil {
+				m.rebuildRTK(m.picker.Selected())
+			}
+		}
+		return m, nil
 	}
 	return m, nil
 }
@@ -732,7 +795,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			i := m.picker.Selected()
 			if i >= 0 && i < len(m.pickItems) {
 				if m.pickerMode == "rtk" {
-					m.toggleRTK(i) // toggle keeps the picker open
+					return m, m.toggleRTK(i) // keeps the picker open; wiring runs async
 				} else {
 					item := m.pickItems[i]
 					m.closePicker()
