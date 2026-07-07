@@ -87,10 +87,7 @@ func copilotSessions(home, cwd string) []Session {
 		if id == "" {
 			id = e.Name()
 		}
-		title := meta["summary"]
-		if title == "" {
-			title = shortenID(id)
-		}
+		title := firstNonEmpty(meta["summary"], meta["name"], shortenID(id))
 		ts := meta["updated_at"]
 		if ts == "" {
 			ts = meta["created_at"]

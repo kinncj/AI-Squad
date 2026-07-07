@@ -33,6 +33,12 @@ func (s *FS) Sessions() []Session {
 	if err != nil {
 		return nil
 	}
+	// Resolve symlinks so cwd matches what the harnesses record. macOS's /tmp is a
+	// symlink to /private/tmp, and Copilot/Claude store the resolved path — an
+	// unresolved cwd would silently match zero sessions.
+	if real, err := filepath.EvalSymlinks(cwd); err == nil {
+		cwd = real
+	}
 	encoded := strings.ReplaceAll(cwd, "/", "-")
 
 	var all []Session

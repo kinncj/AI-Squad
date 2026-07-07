@@ -139,8 +139,15 @@ func wrapInTmux() bool {
 		return false
 	}
 	const session = "maple"
+	cwd, _ := os.Getwd()
 	_ = exec.Command(tmux, "kill-session", "-t", session).Run() // clear a stale one
-	if err := exec.Command(tmux, "new-session", "-d", "-s", session, self).Run(); err != nil {
+	// -c pins the session (and maple inside it) to the current project dir, so all its
+	// file-based state reads (stories, sessions, gates) resolve correctly.
+	args := []string{"new-session", "-d", "-s", session}
+	if cwd != "" {
+		args = append(args, "-c", cwd)
+	}
+	if err := exec.Command(tmux, append(args, self)...).Run(); err != nil {
 		return false
 	}
 	configureMapleTmux(tmux, session)
