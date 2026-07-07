@@ -129,6 +129,40 @@ func TestExitActionsQuitWithFollowUp(t *testing.T) {
 	}
 }
 
+func TestCommandModeCoversActions(t *testing.T) {
+	// Overlay-opening commands (no cmd returned, mutate the model).
+	overlay := map[string]func(Model) bool{
+		"pipeline": func(m Model) bool { return m.detail != nil && m.detailKind == "pipeline" },
+		"changes":  func(m Model) bool { return m.detail != nil },
+		"skills":   func(m Model) bool { return m.detail != nil },
+		"review":   func(m Model) bool { return m.reviewStory != "" },
+		"help":     func(m Model) bool { return m.showHelp },
+		"rtk":      func(m Model) bool { return m.picker != nil },
+	}
+	for cmd, ok := range overlay {
+		m := sized(t, newModel(t))
+		nm, _ := m.runCommand(cmd)
+		if !ok(nm.(Model)) {
+			t.Errorf(":%s did not open its overlay", cmd)
+		}
+	}
+}
+
+func TestCommandTabCompletes(t *testing.T) {
+	m := sized(t, newModel(t))
+	m.commanding, m.cmdBuf = true, "pi"
+	nm, _ := m.handleCommandKey(tea.KeyMsg{Type: tea.KeyTab})
+	if got := nm.(Model).cmdBuf; got != "pipeline" {
+		t.Errorf("Tab on :pi should complete to :pipeline, got :%s", got)
+	}
+	// Ambiguous prefix completes to the common prefix ("re" → review/reload share "re").
+	m.cmdBuf = "re"
+	nm, _ = m.handleCommandKey(tea.KeyMsg{Type: tea.KeyTab})
+	if got := nm.(Model).cmdBuf; !strings.HasPrefix("reload", got) && !strings.HasPrefix("review", got) {
+		t.Errorf("Tab on :re should complete to a shared prefix, got :%s", got)
+	}
+}
+
 func TestCommandModeExitActions(t *testing.T) {
 	cases := map[string]ExitAction{
 		"req":     ExitReq,

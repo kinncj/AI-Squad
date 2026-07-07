@@ -906,6 +906,13 @@ func (m Model) handleCommandKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		m.commanding = false
 		return m.runCommand(strings.TrimSpace(m.cmdBuf))
+	case "tab":
+		// Complete to the shortest common prefix of the matches, or the sole match.
+		if matches := commandMatches(m.cmdBuf); len(matches) == 1 {
+			m.cmdBuf = matches[0]
+		} else if len(matches) > 1 {
+			m.cmdBuf = longestCommonPrefix(matches)
+		}
 	case "backspace":
 		if len(m.cmdBuf) > 0 {
 			r := []rune(m.cmdBuf)
@@ -919,7 +926,16 @@ func (m Model) handleCommandKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// runCommand dispatches a `:` command line. Unported commands set a status note.
+// commandNames are the accepted `:` command words, shown by `:help`/completion. Every
+// keybinding action has a spelled-out command so the whole surface is typeable.
+var commandNames = []string{
+	"quit", "reload", "help", "pipeline", "changes", "design", "logs", "review",
+	"skills", "launch", "resume", "prompt", "rtk", "ship", "portal", "filter",
+	"theme", "req", "update", "labels", "project",
+}
+
+// runCommand dispatches a `:` command line. Accepts the full action vocabulary plus
+// short aliases, so anything reachable by a key is also reachable by name.
 func (m Model) runCommand(line string) (tea.Model, tea.Cmd) {
 	m.cmdBuf = ""
 	fields := strings.Fields(line)
@@ -927,17 +943,47 @@ func (m Model) runCommand(line string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	switch fields[0] {
-	case "q", "q!", "wq", "x", "quit":
+	case "q", "q!", "wq", "quit":
 		return m, tea.Quit
 	case "e", "e!", "r", "reload":
 		m.reload()
 		m.status = "reloaded"
-	case "help", "h", "?":
+		return m, m.loadPRsCmd()
+	case "help", "h", "?", "commands":
 		m.showHelp = true
-	case "P", "pipeline":
-		m.setDetail("Pipeline", m.store.PipelineLines())
-	case "C", "changes":
+	case "P", "pipeline", "taffy":
+		m.openPipeline()
+	case "C", "changes", "diff", "git":
 		m.setDetail("Git Changes", m.store.GitChanges())
+	case "D", "review", "design-review":
+		if id := m.targetStoryID(); id != "" {
+			m.openReview(id)
+		} else {
+			m.status = "no story to review"
+		}
+	case "d", "design":
+		m.detail, m.detailKind = nil, ""
+		m.fullscreen = toggleFS(m.fullscreen, fsDesign)
+	case "l", "logs":
+		m.detail, m.detailKind = nil, ""
+		m.fullscreen = toggleFS(m.fullscreen, fsLogs)
+	case "F", "skills":
+		m.setDetail("Skills", m.store.Skills())
+	case "L", "launch", "launcher":
+		m.openLauncher()
+	case "o", "open", "resume":
+		return m, m.openSession()
+	case "x", "prompt", "quick":
+		m.openQuickPrompt()
+	case "R", "rtk":
+		m.openRTK()
+	case "S", "ship", "ship-safe":
+		return m, m.launch([]string{"npx", "ship-safe", "audit", "."})
+	case "v", "portal":
+		if url := m.portal(); url != "" {
+			return m, m.openExternal(browserOpen(url))
+		}
+		m.status = "no design portal running"
 	case "theme", "colo":
 		if len(fields) < 2 {
 			m.status = "usage: :theme <" + strings.Join(theme.Names(), "|") + ">"
@@ -949,7 +995,7 @@ func (m Model) runCommand(line string) (tea.Model, tea.Cmd) {
 		} else {
 			m.status = "unknown theme: " + fields[1]
 		}
-	case "n", "req", "story":
+	case "n", "req", "story", "new":
 		m.exitAction = ExitReq
 		return m, tea.Quit
 	case "u", "update":
@@ -962,9 +1008,23 @@ func (m Model) runCommand(line string) (tea.Model, tea.Cmd) {
 		m.exitAction = ExitProject
 		return m, tea.Quit
 	default:
-		m.status = "unknown command: :" + fields[0]
+		m.status = "unknown command :" + fields[0] + " — try :help"
 	}
 	return m, nil
+}
+
+// targetStoryID returns the story to act on for name-driven commands: the selection on
+// the Stories pane if that's focused, otherwise the first story.
+func (m Model) targetStoryID() string {
+	if m.group.FocusIndex() == paneStories {
+		if st, ok := m.stories.at(m.group.Focused().Selected()); ok {
+			return st.ID
+		}
+	}
+	if st, ok := m.stories.at(0); ok {
+		return st.ID
+	}
+	return ""
 }
 
 // reload re-reads live project state into the panes.
@@ -1103,43 +1163,43 @@ func (m Model) helpView(bodyH int) string {
 		return key.Render(render.PadRight(k, keyW)) + "  " + ds.Render(d)
 	}
 
-	active := [][2]string{
+	nav := [][2]string{
 		{"Tab / Shift+Tab", "cycle panes"},
 		{"j / k · ↓ / ↑", "navigate rows"},
 		{"g / G", "top / bottom"},
 		{"s a p Q", "focus Stories / Sessions / PRs / QA"},
-		{"Enter", "detail (story / session / test)"},
-		{"D", "design review (Stories; a approves)"},
-		{"C", "git changes (status + diff)"},
-		{"P / F", "pipeline status / skills"},
-		{"o", "open session / PR"},
-		{"L / R / S", "launch harness / rtk / ship-safe"},
-		{"d / l", "Design / Logs full-screen"},
+		{"Enter", "open detail (story / session / test)"},
 		{"/", "filter the focused pane"},
-		{":", "command mode (:q :r :help …)"},
-		{"r", "reload pane data"},
-		{"?", "toggle this help"},
 		{"esc", "close overlay"},
-		{"q · Ctrl+C", "quit"},
 	}
-	coming := [][2]string{
-		{"o", "open session / PR"},
-		{"D", "Design Review"},
-		{"n / u / F", "new story / update / skills"},
-		{"x / P / S", "quick prompt / pipeline / ship-safe"},
-		{":", "command mode"},
+	actions := [][2]string{
+		{"P", "pipeline / taffy (a approve · r reject · v portal)"},
+		{"D", "design review (a approves artifacts)"},
+		{"C", "git changes (status + diff)"},
+		{"F", "skills · d / l Design / Logs full-screen"},
+		{"o", "open/resume session · PR in browser"},
+		{"L", "launch a harness (tmux/zellij pane or in-term)"},
+		{"x", "quick prompt (skill / agent)"},
+		{"n / u", "new story (req) / update template"},
+		{"R / S", "rtk wiring / ship-safe audit"},
+		{"v", "open design portal in browser"},
+		{"r", "reload now"},
+		{": ", "command mode — every action by name (:help)"},
+		{"? · q", "toggle help / quit"},
 	}
 
 	var lines []string
 	lines = append(lines, m.mode.Role("title").Style().Render("Keybindings"), "")
-	for _, r := range active {
+	lines = append(lines, m.mode.Role("subtitle").Style().Render("Navigation"))
+	for _, r := range nav {
 		lines = append(lines, row(r[0], r[1], false))
 	}
-	lines = append(lines, "", m.mode.Role("subtitle").Style().Render("Coming in the rebuild"))
-	for _, r := range coming {
-		lines = append(lines, row(r[0], r[1], true))
+	lines = append(lines, "", m.mode.Role("subtitle").Style().Render("Actions"))
+	for _, r := range actions {
+		lines = append(lines, row(r[0], r[1], false))
 	}
-	lines = append(lines, "", faint.Render("press any key to close"))
+	lines = append(lines, "", faint.Render("command mode accepts: :"+strings.Join(commandNames[:8], " :")+" …"))
+	lines = append(lines, faint.Render("press any key to close"))
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -1185,20 +1245,65 @@ const footerKeys = "[Tab] cycle · [s/a/p/Q] pane · [Enter] open · [o] resume 
 	"[d/l] design/logs · [P] pipeline · [F] skills · [L] launch · [R] rtk · [S] ship-safe · " +
 	"[v] portal · [/] filter · [:] cmd · [?] help · [q] quit"
 
-// footer is the bottom bar: the filter/command input when active, a transient status
-// when set, otherwise the full keybinding hints.
+// footer is the bottom bar: the filter/command input when active (with live command
+// suggestions), a transient status when set, otherwise the full keybinding hints.
 func (m Model) footer() string {
+	accent := m.mode.Role("accent").Style()
+	faint := m.mode.Role("faint").Style()
 	switch {
 	case m.filtering:
-		return bar(m.mode.Role("accent").Style().Render("/"+m.filterBuf+"▏"), "", m.width)
+		return bar(accent.Render("/"+m.filterBuf+"▏"),
+			faint.Render("filter · Enter apply · esc cancel"), m.width)
 	case m.commanding:
-		return bar(m.mode.Role("accent").Style().Render(":"+m.cmdBuf+"▏"), "", m.width)
+		return bar(accent.Render(":"+m.cmdBuf+"▏"),
+			faint.Render(m.commandHint()), m.width)
 	case m.status != "":
-		return bar(m.mode.Role("subtitle").Style().Render(m.status),
-			m.mode.Role("faint").Style().Render("[?] help"), m.width)
+		return bar(m.mode.Role("subtitle").Style().Render(m.status), faint.Render("[?] help"), m.width)
 	default:
-		return bar(m.mode.Role("faint").Style().Render(footerKeys), "", m.width)
+		return bar(faint.Render(footerKeys), "", m.width)
 	}
+}
+
+// commandHint lists the commands whose names start with what's typed (all of them
+// before any input), for live discovery + Tab-completion in `:` mode.
+func (m Model) commandHint() string {
+	matches := commandMatches(m.cmdBuf)
+	if len(matches) == 0 {
+		return "no match · esc cancel"
+	}
+	prefix := "Tab completes · "
+	if m.cmdBuf == "" {
+		prefix = ":"
+	}
+	return prefix + strings.Join(matches, " :")
+}
+
+// commandMatches returns the command names starting with prefix (all when empty).
+func commandMatches(prefix string) []string {
+	var out []string
+	for _, c := range commandNames {
+		if strings.HasPrefix(c, prefix) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// longestCommonPrefix returns the longest shared leading substring of ss.
+func longestCommonPrefix(ss []string) string {
+	if len(ss) == 0 {
+		return ""
+	}
+	p := ss[0]
+	for _, s := range ss[1:] {
+		for !strings.HasPrefix(s, p) {
+			p = p[:len(p)-1]
+			if p == "" {
+				return ""
+			}
+		}
+	}
+	return p
 }
 
 // bar places left and right segments on a single full-width row, filling the gap
