@@ -36,5 +36,6 @@ docs/architecture/NNNN-short-decision-title.md
 | # | Title | Status | Date |
 |---|---|---|---|
 | [0001](0001-herdr-primary-multiplexer.md) | herdr as the primary split-pane backend | accepted | 2026-07-07 |
+| [0002](0002-go-native-design-review-portal.md) | Go-native design review portal | accepted | 2026-07-07 |
 
 <!-- Add a row for each ADR as you create them -->
