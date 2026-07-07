@@ -298,13 +298,29 @@ func broadcastTmux(self string, skip map[string]bool) int {
 	return n
 }
 
-func sendContinue(p PaneRef) bool {
+func sendContinue(p PaneRef) bool { return sendText(p, "continue") }
+
+// NotifyHarness types text (plus a submit) into every recorded harness pane — a
+// generalisation of NotifyContinue used for e.g. a "stop the workflow" instruction from the
+// portal. Returns how many panes accepted it.
+func NotifyHarness(_ func(string) string, text string) int {
+	n := 0
+	for _, p := range loadPanes() {
+		if sendText(p, text) {
+			n++
+		}
+	}
+	return n
+}
+
+// sendText types text into a pane and submits it (Enter), per multiplexer.
+func sendText(p PaneRef, text string) bool {
 	if p.Target == "" {
 		return false
 	}
 	switch p.Kind {
 	case "herdr":
-		st := append(herdrArgs(p.Session), "pane", "send-text", p.Target, "continue")
+		st := append(herdrArgs(p.Session), "pane", "send-text", p.Target, text)
 		if _, err := runner("herdr", st...); err != nil {
 			return false
 		}
@@ -312,13 +328,13 @@ func sendContinue(p PaneRef) bool {
 		_, err := runner("herdr", sk...)
 		return err == nil
 	case "tmux":
-		_, err := runner("tmux", "send-keys", "-t", p.Target, "continue", "Enter")
+		_, err := runner("tmux", "send-keys", "-t", p.Target, text, "Enter")
 		return err == nil
 	case "wezterm":
-		_, err := runner("wezterm", "cli", "send-text", "--no-paste", "--pane-id", p.Target, "continue\n")
+		_, err := runner("wezterm", "cli", "send-text", "--no-paste", "--pane-id", p.Target, text+"\n")
 		return err == nil
 	case "kitty":
-		_, err := runner("kitty", "@", "send-text", "--match", "id:"+p.Target, "continue\r")
+		_, err := runner("kitty", "@", "send-text", "--match", "id:"+p.Target, text+"\r")
 		return err == nil
 	}
 	return false

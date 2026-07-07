@@ -10,6 +10,8 @@ package main
 
 import (
 	"bufio"
+	crand "crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -29,6 +31,7 @@ import (
 
 	"github.com/kinncj/maple/app/internal/gh"
 	"github.com/kinncj/maple/app/internal/harness"
+	"github.com/kinncj/maple/app/internal/portal"
 	"github.com/kinncj/maple/app/internal/portalsock"
 	"github.com/kinncj/maple/app/internal/resume"
 	"github.com/kinncj/maple/app/internal/scaffold"
@@ -82,6 +85,8 @@ func main() {
 		runRTKAudit()
 	case "emit":
 		runEmit(args[1:])
+	case "portal":
+		runPortalServe(args[1:])
 	case "version", "--version", "-v":
 		fmt.Println("maple", version)
 	case "help", "--help", "-h":
@@ -518,23 +523,54 @@ func initialized() bool {
 // script failed — e.g. python3 missing). Honours MAPLE_DESIGN_PORT.
 func startDesignPortal() (string, func()) {
 	noop := func() {}
-	script := "scripts/design-review-portal.sh"
-	if _, err := os.Stat(script); err != nil {
-		return "", noop
-	}
 	port := findFreePort()
 	if port == 0 {
 		return "", noop
 	}
-	// The script prints the URL on success (and exits non-zero on failure, having
-	// removed its url/pid files). Trust its exit status over any stale url file.
-	out, err := exec.Command("bash", script, "start", strconv.Itoa(port)).CombinedOutput()
+	root, err := os.Getwd()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "maple: design portal failed to start: %v\n%s", err, out)
 		return "", noop
 	}
-	url := fmt.Sprintf("http://127.0.0.1:%d", port)
-	return url, func() { _ = exec.Command("bash", script, "stop").Run() }
+	token := portalToken()
+	srv := portal.New(root, token)
+	// Bind all interfaces (token-gated) so the portal is reachable on the LAN for review.
+	go func() { _ = srv.Serve(fmt.Sprintf(":%d", port)) }()
+
+	url := fmt.Sprintf("http://127.0.0.1:%d/", port)
+	_ = os.MkdirAll(".claude/state", 0o755)
+	_ = os.WriteFile(".claude/state/design-portal.url", []byte(url+"\n"), 0o644)
+	_ = os.WriteFile(".claude/state/design-portal.token", []byte(token), 0o644)
+	return url, noop
+}
+
+// runPortalServe serves the design portal standalone: `maple portal serve [port]`.
+func runPortalServe(args []string) {
+	port := 0
+	if len(args) >= 2 && args[0] == "serve" {
+		port, _ = strconv.Atoi(args[1])
+	}
+	if port == 0 {
+		port = findFreePort()
+	}
+	root, _ := os.Getwd()
+	token := portalToken()
+	_ = os.MkdirAll(".claude/state", 0o755)
+	url := fmt.Sprintf("http://127.0.0.1:%d/", port)
+	_ = os.WriteFile(".claude/state/design-portal.url", []byte(url+"\n"), 0o644)
+	_ = os.WriteFile(".claude/state/design-portal.token", []byte(token), 0o644)
+	fmt.Printf("%s design portal: %s\n", brand.Leaf, url)
+	if err := portal.New(root, token).Serve(fmt.Sprintf(":%d", port)); err != nil {
+		die(err)
+	}
+}
+
+// portalToken returns a random access token for the design portal.
+func portalToken() string {
+	b := make([]byte, 16)
+	if _, err := crand.Read(b); err != nil {
+		return "maple-portal-token"
+	}
+	return hex.EncodeToString(b)
 }
 
 // startHeartbeat writes .claude/state/maple-alive with the current time every 2s and
