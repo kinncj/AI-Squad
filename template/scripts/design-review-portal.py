@@ -667,117 +667,152 @@ def render_index(token: str) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MAPLE Design Review</title>
   <style>
+    /* MAPLE design-review portal — tokyo-night, themed to match the TUI. */
     :root {{
-      --bg: #0f1117;
-      --card: #171b22;
-      --text: #e5e7eb;
-      --muted: #9ca3af;
-      --ok: #22c55e;
-      --warn: #f59e0b;
-      --bad: #ef4444;
-      --line: #2b313b;
-      --accent: #60a5fa;
+      --bg: #1a1b26;
+      --bg2: #16161e;
+      --card: #1f2335;
+      --card2: #232945;
+      --inset: #16161e;
+      --text: #c0caf5;
+      --muted: #565f89;
+      --dim: #414868;
+      --ok: #9ece6a;
+      --warn: #e0af68;
+      --bad: #f7768e;
+      --line: #2b2f44;
+      --accent: #7aa2f7;
+      --purple: #bb9af7;
+      --cyan: #7dcfff;
+      --leaf: #9ece6a;
+      --radius: 14px;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
     }}
-    body {{ margin:0; font-family: Inter, system-ui, -apple-system, sans-serif; background:var(--bg); color:var(--text); }}
-    .wrap {{ max-width:1200px; margin:0 auto; padding:24px; }}
-    .h1 {{ font-size:24px; font-weight:700; margin:0 0 16px; }}
-    .sub {{ color:var(--muted); font-size:13px; margin-bottom:16px; }}
-    .conn {{ font-size:12px; font-weight:600; padding:2px 8px; border-radius:10px; vertical-align:middle; margin-left:8px; }}
-    .conn-on {{ color:var(--ok); background:rgba(34,197,94,0.12); }}
-    .conn-off {{ color:var(--bad); background:rgba(239,68,68,0.12); }}
-    .row {{ display:grid; grid-template-columns: 1fr 1fr; gap:16px; }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin:0; color:var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(1200px 600px at 12% -8%, rgba(122,162,247,.10), transparent 60%),
+        radial-gradient(1000px 500px at 100% 0%, rgba(187,154,247,.08), transparent 55%),
+        var(--bg);
+      -webkit-font-smoothing: antialiased;
+    }}
+    .wrap {{ max-width:1240px; margin:0 auto; padding:28px 24px 48px; }}
+    .brand {{ display:flex; align-items:center; gap:12px; margin-bottom:4px; }}
+    .brand .leaf {{ font-size:26px; filter: drop-shadow(0 2px 6px rgba(158,206,106,.4)); }}
+    .h1 {{
+      font-size:26px; font-weight:800; letter-spacing:-.02em; margin:0;
+      background: linear-gradient(92deg, var(--accent), var(--purple) 70%, var(--cyan));
+      -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+    }}
+    .sub {{ color:var(--muted); font-size:13px; margin:6px 0 22px; }}
+    .conn {{ font-size:11px; font-weight:700; padding:4px 10px; border-radius:999px; vertical-align:middle; margin-left:6px; border:1px solid transparent; }}
+    .conn-on {{ color:var(--ok); background:rgba(158,206,106,.12); border-color:rgba(158,206,106,.35); }}
+    .conn-off {{ color:var(--bad); background:rgba(247,118,142,.12); border-color:rgba(247,118,142,.30); }}
+    .row {{ display:grid; grid-template-columns: 380px 1fr; gap:20px; align-items:start; }}
     @media (max-width: 980px) {{ .row {{ grid-template-columns: 1fr; }} }}
-    .card {{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }}
-    .label {{ color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.05em; }}
+    .card {{
+      background: linear-gradient(180deg, var(--card), var(--bg2));
+      border:1px solid var(--line); border-radius:var(--radius); padding:18px;
+      box-shadow: var(--shadow);
+    }}
+    .label {{ color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.09em; font-weight:700; }}
     .value {{ font-size:15px; margin-top:4px; }}
-    .btns {{ display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }}
-    button {{ border:0; border-radius:10px; padding:10px 14px; color:#fff; font-weight:600; cursor:pointer; }}
-    .approve {{ background:var(--ok); }}
-    .changes {{ background:var(--warn); color:#111827; }}
-    .reject {{ background:var(--bad); }}
-    .refresh {{ background:#374151; }}
-    .upload {{ background:#2563eb; }}
-    textarea {{ width:100%; min-height:92px; margin-top:10px; background:#0b0d12; color:var(--text); border:1px solid var(--line); border-radius:10px; padding:10px; }}
-    .list {{ margin-top:12px; max-height:520px; overflow:auto; border:1px solid var(--line); border-radius:10px; }}
-    .item {{ display:flex; justify-content:space-between; gap:12px; padding:10px 12px; border-bottom:1px solid var(--line); }}
+    /* status pill, colour-coded by state (set via id on the value) */
+    #status {{ display:inline-block; font-weight:800; font-size:13px; padding:3px 12px; border-radius:999px; border:1px solid var(--line); }}
+    .st-running {{ color:var(--accent); background:rgba(122,162,247,.12); border-color:rgba(122,162,247,.35)!important; }}
+    .st-paused, .st-rate {{ color:var(--warn); background:rgba(224,175,104,.12); border-color:rgba(224,175,104,.35)!important; }}
+    .st-done {{ color:var(--ok); background:rgba(158,206,106,.12); border-color:rgba(158,206,106,.35)!important; }}
+    .st-failed {{ color:var(--bad); background:rgba(247,118,142,.12); border-color:rgba(247,118,142,.35)!important; }}
+    .divider {{ height:1px; background:var(--line); margin:14px 0; }}
+    .btns {{ display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }}
+    button {{
+      border:1px solid transparent; border-radius:10px; padding:9px 15px; color:#1a1b26; font-weight:700;
+      cursor:pointer; font-size:13px; transition: transform .06s ease, filter .15s ease, box-shadow .15s ease;
+    }}
+    button:hover {{ filter:brightness(1.08); transform:translateY(-1px); }}
+    button:active {{ transform:translateY(0); }}
+    .approve {{ background:var(--ok); box-shadow:0 6px 16px rgba(158,206,106,.25); }}
+    .changes {{ background:var(--warn); }}
+    .reject {{ background:var(--bad); box-shadow:0 6px 16px rgba(247,118,142,.22); }}
+    .refresh {{ background:transparent; color:var(--text); border-color:var(--line); }}
+    .upload {{ background:var(--accent); box-shadow:0 6px 16px rgba(122,162,247,.25); }}
+    textarea {{ width:100%; min-height:88px; margin-top:14px; background:var(--inset); color:var(--text); border:1px solid var(--line); border-radius:12px; padding:12px; font-family:inherit; font-size:13px; resize:vertical; }}
+    textarea:focus {{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(122,162,247,.15); }}
+    .list {{ margin-top:12px; max-height:560px; overflow:auto; border:1px solid var(--line); border-radius:12px; background:var(--inset); }}
+    .item {{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 13px; border-bottom:1px solid var(--line); transition:background .12s ease; }}
+    .item:hover {{ background:rgba(122,162,247,.06); }}
     .item:last-child {{ border-bottom:none; }}
-    .item button {{ background:#1f2937; padding:5px 10px; border-radius:8px; font-size:12px; }}
-    .item .path-btn {{ background:none; border:0; color:var(--accent); cursor:pointer; text-align:left; padding:0; font-size:13px; }}
-    .preview {{ margin-top:12px; border:1px solid var(--line); border-radius:10px; background:#0b0d12; min-height:260px; }}
-    .preview-head {{ display:flex; justify-content:space-between; gap:8px; border-bottom:1px solid var(--line); padding:10px 12px; color:var(--muted); font-size:12px; }}
-    .preview-body {{ padding:12px; max-height:520px; overflow:auto; }}
-    .preview-body img {{ max-width:100%; border-radius:8px; }}
-    .preview-body iframe {{ width:100%; height:520px; border:0; border-radius:8px; background:#fff; }}
-    .preview-body video {{ width:100%; max-height:520px; border-radius:8px; background:#000; }}
-    .code {{ white-space:pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; }}
-    .md {{ line-height:1.55; font-size:14px; }}
-    .md h1, .md h2, .md h3, .md h4 {{ margin: 16px 0 8px; line-height:1.25; }}
+    .item button {{ background:var(--card2); color:var(--text); border-color:var(--line); padding:5px 10px; border-radius:8px; font-size:12px; }}
+    .item .path-btn {{ background:none; border:0; color:var(--accent); cursor:pointer; text-align:left; padding:0; font-size:13px; font-weight:600; }}
+    .item .path-btn:hover {{ text-decoration:underline; }}
+    .preview {{ margin-top:14px; border:1px solid var(--line); border-radius:12px; background:var(--inset); min-height:280px; overflow:hidden; }}
+    .preview-head {{ display:flex; justify-content:space-between; gap:8px; border-bottom:1px solid var(--line); padding:11px 13px; color:var(--muted); font-size:12px; background:var(--bg2); }}
+    .preview-body {{ padding:14px; max-height:560px; overflow:auto; }}
+    .preview-body img {{ max-width:100%; border-radius:10px; box-shadow:var(--shadow); }}
+    .preview-body iframe {{ width:100%; height:540px; border:0; border-radius:10px; background:#fff; }}
+    .preview-body video {{ width:100%; max-height:540px; border-radius:10px; background:#000; }}
+    .empty {{ color:var(--dim); font-size:13px; text-align:center; padding:40px 12px; }}
+    .code {{ white-space:pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; color:var(--text); }}
+    .md {{ line-height:1.6; font-size:14px; }}
+    .md h1, .md h2, .md h3, .md h4 {{ margin: 18px 0 8px; line-height:1.25; color:var(--text); }}
     .md h1 {{ font-size: 22px; }}
-    .md h2 {{ font-size: 19px; }}
+    .md h2 {{ font-size: 19px; color:var(--accent); }}
     .md h3 {{ font-size: 16px; }}
     .md p {{ margin: 8px 0; }}
     .md ul, .md ol {{ margin: 8px 0 8px 22px; }}
     .md li {{ margin: 4px 0; }}
-    .md pre {{ background:#0b0d12; border:1px solid var(--line); border-radius:8px; padding:10px; overflow:auto; }}
-    .md code {{ background:#0b0d12; border:1px solid var(--line); border-radius:6px; padding:1px 5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; }}
-    .md blockquote {{ margin:10px 0; padding:8px 12px; border-left:3px solid var(--line); color:var(--muted); }}
+    .md pre {{ background:var(--bg2); border:1px solid var(--line); border-radius:10px; padding:12px; overflow:auto; }}
+    .md code {{ background:var(--bg2); border:1px solid var(--line); border-radius:6px; padding:1px 5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; color:var(--cyan); }}
+    .md blockquote {{ margin:10px 0; padding:8px 14px; border-left:3px solid var(--accent); color:var(--muted); background:rgba(122,162,247,.05); border-radius:0 8px 8px 0; }}
     a {{ color:var(--accent); text-decoration:none; }}
-    .chip {{ font-size:11px; color:var(--muted); border:1px solid var(--line); border-radius:999px; padding:2px 8px; }}
-    .status {{ font-weight:700; }}
+    a:hover {{ text-decoration:underline; }}
+    .chip {{ font-size:10px; font-weight:700; color:var(--purple); background:rgba(187,154,247,.10); border:1px solid rgba(187,154,247,.25); border-radius:999px; padding:2px 9px; text-transform:uppercase; letter-spacing:.04em; }}
+    .status {{ font-weight:800; }}
     .upload-input {{
-      width: 100%;
-      margin-top: 10px;
-      border: 1px dashed var(--line);
-      border-radius: 10px;
-      padding: 10px;
-      color: var(--muted);
-      background: #0b0d12;
+      width: 100%; margin-top: 12px;
+      border: 1px dashed var(--dim); border-radius: 12px; padding: 12px;
+      color: var(--muted); background: var(--inset); font-size:12px;
     }}
+    .upload-input:hover {{ border-color:var(--accent); }}
+    ::-webkit-scrollbar {{ width:10px; height:10px; }}
+    ::-webkit-scrollbar-thumb {{ background:var(--dim); border-radius:8px; border:2px solid var(--inset); }}
+    ::-webkit-scrollbar-track {{ background:transparent; }}
     .uploads {{ margin-top: 10px; max-height: 180px; overflow: auto; border:1px solid var(--line); border-radius:10px; }}
     .upload-item {{ display:flex; justify-content:space-between; gap:10px; padding:8px 10px; border-bottom:1px solid var(--line); font-size:12px; }}
     .upload-item:last-child {{ border-bottom:none; }}
     .upload-left {{ display:flex; align-items:center; gap:8px; min-width:0; }}
     .upload-left label {{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:330px; }}
-    .upload-actions button {{ background:#1f2937; padding:4px 8px; border-radius:7px; font-size:11px; }}
+    .upload-actions button {{ background:var(--card2); color:var(--text); border-color:var(--line); padding:4px 8px; border-radius:7px; font-size:11px; }}
     .modal {{
-      position: fixed;
-      inset: 0;
-      background: rgba(2, 6, 23, 0.75);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-      padding: 24px;
+      position: fixed; inset: 0;
+      background: rgba(13, 14, 22, 0.78); backdrop-filter: blur(4px);
+      display: none; align-items: center; justify-content: center; z-index: 9999; padding: 24px;
     }}
     .modal.open {{ display: flex; }}
     .modal-card {{
-      width: min(1200px, 96vw);
-      max-height: 92vh;
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      overflow: hidden;
-      display: grid;
-      grid-template-rows: auto 1fr;
+      width: min(1240px, 96vw); max-height: 92vh;
+      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+      overflow: hidden; display: grid; grid-template-rows: auto 1fr; box-shadow: var(--shadow);
     }}
     .modal-head {{
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 12px 14px;
-      border-bottom: 1px solid var(--line);
-      color: var(--muted);
-      font-size: 12px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 13px 16px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px;
+      background: var(--bg2);
     }}
-    .modal-close {{ background: #374151; }}
-    .modal-body {{ padding: 14px; overflow: auto; min-height: 200px; }}
+    .modal-close {{ background: var(--card2); color:var(--text); border-color:var(--line); }}
+    .modal-body {{ padding: 16px; overflow: auto; min-height: 200px; }}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="h1">MAPLE Design Review Portal <span id="maple-conn" class="conn conn-off" title="maple TUI connection">● maple: offline</span></div>
-    <div class="sub">Companion to TUI pipeline approvals. TUI remains the primary control surface.</div>
+    <div class="brand">
+      <span class="leaf">🍁</span>
+      <div class="h1">MAPLE Design Review</div>
+      <span id="maple-conn" class="conn conn-off" title="maple TUI connection">● maple: offline</span>
+    </div>
+    <div class="sub">Live companion to the TUI pipeline · approve stages, review artifacts, upload references. The TUI stays the primary control surface.</div>
     <div class="row">
       <div class="card">
         <div class="label">Workflow</div><div id="wf" class="value">-</div>
@@ -991,7 +1026,13 @@ def render_index(token: str) -> str:
       const s = await api("/api/state");
       document.getElementById("wf").textContent = s.taffy || "-";
       document.getElementById("stage").textContent = s.stage || "-";
-      document.getElementById("status").textContent = s.status || "-";
+      const stEl = document.getElementById("status");
+      stEl.textContent = s.status || "-";
+      const stKey = String(s.status || "").toUpperCase();
+      stEl.className = "value status " + ({{
+        "RUNNING": "st-running", "PAUSED": "st-paused", "RATE_LIMITED": "st-rate",
+        "DONE": "st-done", "FAILED": "st-failed"
+      }}[stKey] || "");
       document.getElementById("pending").textContent = s.approval_pending || "-";
       document.getElementById("updated").textContent = s.updated_at || "-";
       if (s.maple) setMapleConn(s.maple.connected, s.maple.source);
