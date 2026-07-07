@@ -213,6 +213,31 @@ func TestTickRefreshesLiveStateAndKeepsSelection(t *testing.T) {
 	}
 }
 
+func TestEscClosesPipelineAndTickDoesNotReopen(t *testing.T) {
+	m := sized(t, newModel(t))
+	// Shift+P opens the pipeline (taffy) overlay.
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("P")})
+	m = nm.(Model)
+	if m.detail == nil || m.detailKind != "pipeline" {
+		t.Fatal("P should open the pipeline overlay")
+	}
+	// Esc closes it.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = nm.(Model)
+	if m.detail != nil {
+		t.Fatal("esc should close the pipeline overlay")
+	}
+	// A refresh tick must NOT re-open it (the bug: it kept going back to taffy).
+	nm, _ = m.Update(tickMsg{})
+	m = nm.(Model)
+	if m.detail != nil {
+		t.Error("a tick after esc must not re-open the pipeline overlay")
+	}
+	if m.detailKind != "" {
+		t.Errorf("detailKind should be cleared after esc, got %q", m.detailKind)
+	}
+}
+
 func TestArrowMovesSelectionOnFocusedPane(t *testing.T) {
 	m := sized(t, newModel(t))
 	// Render once so the focused pane knows its visible height.

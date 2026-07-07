@@ -92,13 +92,18 @@ func LaunchInPane(getenv func(string) string, harness string, args []string) (Pa
 	return PaneRef{}, false, nil
 }
 
-// harnessCommands are foreground pane commands that look like an AI harness worth
-// nudging when we broadcast. copilot/claude/cursor CLIs usually show up as "node".
-var harnessCommands = map[string]bool{
-	"node": true, "bun": true, "deno": true,
-	"claude": true, "copilot": true, "opencode": true,
-	"cursor": true, "cursor-agent": true,
-	"python": true, "python3": true,
+// nonHarnessCommands are foreground pane commands we never nudge — shells, editors,
+// pagers, multiplexers, VCS. Everything else is treated as a possible AI harness, so
+// the nudge works for ANY harness (claude/copilot/opencode/cursor/pi/hermes/…, known
+// or not) without maintaining an allow-list per tool.
+var nonHarnessCommands = map[string]bool{
+	"zsh": true, "bash": true, "sh": true, "fish": true, "tcsh": true, "csh": true, "ksh": true, "dash": true,
+	"vim": true, "nvim": true, "vi": true, "nano": true, "emacs": true, "helix": true, "hx": true, "micro": true,
+	"less": true, "more": true, "man": true, "bat": true,
+	"tmux": true, "zellij": true, "screen": true,
+	"top": true, "htop": true, "btop": true, "watch": true,
+	"git": true, "lazygit": true, "gitui": true, "ssh": true, "mosh": true,
+	"maple": true, // belt-and-suspenders alongside the $TMUX_PANE skip
 }
 
 // NotifyContinue types "continue" into harness panes so an agent that yielded to wait
@@ -137,7 +142,7 @@ func broadcastTmux(self string, skip map[string]bool) int {
 			continue
 		}
 		id, cmd := parts[0], parts[1]
-		if id == self || skip[id] || !harnessCommands[cmd] {
+		if id == self || skip[id] || nonHarnessCommands[cmd] {
 			continue
 		}
 		if _, err := runner("tmux", "send-keys", "-t", id, "continue", "Enter"); err == nil {

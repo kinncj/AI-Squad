@@ -719,6 +719,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch k {
 		case "esc":
 			m.detail = nil
+			m.detailKind = ""
 			m.fullscreen = fsNone
 			m.reviewStory = ""
 		case "a":
@@ -984,7 +985,9 @@ func (m *Model) reload() {
 	panes[paneQA].SetSource(m.qa)
 	m.design.SetSource(linesSource{m.store.DesignTree()})
 	m.logs.SetSource(linesSource{m.store.LogLines(500)})
-	if m.detailKind == "pipeline" {
+	// Refresh the pipeline overlay live only while it's actually open — otherwise a
+	// tick would re-open it after the user pressed esc to leave.
+	if m.detail != nil && m.detailKind == "pipeline" {
 		m.openPipeline()
 	}
 }
