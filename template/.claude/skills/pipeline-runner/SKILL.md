@@ -137,6 +137,7 @@ After each stage: update `maple.json` with current stage + `RUNNING`.
 - Send an immediate kickoff status before the first long-running tool/agent call.
 - While a taffy run is active, send a concise progress update at least every 60-120 seconds.
 - On each heartbeat, refresh `maple.json` `updated_at` and current `stage`.
+- Optionally push a live event to the design portal + TUI: `maple emit stage stage=<name>` (best-effort; no-ops with no portal, never gate on it).
 - Every heartbeat must include concrete progress evidence:
   - changed files/artifacts since last update (explicit paths), or
   - a specific blocker that prevented changes.
