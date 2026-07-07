@@ -1,6 +1,12 @@
 name: Release
 
 on:
+  # Pushing a version tag (e.g. v5.0.0-rc1) builds and publishes a GitHub Release.
+  # Tags containing a hyphen (…-rc1, …-beta) are marked as prereleases.
+  push:
+    tags:
+      - 'v*'
+  # Still supports the manual "publish a release" flow.
   release:
     types: [published]
 
@@ -96,6 +102,9 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          # On a tag push this creates the release; a hyphenated tag (…-rc1) is a prerelease.
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
           files: |
             dist/maple-darwin-amd64.tar.gz
             dist/maple-darwin-arm64.tar.gz

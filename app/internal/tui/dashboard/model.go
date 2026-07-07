@@ -385,6 +385,18 @@ func (m *Model) toggleRTK(i int) tea.Cmd {
 	return rtkInitCmd(def)
 }
 
+// installHerdr runs herdr's official installer from inside maple (the way rtk is wired via
+// R), so users can get maple's preferred multiplexer without dropping to a shell. No-op when
+// herdr is already present. Launches in a side pane, or the current terminal if unwrapped.
+func (m *Model) installHerdr() tea.Cmd {
+	if _, err := exec.LookPath("herdr"); err == nil {
+		m.status = "herdr already installed — nothing to do"
+		return nil
+	}
+	m.status = "installing herdr… (curl https://herdr.dev/install.sh | sh)"
+	return m.launch([]string{"sh", "-c", "curl -fsSL https://herdr.dev/install.sh | sh; echo; echo 'herdr install finished — relaunch maple to use it.'"})
+}
+
 // firstHarness returns the first installed harness, or "".
 func (m *Model) firstHarness() string {
 	for _, h := range []string{"claude", "opencode", "copilot"} {
@@ -985,6 +997,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "R":
 		m.openRTK()
+	case "H":
+		return m, m.installHerdr()
 	case "S":
 		return m, m.launch([]string{"npx", "ship-safe", "audit", "."})
 	case "v":
@@ -1114,7 +1128,7 @@ func (m Model) handleCommandKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 var commandNames = []string{
 	"quit", "reload", "help", "pipeline", "changes", "design", "logs", "review",
 	"skills", "launch", "resume", "prompt", "rtk", "ship", "portal", "filter",
-	"theme", "req", "update", "labels", "project",
+	"theme", "req", "update", "labels", "project", "install-herdr",
 }
 
 // runCommand dispatches a `:` command line. Accepts the full action vocabulary plus
@@ -1162,6 +1176,8 @@ func (m Model) runCommand(line string) (tea.Model, tea.Cmd) {
 		m.openRTK()
 	case "S", "ship", "ship-safe":
 		return m, m.launch([]string{"npx", "ship-safe", "audit", "."})
+	case "install-herdr", "herdr", "H":
+		return m, m.installHerdr()
 	case "v", "portal":
 		if url := m.portal(); url != "" {
 			return m, m.openExternal(browserOpen(url))
@@ -1419,7 +1435,7 @@ func (m Model) helpView(bodyH int) string {
 		{"L", "launch a harness (tmux/zellij pane or in-term)"},
 		{"x", "quick prompt (skill / agent)"},
 		{"n / u", "new story (req) / update template"},
-		{"R / S", "rtk wiring / ship-safe audit"},
+		{"R / H / S", "rtk wiring / install herdr / ship-safe audit"},
 		{"v", "open design portal in browser"},
 		{"r", "reload now"},
 		{": ", "command mode — every action by name (:help)"},

@@ -47,3 +47,10 @@ template/template/
 bin/
 app/internal/tui/splash/assets/
 app/cmd/maple/template/
+
+# Go build artifacts (canonical binary + local dev + cross-compile)
+/maple
+/bin/
+/dist/
+# The app/cmd/maple/template symlink is swapped for a real copy at build time
+/app/cmd/maple/template/
