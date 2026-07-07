@@ -141,41 +141,33 @@ func wrapInHerdr() bool {
 	if err != nil {
 		return false
 	}
-	const session = "maple"
-	const herdrReadySentinel = "__maple_herdr_ready__"
+	const sentinel = "__maple_herdr_ready__"
+	const label = "maple"
 	cwd, _ := os.Getwd()
+	session := mapleSessionName(cwd)
 
-	stop := func() { _ = exec.Command(bin, "session", "stop", session).Run() }
-	stop() // clear a stale maple session, like tmux kill-session
-
-	if err := exec.Command(bin, "--session", session, "server").Start(); err != nil {
-		return false
+	// herdr sessions are persistent (workspaces survive stop/delete on disk), so the old
+	// "stop then create" piled up a new workspace every launch. Instead: ensure the server,
+	// then reuse maple's own labelled workspace if it exists (recover — preserving any
+	// harness split panes) and close stray workspaces, else create exactly one.
+	if !herdrRunning(bin, session) {
+		if err := exec.Command(bin, "--session", session, "server").Start(); err != nil {
+			return false
+		}
+		if !waitHerdrReady(bin, session) {
+			return false
+		}
 	}
-	if !waitHerdrReady(bin, session) {
-		stop()
-		return false
-	}
-
-	createArgs := []string{"--session", session, "workspace", "create", "--focus"}
-	if cwd != "" {
-		createArgs = append(createArgs, "--cwd", cwd)
-	}
-	out, err := exec.Command(bin, createArgs...).Output()
-	if err != nil {
-		stop()
-		return false
-	}
-	pane := parseHerdrRootPaneID(out)
+	pane := reuseOrCreateHerdrWorkspace(bin, session, cwd, label)
 	if pane == "" {
-		stop()
 		return false
 	}
+
 	// A freshly spawned pane's shell may not read input for a beat; echo a sentinel and
 	// block until herdr sees it, so the exec that follows lands in a live shell.
-	_ = exec.Command(bin, "--session", session, "pane", "run", pane, "echo "+herdrReadySentinel).Run()
-	_ = exec.Command(bin, "--session", session, "wait", "output", pane, "--match", herdrReadySentinel, "--timeout", "8000").Run()
+	_ = exec.Command(bin, "--session", session, "pane", "run", pane, "echo "+sentinel).Run()
+	_ = exec.Command(bin, "--session", session, "wait", "output", pane, "--match", sentinel, "--timeout", "8000").Run()
 	if err := exec.Command(bin, "--session", session, "pane", "run", pane, "exec "+shellSingleQuote(self)).Run(); err != nil {
-		stop()
 		return false
 	}
 
@@ -184,6 +176,168 @@ func wrapInHerdr() bool {
 	attach.Stdin, attach.Stdout, attach.Stderr = os.Stdin, os.Stdout, os.Stderr
 	_ = attach.Run()
 	return true
+}
+
+// herdrRunning reports whether the named session's server is already up.
+func herdrRunning(bin, session string) bool {
+	out, _ := exec.Command(bin, "--session", session, "status").Output()
+	return strings.Contains(string(out), "status: running")
+}
+
+// reuseOrCreateHerdrWorkspace returns the pane maple should run in. It reuses the workspace
+// tagged with label (so a relaunch recovers maple's workspace, keeping any harness split
+// panes) and closes every other workspace so relaunches don't accumulate. The session is a
+// dedicated per-project one, so closing strays never touches the user's own herdr work.
+func reuseOrCreateHerdrWorkspace(bin, session, cwd, label string) string {
+	mineWS, strays := listHerdrWorkspaces(bin, session, label)
+	for _, id := range strays {
+		_ = exec.Command(bin, "--session", session, "workspace", "close", id).Run()
+	}
+	if mineWS != "" {
+		if pane := firstHerdrPane(bin, session, mineWS); pane != "" {
+			return pane
+		}
+	}
+	args := []string{"--session", session, "workspace", "create", "--focus", "--label", label}
+	if cwd != "" {
+		args = append(args, "--cwd", cwd)
+	}
+	out, err := exec.Command(bin, args...).Output()
+	if err != nil {
+		return ""
+	}
+	return parseHerdrRootPaneID(out)
+}
+
+// listHerdrWorkspaces returns the id of the workspace tagged with label and the ids of all
+// other (stray) workspaces in the session.
+func listHerdrWorkspaces(bin, session, label string) (mine string, strays []string) {
+	out, err := exec.Command(bin, "--session", session, "workspace", "list").Output()
+	if err != nil {
+		return "", nil
+	}
+	var resp struct {
+		Result struct {
+			Workspaces []struct {
+				WorkspaceID string `json:"workspace_id"`
+				Label       string `json:"label"`
+			} `json:"workspaces"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(out, &resp) != nil {
+		return "", nil
+	}
+	for _, w := range resp.Result.Workspaces {
+		if mine == "" && w.Label == label {
+			mine = w.WorkspaceID
+			continue
+		}
+		strays = append(strays, w.WorkspaceID)
+	}
+	return mine, strays
+}
+
+// firstHerdrPane returns the lowest-numbered pane id in a workspace (maple's root pane —
+// harness splits come later as higher pN, so exec-ing maple here never clobbers a harness).
+func firstHerdrPane(bin, session, workspaceID string) string {
+	out, err := exec.Command(bin, "--session", session, "pane", "list", "--workspace", workspaceID).Output()
+	if err != nil {
+		return ""
+	}
+	var resp struct {
+		Result struct {
+			Panes []struct {
+				PaneID string `json:"pane_id"`
+			} `json:"panes"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(out, &resp) != nil {
+		return ""
+	}
+	best := ""
+	for _, p := range resp.Result.Panes {
+		if best == "" || paneLess(p.PaneID, best) {
+			best = p.PaneID
+		}
+	}
+	return best
+}
+
+// paneLess orders herdr pane ids ("w5:p2") by their numeric pane suffix.
+func paneLess(a, b string) bool { return paneNum(a) < paneNum(b) }
+
+func paneNum(id string) int {
+	if i := strings.LastIndex(id, ":p"); i >= 0 {
+		n, _ := strconv.Atoi(id[i+2:])
+		return n
+	}
+	return 1 << 30
+}
+
+// mapleSessionName is the dedicated per-project multiplexer session name: an explicit
+// `session:` in project.config.yaml if set, else "maple-<project-dir>" — persisted to the
+// config (when one exists) so it is stable and user-editable, and so two projects never
+// collide on one shared session.
+func mapleSessionName(cwd string) string {
+	if s := configSession(); s != "" {
+		return s
+	}
+	base := "project"
+	if cwd != "" {
+		base = sanitizeSession(filepath.Base(cwd))
+	}
+	name := "maple-" + base
+	persistConfigSession(name)
+	return name
+}
+
+func sanitizeSession(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '-' || r == '_' || r == ' ':
+			b.WriteByte('-')
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "project"
+	}
+	return out
+}
+
+// configSession reads a top-level `session:` value from project.config.yaml, or "".
+func configSession() string {
+	data, err := os.ReadFile("project.config.yaml")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		t := strings.TrimSpace(line)
+		if strings.HasPrefix(t, "session:") {
+			return strings.Trim(strings.TrimSpace(strings.TrimPrefix(t, "session:")), `"'`)
+		}
+	}
+	return ""
+}
+
+// persistConfigSession appends `session: <name>` to project.config.yaml when the file
+// exists and does not already carry the key. No-op in an uninitialised directory.
+func persistConfigSession(name string) {
+	data, err := os.ReadFile("project.config.yaml")
+	if err != nil {
+		return
+	}
+	if configSession() != "" {
+		return
+	}
+	body := string(data)
+	if !strings.HasSuffix(body, "\n") {
+		body += "\n"
+	}
+	_ = os.WriteFile("project.config.yaml", []byte(body+"session: "+name+"\n"), 0o644)
 }
 
 // waitHerdrReady polls until the named session's headless server reports running (~4s cap).
@@ -231,8 +385,8 @@ func wrapInTmux() bool {
 	if err != nil {
 		return false
 	}
-	const session = "maple"
 	cwd, _ := os.Getwd()
+	session := mapleSessionName(cwd) // per-project, so two projects don't share one session
 	_ = exec.Command(tmux, "kill-session", "-t", session).Run() // clear a stale one
 	// -c pins the session (and maple inside it) to the current project dir, so all its
 	// file-based state reads (stories, sessions, gates) resolve correctly.
