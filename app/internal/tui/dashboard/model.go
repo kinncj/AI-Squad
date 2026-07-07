@@ -513,6 +513,11 @@ func (m *Model) openSession() tea.Cmd {
 	switch m.group.FocusIndex() {
 	case paneSessions:
 		if se, ok := m.sessions.at(m.group.Focused().Selected()); ok {
+			// auto-pin the resumed session (like main) so its ● marker sticks and later
+			// harness relaunches target it.
+			if se.ID != "" {
+				_ = m.store.SetPinnedSession(se.Source, se.ID)
+			}
 			return m.launch(resumeCommand(se))
 		}
 	case panePRs:
@@ -1345,7 +1350,7 @@ func (m Model) helpView(bodyH int) string {
 		{"j / k · ↓ / ↑", "navigate rows"},
 		{"g / G", "top / bottom"},
 		{"s a p Q", "focus Stories / Sessions / PRs / QA"},
-		{"Enter", "open detail (story / session / test)"},
+		{"Enter", "open detail (story / test) · resume (session)"},
 		{"/", "filter the focused pane"},
 		{"esc", "close overlay"},
 	}
@@ -1494,7 +1499,7 @@ func (m Model) contextKeys() string {
 	case paneStories:
 		ctx = "[Enter] story · [i] implement · [D] design review · [n] new"
 	case paneSessions:
-		ctx = "[Enter] transcript · [o] resume · [p] pin · [L] launch"
+		ctx = "[Enter]/[o] resume · [p] pin · [L] launch"
 	case panePRs:
 		ctx = "[Enter]/[o] open PR · [r] refresh"
 	case paneQA:
