@@ -186,6 +186,12 @@
     .filters { display:flex; gap:6px; flex-wrap:wrap; margin: 10px 0 4px; }
     .filters button { background: var(--inset); color: var(--muted); border:1px solid var(--line); padding:4px 11px; border-radius:999px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
     .filters button.active { background: rgba(122,162,247,.14); color: var(--accent); border-color: rgba(122,162,247,.4); }
+    .stop { background: transparent; color: var(--bad); border-color: var(--bad); }
+    .stop:hover { background: rgba(247,118,142,.12); }
+    button:disabled { opacity: .38; cursor: not-allowed; filter: grayscale(.4); transform: none !important; }
+    .art-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .sort-select { background: var(--inset); color: var(--text); border:1px solid var(--line); border-radius:9px; padding:5px 9px; font-size:12px; font-weight:600; }
+    .sort-select:focus { outline:none; border-color: var(--accent); }
   </style>
 </head>
 <body>
@@ -211,11 +217,13 @@
         <div class="label" style="margin-top:10px">Updated</div><div id="updated" class="value">-</div>
         <textarea id="feedback" placeholder="Feedback for the agent (required for reject/change)..."></textarea>
         <input id="uploadInput" class="upload-input" type="file" multiple accept=".excalidraw,.json,.jpg,.jpeg,.png,.webp,.gif,.html,.htm,.txt,.md,.svg,.css" />
+        <div id="gateHint" class="sub" style="margin-top:12px"></div>
         <div class="btns">
-          <button class="approve" onclick="approveStage()">Approve stage</button>
-          <button class="reject" onclick="rejectStage()">Reject</button>
-          <button class="changes" onclick="requestChanges()">Request changes</button>
+          <button id="btnApprove" class="approve" onclick="approveStage()">Approve stage</button>
+          <button id="btnReject" class="reject" onclick="rejectStage()">Reject</button>
+          <button id="btnChanges" class="changes" onclick="requestChanges()">Request changes</button>
           <button class="upload" onclick="uploadFiles()">Upload files</button>
+          <button id="btnStop" class="stop" onclick="stopWorkflow()">Stop workflow</button>
           <button class="refresh" onclick="refreshAll()">Refresh</button>
         </div>
         <div class="label" style="margin-top:10px">Uploaded review files</div>
@@ -223,7 +231,14 @@
         <div id="msg" class="sub" style="margin-top:10px"></div>
       </div>
       <div class="card">
-        <div class="label">Artifacts</div>
+        <div class="art-head">
+          <div class="label">Artifacts</div>
+          <select id="artSort" class="sort-select" onchange="onSortChange()">
+            <option value="updated">sort: updated ↓</option>
+            <option value="created">sort: created ↓</option>
+            <option value="name">sort: name ↑</option>
+          </select>
+        </div>
         <div id="filters" class="filters"></div>
         <div id="artifacts" class="list"></div>
         <div class="preview">
@@ -492,6 +507,23 @@
         for (const p of s.feedback.attachments) selectedUploads.add(String(p));
       }
 
+      // Contextual controls: approve/reject/changes only when a gate is pending; stop only
+      // while a workflow is in-flight.
+      const gate = !!s.approval_pending;
+      const inFlight = ["RUNNING", "PAUSED", "RATE_LIMITED"].includes(stKey);
+      for (const id of ["btnApprove", "btnReject", "btnChanges"]) {
+        const b = document.getElementById(id);
+        if (b) b.disabled = !gate;
+      }
+      const stopB = document.getElementById("btnStop");
+      if (stopB) stopB.disabled = !inFlight;
+      const hint = document.getElementById("gateHint");
+      if (hint) {
+        hint.textContent = gate
+          ? "⏳ Approval required — stage: " + s.approval_pending
+          : (inFlight ? "Workflow running — no approval needed right now." : "No active workflow.");
+      }
+
       const a = await api("/api/artifacts");
       window._artifacts = a.items || [];
       renderArtifacts();
@@ -500,8 +532,29 @@
     }
 
     let _artFilter = "all";
+    let _artSort = localStorage.getItem("maple.artSort") || "updated";
+    function sortArtifacts(items) {
+      const arr = items.slice();
+      if (_artSort === "name") arr.sort((a, b) => (a.name || a.path).localeCompare(b.name || b.path));
+      else if (_artSort === "created") arr.sort((a, b) => (b.created || 0) - (a.created || 0));
+      else arr.sort((a, b) => (b.updated || 0) - (a.updated || 0));
+      return arr;
+    }
+    function onSortChange() {
+      _artSort = document.getElementById("artSort").value;
+      localStorage.setItem("maple.artSort", _artSort);
+      renderArtifacts();
+    }
+    async function stopWorkflow() {
+      if (!confirm("Stop the current workflow? The harness halts the pipeline but stays open — you can talk to it directly.")) return;
+      try {
+        await api("/api/stop", { method: "POST" });
+        document.getElementById("msg").textContent = "workflow stopped — talk to the harness directly.";
+        refreshAll();
+      } catch (e) { document.getElementById("msg").textContent = e.message; }
+    }
     function renderArtifacts() {
-      const items = window._artifacts || [];
+      const items = sortArtifacts(window._artifacts || []);
       const box = document.getElementById("artifacts");
       const filters = document.getElementById("filters");
       box.innerHTML = "";
@@ -949,8 +1002,10 @@
     });
     bindMarkdownLinks("previewBody");
     bindMarkdownLinks("modalBody");
+    { const sel = document.getElementById("artSort"); if (sel) sel.value = _artSort; }
     subscribeEvents();
-    setInterval(() => refreshAll().catch(() => {}), 4000);
+    // Updates are event-driven (SSE pushes on real change); this is only a slow safety net.
+    setInterval(() => refreshAll().catch(() => {}), 20000);
 
     // TUI-style keyboard shortcuts (ignored while typing in a field or a modal is open).
     document.addEventListener("keydown", (e) => {
