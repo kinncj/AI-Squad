@@ -103,10 +103,14 @@ func runTUI() {
 		return
 	}
 	// Make maple a mini agentic IDE: if we're not already in a multiplexer, relaunch
-	// inside a configured tmux session so harnesses open as side panes. Opt out with
-	// MAPLE_NO_TMUX=1 (then harnesses run in-terminal / suspend).
-	if !inMultiplexer() && os.Getenv("MAPLE_NO_TMUX") == "" {
-		if wrapInTmux() {
+	// inside one so harnesses open as side panes. Prefer herdr (agent-native) when it's
+	// installed; otherwise fall back to a styled tmux session. Opt out per backend with
+	// MAPLE_NO_HERDR=1 / MAPLE_NO_TMUX=1 (with both off, harnesses run in-terminal).
+	if !inMultiplexer() {
+		if os.Getenv("MAPLE_NO_HERDR") == "" && wrapInHerdr() {
+			return
+		}
+		if os.Getenv("MAPLE_NO_TMUX") == "" && wrapInTmux() {
 			return
 		}
 	}
@@ -121,6 +125,98 @@ func runTUI() {
 // or a splittable terminal it can drive.
 func inMultiplexer() bool {
 	return harness.InMultiplexer(os.Getenv)
+}
+
+// wrapInHerdr relaunches maple inside an isolated, persistent herdr session named "maple"
+// and attaches to it, so harness launches open as herdr side panes. It mirrors wrapInTmux
+// but over herdr's socket-API CLI: a fresh headless server has no panes, so it creates a
+// workspace, execs maple into that pane, then attaches. Returns false when herdr is absent
+// or any bootstrap step fails — the caller then tries tmux. Opt out with MAPLE_NO_HERDR=1.
+func wrapInHerdr() bool {
+	bin, err := exec.LookPath("herdr")
+	if err != nil {
+		return false
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	const session = "maple"
+	const herdrReadySentinel = "__maple_herdr_ready__"
+	cwd, _ := os.Getwd()
+
+	stop := func() { _ = exec.Command(bin, "session", "stop", session).Run() }
+	stop() // clear a stale maple session, like tmux kill-session
+
+	if err := exec.Command(bin, "--session", session, "server").Start(); err != nil {
+		return false
+	}
+	if !waitHerdrReady(bin, session) {
+		stop()
+		return false
+	}
+
+	createArgs := []string{"--session", session, "workspace", "create", "--focus"}
+	if cwd != "" {
+		createArgs = append(createArgs, "--cwd", cwd)
+	}
+	out, err := exec.Command(bin, createArgs...).Output()
+	if err != nil {
+		stop()
+		return false
+	}
+	pane := parseHerdrRootPaneID(out)
+	if pane == "" {
+		stop()
+		return false
+	}
+	// A freshly spawned pane's shell may not read input for a beat; echo a sentinel and
+	// block until herdr sees it, so the exec that follows lands in a live shell.
+	_ = exec.Command(bin, "--session", session, "pane", "run", pane, "echo "+herdrReadySentinel).Run()
+	_ = exec.Command(bin, "--session", session, "wait", "output", pane, "--match", herdrReadySentinel, "--timeout", "8000").Run()
+	if err := exec.Command(bin, "--session", session, "pane", "run", pane, "exec "+shellSingleQuote(self)).Run(); err != nil {
+		stop()
+		return false
+	}
+
+	fmt.Println(brand.Leaf + " starting maple in herdr — harnesses open in a side pane")
+	attach := exec.Command(bin, "--session", session)
+	attach.Stdin, attach.Stdout, attach.Stderr = os.Stdin, os.Stdout, os.Stderr
+	_ = attach.Run()
+	return true
+}
+
+// waitHerdrReady polls until the named session's headless server reports running (~4s cap).
+func waitHerdrReady(bin, session string) bool {
+	for i := 0; i < 40; i++ {
+		out, _ := exec.Command(bin, "--session", session, "status").Output()
+		if strings.Contains(string(out), "status: running") {
+			return true
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return false
+}
+
+// parseHerdrRootPaneID pulls the root pane id from `herdr workspace create` JSON.
+func parseHerdrRootPaneID(out []byte) string {
+	var resp struct {
+		Result struct {
+			RootPane struct {
+				PaneID string `json:"pane_id"`
+			} `json:"root_pane"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(out, &resp) == nil {
+		return resp.Result.RootPane.PaneID
+	}
+	return ""
+}
+
+// shellSingleQuote wraps a path for `herdr pane run`, which types one line into the pane's
+// shell, so a path with spaces survives.
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // wrapInTmux relaunches maple inside a fresh, maple-styled tmux session (side-pane
