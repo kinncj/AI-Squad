@@ -93,8 +93,48 @@ func (m *model) sendingView() string {
 	line2 := "  " + m.spinner.View() +
 		lipgloss.NewStyle().Foreground(p.Accent).Render(" Converting to Gherkin…") +
 		"  " + lipgloss.NewStyle().Foreground(p.Muted).Render(elapsed.String())
-	hint := lipgloss.NewStyle().Foreground(p.Muted).Render("  This may take 10–30 seconds.  Esc to cancel.")
-	return line1 + "\n\n" + line2 + "\n" + hint + "\n"
+	hint := lipgloss.NewStyle().Foreground(p.Muted).Render(
+		"  live output from " + m.selectedAI.Label + " · Esc to cancel")
+	return line1 + "\n\n" + line2 + "\n\n" + m.streamTail() + "\n" + hint + "\n"
+}
+
+// streamTail renders the most recent lines the harness has emitted, in a bordered panel
+// sized to the terminal, so the user can watch it reason instead of staring at a spinner.
+func (m *model) streamTail() string {
+	p := m.pal
+	if len(m.streamLog) == 0 {
+		return "  " + lipgloss.NewStyle().Foreground(p.Muted).Italic(true).
+			Render("waiting for the harness to respond…")
+	}
+	rows := m.height - 11
+	if rows < 4 {
+		rows = 4
+	}
+	if rows > 24 {
+		rows = 24
+	}
+	start := 0
+	if len(m.streamLog) > rows {
+		start = len(m.streamLog) - rows
+	}
+	width := m.width - 8
+	if width < 20 {
+		width = 20
+	}
+	var sb strings.Builder
+	for _, l := range m.streamLog[start:] {
+		l = strings.ReplaceAll(l, "\t", "  ")
+		if r := []rune(l); len(r) > width {
+			l = string(r[:width-1]) + "…"
+		}
+		sb.WriteString(lipgloss.NewStyle().Foreground(p.Muted).Render(l) + "\n")
+	}
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(p.Muted).
+		Padding(0, 1).
+		Width(m.width - 4).
+		Render(strings.TrimRight(sb.String(), "\n"))
 }
 
 func (m *model) errorView() string {

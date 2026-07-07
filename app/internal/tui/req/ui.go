@@ -97,11 +97,28 @@ type model struct {
 	implReturnTo step
 	implCursor   int
 	cancelSend   context.CancelFunc
+	streamCh     chan tea.Msg
+	streamLog    []string
 }
 
 type doneMsg struct {
 	stories []core.Story
 	err     error
+}
+
+// streamMsg is one line of live output from the harness during conversion.
+type streamMsg struct{ line string }
+
+// waitFor blocks on the stream channel and delivers the next message (or nil when the
+// producer closes the channel), so the Bubble Tea loop re-arms one read at a time.
+func waitFor(ch chan tea.Msg) tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return msg
+	}
 }
 
 type spawnResultMsg struct {
@@ -335,6 +352,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case streamMsg:
+		if m.step == stepSending {
+			m.streamLog = append(m.streamLog, msg.line)
+			const maxLog = 500
+			if len(m.streamLog) > maxLog {
+				m.streamLog = m.streamLog[len(m.streamLog)-maxLog:]
+			}
+			return m, waitFor(m.streamCh)
+		}
+		return m, nil
+
 	case doneMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -390,14 +418,25 @@ func (m *model) convert(requirements string) tea.Cmd {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancelSend = cancel
-	return func() tea.Msg {
+	ch := make(chan tea.Msg, 128)
+	m.streamCh = ch
+	m.streamLog = nil
+	go func() {
 		defer cancel()
+		defer close(ch)
+		send := func(msg tea.Msg) {
+			select {
+			case ch <- msg:
+			case <-ctx.Done():
+			}
+		}
 		for _, d := range oldDirs {
 			_ = os.RemoveAll(d)
 		}
-		gherkin, err := core.ConvertToGherkin(ctx, requirements, ai)
+		gherkin, err := core.StreamToGherkin(ctx, requirements, ai, func(l string) { send(streamMsg{line: l}) })
 		if err != nil {
-			return doneMsg{err: err}
+			send(doneMsg{err: err})
+			return
 		}
 		stories := core.ParseStories(gherkin)
 		for i := range stories {
@@ -406,8 +445,9 @@ func (m *model) convert(requirements string) tea.Cmd {
 				stories[i].SavedTo = saved
 			}
 		}
-		return doneMsg{stories: stories}
-	}
+		send(doneMsg{stories: stories})
+	}()
+	return tea.Batch(m.spinner.Tick, waitFor(ch))
 }
 
 func (m *model) launchImplementation(ai core.Tool) tea.Cmd {

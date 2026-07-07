@@ -1,12 +1,75 @@
 package req
 
 import (
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestStreamToGherkinStreamsAndReturns(t *testing.T) {
+	echo, err := exec.LookPath("echo")
+	if err != nil {
+		t.Skip("no echo on PATH")
+	}
+	// claude args pass the prompt as a positional arg, so echo prints it straight back —
+	// enough to exercise the stdout scan, the onLine callback, and accumulation.
+	ai := Tool{Label: "Fake", Kind: "claude", Path: echo}
+	var got []string
+	out, err := StreamToGherkin(context.Background(), "EXPORT-CSV-REQ", ai, func(l string) {
+		got = append(got, l)
+	})
+	if err != nil {
+		t.Fatalf("StreamToGherkin: %v", err)
+	}
+	if len(got) == 0 {
+		t.Fatal("onLine was never called — no live output streamed")
+	}
+	if !strings.Contains(out, "EXPORT-CSV-REQ") {
+		t.Errorf("returned output missing the requirement text: %q", out)
+	}
+}
+
+// TestStreamCopilotIntegration hits the real copilot CLI. Gated behind MAPLE_REQ_IT=1
+// because it needs auth, network, and spends credits. It proves the -p/-s flags produce
+// parseable gherkin (the crash was the old -i flag opening an interactive TUI).
+func TestStreamCopilotIntegration(t *testing.T) {
+	if os.Getenv("MAPLE_REQ_IT") != "1" {
+		t.Skip("set MAPLE_REQ_IT=1 to run the live copilot integration test")
+	}
+	path, err := exec.LookPath("copilot")
+	if err != nil {
+		t.Skip("copilot not on PATH")
+	}
+	ai := Tool{Label: "GitHub Copilot", Kind: "copilot", Path: path}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	var lines int
+	out, err := StreamToGherkin(ctx,
+		"As a user I want to add and remove items from a TODO list so I can track tasks.",
+		ai, func(string) { lines++ })
+	if err != nil {
+		t.Fatalf("StreamToGherkin(copilot): %v", err)
+	}
+	if lines == 0 {
+		t.Error("no live output streamed")
+	}
+	stories := ParseStories(out)
+	if len(stories) == 0 || !strings.Contains(stories[0].Gherkin, "Feature:") {
+		t.Fatalf("did not parse a Feature from copilot output:\n%s", out)
+	}
+	t.Logf("parsed %d stories, %d live lines", len(stories), lines)
+}
+
+func TestStreamToGherkinUnsupportedTool(t *testing.T) {
+	_, err := StreamToGherkin(context.Background(), "x", Tool{Kind: "nope", Path: "/bin/true"}, func(string) {})
+	if err == nil {
+		t.Fatal("want error for unsupported tool kind")
+	}
+}
 
 func TestParseStoriesMultiBlock(t *testing.T) {
 	out := "=== STORY: Export CSV ===\nFeature: Export\n\n  Scenario: happy\n    Given a\n    When b\n    Then c\n\n=== STORY: Filter Rows ===\nFeature: Filter\n\n  Scenario: edge\n    Given x\n    Then y\n"
