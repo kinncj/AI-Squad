@@ -210,7 +210,7 @@ func (m *Model) openDetail() {
 			if label == "" {
 				label = st.ID
 			}
-			m.setDetail("Story · "+label, state.FileLines(st.Path))
+			m.setDetail("Story · "+label, colorizeStory(state.FileLines(st.Path), m.mode))
 			m.detailKind = "story"
 			m.storyPath = st.Path
 		}
