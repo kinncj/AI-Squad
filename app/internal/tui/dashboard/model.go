@@ -21,6 +21,7 @@ import (
 	"github.com/kinncj/maple/app/internal/tui/brand"
 	"github.com/kinncj/maple/app/internal/tui/pane"
 	"github.com/kinncj/maple/app/internal/tui/render"
+	reqtui "github.com/kinncj/maple/app/internal/tui/req"
 	"github.com/kinncj/maple/app/internal/tui/splash"
 	"github.com/kinncj/maple/app/internal/tui/theme"
 )
@@ -97,6 +98,7 @@ type Model struct {
 	cmdBuf      string
 	reviewStory string
 	detailKind  string
+	storyPath   string // Story.md path of the open story detail (for `i` implement)
 	status      string
 	version     string
 	portalURL   string
@@ -204,6 +206,8 @@ func (m *Model) openDetail() {
 	case paneStories:
 		if st, ok := m.stories.at(sel); ok {
 			m.setDetail("Story · "+st.ID, state.FileLines(st.Path))
+			m.detailKind = "story"
+			m.storyPath = st.Path
 		}
 	case paneSessions:
 		if se, ok := m.sessions.at(sel); ok {
@@ -802,6 +806,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "n":
 		m.exitAction = ExitReq
 		return m, tea.Quit
+	case "i":
+		return m.implementFocusedStory()
 	case "u":
 		m.exitAction = ExitUpdate
 		return m, tea.Quit
@@ -1016,6 +1022,38 @@ func (m Model) runCommand(line string) (tea.Model, tea.Cmd) {
 		m.status = "unknown command :" + fields[0] + " — try :help"
 	}
 	return m, nil
+}
+
+// implementFocusedStory launches /pipeline-runner implement-stories for the open or
+// selected story in a split pane, so the harness runs beside maple. Mirrors the `i`
+// (Implement via TAFFY) action in `maple req`.
+func (m Model) implementFocusedStory() (tea.Model, tea.Cmd) {
+	path := m.targetStoryPath()
+	if path == "" {
+		m.status = "focus or open a story first, then [i] to implement"
+		return m, nil
+	}
+	h := m.firstHarness()
+	if h == "" {
+		m.status = "no harness found to implement (claude / opencode / copilot)"
+		return m, nil
+	}
+	m.status = "launching implement-stories for " + filepath.Base(filepath.Dir(path))
+	return m, m.launch(reqtui.ImplementArgs(h, []string{filepath.Dir(path)}))
+}
+
+// targetStoryPath returns the Story.md path to act on: the open story detail, else the
+// Stories-pane selection, else "".
+func (m Model) targetStoryPath() string {
+	if m.detailKind == "story" && m.storyPath != "" {
+		return m.storyPath
+	}
+	if m.group.FocusIndex() == paneStories {
+		if st, ok := m.stories.at(m.group.Focused().Selected()); ok {
+			return st.Path
+		}
+	}
+	return ""
 }
 
 // targetStoryID returns the story to act on for name-driven commands: the selection on
@@ -1301,6 +1339,8 @@ func (m Model) contextKeys() string {
 		return "PIPELINE  [a] approve · [r] reject · [v] portal · [esc] close"
 	case m.reviewStory != "":
 		return "DESIGN REVIEW  [a] approve artifacts · [esc] close"
+	case m.detailKind == "story":
+		return "STORY  [i] implement (taffy) · [j/k] scroll · [esc] close"
 	case m.detail != nil:
 		return "[j/k] scroll · [g/G] top/bottom · [esc] close"
 	case m.fullscreen == fsDesign:
@@ -1311,7 +1351,7 @@ func (m Model) contextKeys() string {
 	var ctx string
 	switch m.group.FocusIndex() {
 	case paneStories:
-		ctx = "[Enter] story · [D] design review · [n] new · [P] pipeline"
+		ctx = "[Enter] story · [i] implement · [D] design review · [n] new"
 	case paneSessions:
 		ctx = "[Enter] transcript · [o] resume · [p] pin · [L] launch"
 	case panePRs:

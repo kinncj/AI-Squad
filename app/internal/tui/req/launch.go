@@ -10,6 +10,21 @@ import (
 	core "github.com/kinncj/maple/app/internal/req"
 )
 
+// ImplementArgs prepares an implement-stories run for storyDirs and returns the argv to
+// launch `harness` for it: it writes the gherkin handoff + quick-launch state (side
+// effects) and returns the per-harness launch command. The caller runs the argv (in a
+// split pane or the current terminal). Used by the dashboard's `i` action on a story.
+func ImplementArgs(harness string, storyDirs []string) []string {
+	stories := make([]core.Story, 0, len(storyDirs))
+	for _, d := range storyDirs {
+		stories = append(stories, core.Story{SavedTo: d})
+	}
+	_ = writeImplementationHandoff(stories)
+	writeQuickLaunchState("pipeline-runner implement-stories", "starting", harness)
+	prompt := buildImplementationPrompt(harness, stories)
+	return buildLaunchCmd(harness, prompt, loadPinnedSessions(), true)
+}
+
 // taffyPathForHarness returns the implement-stories workflow path for a harness.
 func taffyPathForHarness(kind string) string {
 	switch kind {

@@ -1,7 +1,9 @@
 package dashboard
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -812,6 +814,57 @@ func TestHeaderShowsPortalURL(t *testing.T) {
 	// was a test executing `open`, since fixed via the openFn seam).
 	if !strings.Contains(view, "\x1b]8;;http://127.0.0.1:7811\x1b\\") {
 		t.Error("portal URL should be a clickable OSC-8 hyperlink")
+	}
+}
+
+type storyPathStore struct{ fakeStore }
+
+func (s storyPathStore) Stories() []state.Story {
+	return []state.Story{{ID: "auth-reset-0001", Path: "docs/stories/auth-reset-0001/Story.md"}}
+}
+
+func TestImplementFocusedStoryLaunches(t *testing.T) {
+	cwd, _ := os.Getwd()
+	tmp := t.TempDir()
+	os.Chdir(tmp)
+	defer os.Chdir(cwd)
+
+	var launched []string
+	m := mustNew(t, storyPathStore{fakeStore{n: 1}})
+	m.execFn = func(args []string) tea.Cmd { launched = args; return nil }
+	m.lookPath = func(bin string) (string, error) {
+		if bin == "claude" {
+			return "/usr/bin/claude", nil
+		}
+		return "", exec.ErrNotFound
+	}
+	m = sized(t, m)
+	// Stories pane is focused by default; [i] implements the selected story.
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("i")})
+	m = nm.(Model)
+	joined := strings.Join(launched, " ")
+	if !strings.Contains(joined, "claude") || !strings.Contains(joined, "implement-stories") {
+		t.Errorf("[i] should launch claude with implement-stories, got %v", launched)
+	}
+	// The gherkin handoff should have been written for the story dir.
+	if _, err := os.Stat(filepath.Join(tmp, ".claude/state/gherkin-handoff.json")); err != nil {
+		t.Error("implement should write the gherkin handoff")
+	}
+}
+
+func TestImplementNoStoryNotes(t *testing.T) {
+	// Sessions pane focused, no story context → a helpful status, no launch.
+	var launched []string
+	m := mustNew(t, fakeStore{n: 0})
+	m.execFn = func(args []string) tea.Cmd { launched = args; return nil }
+	m = sized(t, m)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")}) // focus Sessions
+	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("i")})
+	if launched != nil {
+		t.Error("i with no story should not launch anything")
+	}
+	if !strings.Contains(nm.(Model).status, "story") {
+		t.Errorf("expected a story hint, got %q", nm.(Model).status)
 	}
 }
 
