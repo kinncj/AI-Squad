@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -374,6 +375,9 @@ func runInit(force bool) {
 	if err != nil {
 		die(err)
 	}
+	if err := safeInitDir(cwd); err != nil {
+		die(err)
+	}
 	written, err := scaffold.Run(templateFS(), cwd, force, nowRFC3339())
 	if err != nil {
 		die(err)
@@ -382,6 +386,23 @@ func runInit(force bool) {
 		fmt.Println("  ✓", w)
 	}
 	fmt.Printf("maple: initialised %d file(s) in %s\n", len(written), cwd)
+}
+
+// safeInitDir refuses to scaffold ~600 template files into a directory that is almost
+// certainly a mistake — your home directory or a filesystem root — so a wrong cwd (e.g.
+// a tmux session that inherited the server's cwd) can never carpet-bomb $HOME.
+func safeInitDir(dir string) error {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	if home, _ := os.UserHomeDir(); home != "" && abs == filepath.Clean(home) {
+		return fmt.Errorf("refusing to scaffold into your home directory (%s) — cd into an empty project directory first", abs)
+	}
+	if abs == "/" || abs == filepath.VolumeName(abs)+string(filepath.Separator) {
+		return fmt.Errorf("refusing to scaffold into the filesystem root (%s)", abs)
+	}
+	return nil
 }
 
 // runUpdate previews the files an update would add/replace/patch, shows a diff on

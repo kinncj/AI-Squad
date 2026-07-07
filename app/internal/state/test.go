@@ -22,14 +22,23 @@ var skipDirs = map[string]bool{
 // Tests discovers test files under Root, tagged by framework, sorted by path.
 func (s *FS) Tests() []Test { return discoverTests(s.Root) }
 
+// maxWalkEntries bounds test discovery so a wrong root (e.g. $HOME) can never hang the
+// dashboard walking millions of files.
+const maxWalkEntries = 50000
+
 func discoverTests(root string) []Test {
 	var out []Test
+	count := 0
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
+		if count++; count > maxWalkEntries {
+			return filepath.SkipAll
+		}
 		if d.IsDir() {
-			if skipDirs[d.Name()] {
+			// Skip vendored/VCS dirs and any hidden dir (tests never live in dotdirs).
+			if skipDirs[d.Name()] || (path != root && strings.HasPrefix(d.Name(), ".")) {
 				return filepath.SkipDir
 			}
 			return nil
