@@ -3,7 +3,10 @@ package state
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -12,6 +15,42 @@ type PullRequest struct {
 	Number int
 	Title  string
 	State  string
+}
+
+// PRDetail renders `gh pr view <n>` as lines for the detail overlay.
+func (s *FS) PRDetail(number int) []string {
+	gh, err := exec.LookPath("gh")
+	if err != nil {
+		return []string{"(gh not installed)"}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, gh, "pr", "view", strconv.Itoa(number),
+		"--comments").CombinedOutput()
+	text := strings.TrimRight(string(out), "\n")
+	if err != nil && text == "" {
+		return []string{"(could not load PR #" + strconv.Itoa(number) + ": " + err.Error() + ")"}
+	}
+	return strings.Split(text, "\n")
+}
+
+// ApprovePR submits an approving review via the gh CLI.
+func (s *FS) ApprovePR(number int) error {
+	gh, err := exec.LookPath("gh")
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, gh, "pr", "review", strconv.Itoa(number), "--approve").CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("%s", msg)
+	}
+	return nil
 }
 
 // PullRequests lists open pull requests via the gh CLI. It returns nil when gh is

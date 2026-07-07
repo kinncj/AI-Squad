@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +33,8 @@ type Store interface {
 	Stories() []state.Story
 	Sessions() []state.Session
 	PullRequests() []state.PullRequest
+	PRDetail(number int) []string
+	ApprovePR(number int) error
 	Tests() []state.Test
 	DesignTree() []string
 	LogLines(n int) []string
@@ -79,6 +82,8 @@ type Model struct {
 	stories     *storySource
 	sessions    *sessionSource
 	prs         *prSource
+	prNumber    int
+	prTitle     string
 	qa          *qaSource
 	design      *pane.Pane
 	logs        *pane.Pane
@@ -719,6 +724,16 @@ type splashDoneMsg struct{}
 type tickMsg struct{}
 type netTickMsg struct{}
 type prsLoadedMsg struct{ prs []state.PullRequest }
+type prDetailMsg struct {
+	number int
+	lines  []string
+}
+
+// loadPRDetailCmd fetches `gh pr view <n>` off the UI thread.
+func (m *Model) loadPRDetailCmd(n int) tea.Cmd {
+	store := m.store
+	return func() tea.Msg { return prDetailMsg{number: n, lines: store.PRDetail(n)} }
+}
 
 // Refresh cadences: local file reads are cheap and drive real-time approval/pipeline
 // feedback; the network refresh (gh) is far slower so it runs infrequently and async.
@@ -774,6 +789,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case prsLoadedMsg:
 		m.prs = newPRSource(msg.prs)
 		m.group.Panes()[panePRs].SetSource(m.prs)
+		return m, nil
+	case prDetailMsg:
+		if m.detailKind == "pr" && m.prNumber == msg.number {
+			m.setDetail("PR #"+strconv.Itoa(msg.number)+" · "+m.prTitle, msg.lines)
+			m.detailKind = "pr"
+		}
 		return m, nil
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -905,6 +926,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				} else {
 					m.status = "approve failed: " + err.Error()
 				}
+			case m.detailKind == "pr":
+				if err := m.store.ApprovePR(m.prNumber); err != nil {
+					m.status = "approve PR #" + strconv.Itoa(m.prNumber) + " failed: " + err.Error()
+				} else {
+					m.status = "✓ approved PR #" + strconv.Itoa(m.prNumber)
+				}
 			}
 		case "r":
 			if m.detailKind == "pipeline" {
@@ -967,6 +994,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// On the Sessions pane, Enter resumes the harness (like o) — not a transcript dump.
 		if m.group.FocusIndex() == paneSessions {
 			return m, m.openSession()
+		}
+		if m.group.FocusIndex() == panePRs {
+			if pr, ok := m.prs.at(m.group.Focused().Selected()); ok {
+				m.prNumber, m.prTitle = pr.Number, pr.Title
+				m.setDetail("PR #"+strconv.Itoa(pr.Number)+" · "+pr.Title, []string{"loading…"})
+				m.detailKind = "pr"
+				return m, m.loadPRDetailCmd(pr.Number)
+			}
 		}
 		m.openDetail()
 	case "C":
@@ -1573,7 +1608,7 @@ func (m Model) contextKeys() string {
 	case paneSessions:
 		ctx = "[Enter]/[o] resume · [p] pin · [L] launch"
 	case panePRs:
-		ctx = "[Enter]/[o] open PR · [r] refresh"
+		ctx = "[Enter] detail · [a] approve · [o] open in browser · [r] refresh"
 	case paneQA:
 		ctx = "[Enter] open test · [r] rescan"
 	}

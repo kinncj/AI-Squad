@@ -32,6 +32,8 @@ func (f fakeStore) Sessions() []state.Session {
 func (f fakeStore) PullRequests() []state.PullRequest {
 	return []state.PullRequest{{Number: 22, Title: "rework", State: "OPEN"}}
 }
+func (f fakeStore) PRDetail(n int) []string { return []string{"PR #22", "rework", "OPEN"} }
+func (f fakeStore) ApprovePR(int) error     { return nil }
 func (f fakeStore) Tests() []state.Test {
 	return []state.Test{{Path: "app/x_test.go", Framework: "go"}}
 }
