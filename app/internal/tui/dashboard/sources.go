@@ -26,6 +26,7 @@ func (s *storySource) filtered() []state.Story {
 	var out []state.Story
 	for _, st := range s.all {
 		if strings.Contains(strings.ToLower(st.ID), q) ||
+			strings.Contains(strings.ToLower(st.Title), q) ||
 			strings.Contains(strings.ToLower(st.Phase), q) {
 			out = append(out, st)
 		}
@@ -33,16 +34,25 @@ func (s *storySource) filtered() []state.Story {
 	return out
 }
 
-// Rows renders each story as "phase  id  ◈" (◈ marks UI-bearing stories).
+// Rows renders each story as "phase  title  ◈ · priority" — the human title (falling
+// back to the id), a ◈ mark for UI stories, and the priority.
 func (s *storySource) Rows() []string {
 	f := s.filtered()
 	rows := make([]string, len(f))
 	for i, st := range f {
+		name := st.Title
+		if name == "" {
+			name = st.ID
+		}
 		mark := ""
 		if st.UI {
 			mark = " ◈"
 		}
-		rows[i] = fmt.Sprintf("%-9s %s%s", st.Phase, st.ID, mark)
+		pri := ""
+		if st.Priority != "" {
+			pri = " · " + st.Priority
+		}
+		rows[i] = fmt.Sprintf("%-9s %s%s%s", st.Phase, name, mark, pri)
 	}
 	return rows
 }

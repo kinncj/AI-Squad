@@ -206,7 +206,11 @@ func (m *Model) openDetail() {
 	switch m.group.FocusIndex() {
 	case paneStories:
 		if st, ok := m.stories.at(sel); ok {
-			m.setDetail("Story · "+st.ID, state.FileLines(st.Path))
+			label := st.Title
+			if label == "" {
+				label = st.ID
+			}
+			m.setDetail("Story · "+label, state.FileLines(st.Path))
 			m.detailKind = "story"
 			m.storyPath = st.Path
 		}

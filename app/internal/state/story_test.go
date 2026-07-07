@@ -1,6 +1,10 @@
 package state
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestStoriesReadsSortsAndSkipsPartials(t *testing.T) {
 	got := NewFS("testdata").Stories()
@@ -53,17 +57,54 @@ func TestStoriesEmptyWhenNoDir(t *testing.T) {
 	}
 }
 
-func TestPhaseFromLabels(t *testing.T) {
-	cases := map[string]string{
-		"phase:implement":          "implement",
-		"[phase:architect]":        "architect",
-		"type:bug, phase:validate": "validate",
-		"type:feature":             "discover", // no phase label -> default
-		"":                         "discover",
+func TestPhaseLabel(t *testing.T) {
+	cases := []struct{ labels, prefix, want string }{
+		{"phase:implement", "phase", "implement"},
+		{"[phase:architect]", "phase", "architect"},
+		{"type:bug,phase:validate", "phase", "validate"},
+		{"type:feature", "phase", ""}, // no phase label
+		{"type:bug,priority:high", "priority", "high"},
+		{"", "phase", ""},
 	}
-	for in, want := range cases {
-		if got := phaseFromLabels(in); got != want {
-			t.Errorf("phaseFromLabels(%q) = %q, want %q", in, got, want)
+	for _, c := range cases {
+		if got := phaseLabel(c.labels, c.prefix); got != c.want {
+			t.Errorf("phaseLabel(%q,%q) = %q, want %q", c.labels, c.prefix, got, c.want)
 		}
+	}
+}
+
+func TestParsesMultilineLabelsAndTitle(t *testing.T) {
+	dir := t.TempDir()
+	story := filepath.Join(dir, "docs", "stories", "reset-1", "Story.md")
+	os.MkdirAll(filepath.Dir(story), 0o755)
+	// The real saveStory format: title + a multi-line YAML labels list.
+	os.WriteFile(story, []byte(`---
+id: "reset-0001"
+title: "Password reset flow"
+priority: "medium"
+ui: true
+labels:
+  - "type:feature"
+  - "priority:high"
+  - "phase:implement"
+issue_number: 42
+---
+
+# Password reset flow
+`), 0o644)
+
+	stories := NewFS(dir).Stories()
+	if len(stories) != 1 {
+		t.Fatalf("want 1 story, got %d", len(stories))
+	}
+	s := stories[0]
+	if s.Title != "Password reset flow" {
+		t.Errorf("title = %q", s.Title)
+	}
+	if s.Phase != "implement" {
+		t.Errorf("phase from multi-line labels = %q, want implement (not the 'discover' default)", s.Phase)
+	}
+	if !s.UI || s.Issue != 42 {
+		t.Errorf("ui/issue mis-parsed: ui=%v issue=%d", s.UI, s.Issue)
 	}
 }
