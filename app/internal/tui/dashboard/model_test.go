@@ -812,8 +812,12 @@ func TestHeaderShowsPortalURL(t *testing.T) {
 }
 
 func TestPortalKeyOpensBrowser(t *testing.T) {
-	// With a URL, v returns a (non-quit) open command.
-	m := sized(t, Model(mustNew(t, portalStore{fakeStore{n: 2}, "http://127.0.0.1:7811"})))
+	// Inject the opener so the test NEVER launches a real browser (it used to open
+	// http://127.0.0.1:78xx on every `go test` run).
+	var opened []string
+	m := mustNew(t, portalStore{fakeStore{n: 2}, "http://127.0.0.1:7811"})
+	m.openFn = func(args []string) error { opened = args; return nil }
+	m = sized(t, m)
 	nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
 	if cmd == nil {
 		t.Fatal("v with a portal URL should return an open command")
@@ -821,7 +825,10 @@ func TestPortalKeyOpensBrowser(t *testing.T) {
 	if _, ok := cmd().(tea.QuitMsg); ok {
 		t.Error("opening the portal must not quit the dashboard")
 	}
-	// Without a URL, v just notes it.
+	if len(opened) == 0 || !strings.Contains(strings.Join(opened, " "), "7811") {
+		t.Errorf("v should open the portal URL, got %v", opened)
+	}
+	// Without a URL, v just notes it (and returns no open command).
 	m2 := sized(t, newModel(t)) // fakeStore.PortalURL == ""
 	nm2, _ := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
 	if !strings.Contains(nm2.(Model).status, "no design portal") {

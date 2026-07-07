@@ -81,6 +81,7 @@ type Model struct {
 	fullscreen  int
 	store       Store
 	execFn      func([]string) tea.Cmd
+	openFn      func([]string) error // browser/URL opener; injected in tests so they never open a real browser
 	lookPath    func(string) (string, error)
 	picker      *pane.Pane
 	pickItems   []pickItem
@@ -406,11 +407,15 @@ func continueNote(nudged int) string {
 // openExternal fires a detached command (e.g. opening a URL in the browser) without
 // suspending the TUI.
 func (m *Model) openExternal(args []string) tea.Cmd {
+	open := m.openFn
+	if open == nil {
+		open = func(a []string) error { return exec.Command(a[0], a[1:]...).Start() }
+	}
 	return func() tea.Msg {
 		if len(args) == 0 {
 			return execDoneMsg{external: true}
 		}
-		err := exec.Command(args[0], args[1:]...).Start()
+		err := open(args)
 		return execDoneMsg{args: args, err: err, external: true}
 	}
 }
