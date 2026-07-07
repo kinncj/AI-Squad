@@ -626,7 +626,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	case tea.MouseMsg:
-		m.handleMouse(msg)
+		return m.handleMouse(msg)
 	case execDoneMsg:
 		switch {
 		case msg.err != nil:
@@ -1057,20 +1057,28 @@ func (m *Model) reload() {
 	}
 }
 
-func (m Model) handleMouse(msg tea.MouseMsg) {
-	if m.splash {
-		return
+func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.splash || msg.Action != tea.MouseActionPress {
+		return m, nil
 	}
-	switch msg.Action {
-	case tea.MouseActionPress:
-		if msg.Button == tea.MouseButtonWheelUp {
-			m.group.ScrollAt(msg.X, msg.Y, -1)
-		} else if msg.Button == tea.MouseButtonWheelDown {
-			m.group.ScrollAt(msg.X, msg.Y, 1)
-		} else if msg.Button == tea.MouseButtonLeft {
-			m.group.FocusAt(msg.X, msg.Y)
+	switch msg.Button {
+	case tea.MouseButtonWheelUp:
+		m.group.ScrollAt(msg.X, msg.Y, -1)
+	case tea.MouseButtonWheelDown:
+		m.group.ScrollAt(msg.X, msg.Y, 1)
+	case tea.MouseButtonLeft:
+		// A click on the portal URL in the header opens it — a plain click works even
+		// though mouse capture stops the terminal handling the OSC-8 link itself.
+		if msg.Y == 0 {
+			if _, _, start, end := m.headerParts(); end > start && msg.X >= start && msg.X < end {
+				if url := m.portal(); url != "" {
+					return m, m.openExternal(browserOpen(url))
+				}
+			}
 		}
+		m.group.FocusAt(msg.X, msg.Y)
 	}
+	return m, nil
 }
 
 // kittyClearImages deletes all placed Kitty graphics. Prepended once we leave the
@@ -1217,6 +1225,14 @@ func (m Model) helpView(bodyH int) string {
 // header is the compact top bar: brand + project/theme on the left, Gherkin/Taffy
 // badges on the right, in a single row.
 func (m Model) header() string {
+	left, right, _, _ := m.headerParts()
+	return bar(left, right, m.width)
+}
+
+// headerParts builds the header's left and right segments and, when the portal URL is
+// shown, the [start,end) screen columns it occupies — so a mouse click on it can open
+// the portal (a plain click, since mouse capture stops the terminal handling OSC-8).
+func (m Model) headerParts() (left, right string, urlStart, urlEnd int) {
 	leaf := m.mode.Role("leaf").Style()
 	faint := m.mode.Role("faint").Style()
 	accent := m.mode.Role("accent").Style()
@@ -1229,22 +1245,25 @@ func (m Model) header() string {
 	if name == "" {
 		name = "—"
 	}
-	left := leaf.Render(brand.Leaf+" maple") +
+	base := leaf.Render(brand.Leaf+" maple") +
 		faint.Render(fmt.Sprintf(" %s · project: %s · theme: %s", m.version, name, m.theme.Name))
 	if strings.EqualFold(m.store.PipelineStatus(), "RATE_LIMITED") {
-		left += "  " + m.mode.State("rate_limited").Render("RATE-LIMITED")
+		base += "  " + m.mode.State("rate_limited").Render("RATE-LIMITED")
 	}
-	right := accent.Render(fmt.Sprintf("📋 Gherkin: %d · ▶ Taffy: %d (%d running)",
+	right = accent.Render(fmt.Sprintf("📋 Gherkin: %d · ▶ Taffy: %d (%d running)",
 		len(m.store.Stories()), m.store.TaffyCount(), running))
+	left = base
 	// Portal URL as a clickable OSC-8 hyperlink, but only when it fits without
 	// truncation (render.Truncate isn't escape-aware and would corrupt the sequence).
 	if url := m.portal(); url != "" {
 		seg := "  ⬡ " + url
-		if lipgloss.Width(left)+lipgloss.Width(seg)+lipgloss.Width(right)+1 <= m.width {
-			left += osc8(url, accent.Render(seg))
+		if lipgloss.Width(base)+lipgloss.Width(seg)+lipgloss.Width(right)+1 <= m.width {
+			urlStart = lipgloss.Width(base) + lipgloss.Width("  ⬡ ")
+			urlEnd = urlStart + lipgloss.Width(url)
+			left = base + osc8(url, accent.Render(seg))
 		}
 	}
-	return bar(left, right, m.width)
+	return left, right, urlStart, urlEnd
 }
 
 // osc8 wraps visible text in an OSC-8 terminal hyperlink so ⌘/ctrl-click opens url.

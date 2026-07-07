@@ -815,6 +815,42 @@ func TestHeaderShowsPortalURL(t *testing.T) {
 	}
 }
 
+func TestClickingHeaderURLOpensPortal(t *testing.T) {
+	var opened []string
+	m := mustNew(t, portalStore{fakeStore{n: 2}, "http://127.0.0.1:7800"})
+	m.openFn = func(args []string) error { opened = args; return nil }
+	// wide viewport so the URL is shown in the header
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 200, Height: 40})
+	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = nm.(Model)
+
+	_, _, start, end := m.headerParts()
+	if end <= start {
+		t.Fatal("portal URL should occupy a header column range")
+	}
+	// Click in the middle of the URL on the header row.
+	col := (start + end) / 2
+	nm, cmd := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: col, Y: 0})
+	if cmd == nil {
+		t.Fatal("clicking the URL should return an open command")
+	}
+	cmd() // runs through the injected openFn (no real browser)
+	if len(opened) == 0 || !strings.Contains(strings.Join(opened, " "), "7800") {
+		t.Errorf("click should open the portal URL, got %v", opened)
+	}
+
+	// A click elsewhere in the header must NOT open it.
+	opened = nil
+	_, cmd2 := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 1, Y: 0})
+	if cmd2 != nil {
+		cmd2()
+	}
+	if opened != nil {
+		t.Errorf("clicking the leaf/brand area must not open the portal, got %v", opened)
+	}
+}
+
 func TestPortalKeyOpensBrowser(t *testing.T) {
 	// Inject the opener so the test NEVER launches a real browser (it used to open
 	// http://127.0.0.1:78xx on every `go test` run).
