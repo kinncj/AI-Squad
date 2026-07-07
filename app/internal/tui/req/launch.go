@@ -209,8 +209,8 @@ func buildImplementationPrompt(harness string, stories []core.Story) string {
 	if u := activeDesignPortalURL(); u != "" {
 		sb.WriteString("\n<maple-design-portal>\n")
 		sb.WriteString("The MAPLE design review portal is running at: " + u + "\n")
-		sb.WriteString("Browse docs/design/ artifacts there to reference approved wireframes, mockups, and identity tokens.\n")
-		sb.WriteString("Wireframes are at: " + u + "/wireframes/\n")
+		sb.WriteString("Open that URL (the portal root — it is a single-page app; there are no sub-paths like /wireframes/) to review approved wireframes, mockups, and identity tokens.\n")
+		sb.WriteString("Design artifact FILES live under docs/design/ (wireframes/, mockups/, identity/); reference those paths, but always send users the portal root URL to review them.\n")
 		sb.WriteString("</maple-design-portal>\n")
 	}
 	return sb.String()

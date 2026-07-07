@@ -141,7 +141,8 @@ func TestBuildImplementationPromptDesignPortal(t *testing.T) {
 	if !strings.Contains(prompt, "<maple-design-portal>") || !strings.Contains(prompt, "http://localhost:4321") {
 		t.Error("design portal block should be present when the url file exists")
 	}
-	if !strings.Contains(prompt, "http://localhost:4321/wireframes/") {
-		t.Error("wireframes url should be present")
+	// The portal is a SPA at the root — never point agents at a /wireframes/ sub-path.
+	if strings.Contains(prompt, "http://localhost:4321/wireframes/") {
+		t.Error("prompt must not reference a non-existent /wireframes/ portal path")
 	}
 }

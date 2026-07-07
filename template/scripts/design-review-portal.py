@@ -1564,7 +1564,14 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._text(data, content_type_for(file_path))
             return
-        self._json({"error": "not found"}, 404)
+        # Real 404 only for unknown API/artifact routes.
+        if self.path.startswith("/api/") or self.path.startswith("/artifact/"):
+            self._json({"error": "not found"}, 404)
+            return
+        # SPA fallback: any other path (e.g. an agent-guessed /wireframes/) loads the
+        # portal, which shows the artifacts — rather than a confusing 404.
+        token = self._state().token()
+        self._text(render_index(token).encode("utf-8"), "text/html; charset=utf-8")
 
     def do_POST(self) -> None:
         if self.path == "/api/approve":
