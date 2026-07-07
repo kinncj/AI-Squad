@@ -370,6 +370,43 @@ func TestHelpTogglesAndAnyKeyCloses(t *testing.T) {
 	}
 }
 
+func TestHelpShowsPortalAndLANAddress(t *testing.T) {
+	m, err := New("v-test", fakeStore{n: 3}, "http://localhost:7842/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Force a known LAN ip so the test is deterministic.
+	old := lanIP
+	lanIP = func() string { return "192.168.1.50" }
+	defer func() { lanIP = old }()
+
+	m = sized(t, m)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+	view := nm.(Model).View()
+	if !strings.Contains(view, "http://localhost:7842/") {
+		t.Error("help should show the design portal URL")
+	}
+	if !strings.Contains(view, "http://192.168.1.50:7842/") {
+		t.Error("help should show the LAN-reachable portal URL")
+	}
+	if !strings.Contains(view, "192.168.1.50") {
+		t.Error("help should show this machine's IP")
+	}
+}
+
+func TestLANURLRewritesLoopback(t *testing.T) {
+	cases := map[string]string{
+		"http://localhost:7800/":  "http://10.0.0.2:7800/",
+		"http://127.0.0.1:7800/x": "http://10.0.0.2:7800/x",
+		"http://0.0.0.0:7800/":    "http://10.0.0.2:7800/",
+	}
+	for in, want := range cases {
+		if got := lanURL(in, "10.0.0.2"); got != want {
+			t.Errorf("lanURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestFocusShortcutKeys(t *testing.T) {
 	// Fresh model per key so focus starts on Stories (p focuses PRs there; on the
 	// Sessions pane p pins instead — tested separately).

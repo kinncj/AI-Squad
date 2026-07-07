@@ -6,6 +6,7 @@ package dashboard
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -171,6 +172,28 @@ func (m Model) portal() string {
 		return m.portalURL
 	}
 	return m.store.PortalURL()
+}
+
+// lanIP returns the machine's primary non-loopback IPv4 (so a teammate or an agent on
+// another device can reach the portal), or "" if none. Swappable in tests.
+var lanIP = func() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, a := range addrs {
+		if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ip4 := ipnet.IP.To4(); ip4 != nil {
+				return ip4.String()
+			}
+		}
+	}
+	return ""
+}
+
+// lanURL rewrites a loopback portal URL to the LAN ip so another device can open it.
+func lanURL(url, ip string) string {
+	return strings.NewReplacer("localhost", ip, "127.0.0.1", ip, "0.0.0.0", ip).Replace(url)
 }
 
 // activePane returns the overlay pane taking navigation and rendering: a detail
@@ -1273,6 +1296,21 @@ func (m Model) helpView(bodyH int) string {
 	for _, r := range actions {
 		lines = append(lines, row(r[0], r[1], false))
 	}
+
+	// Connect: the design-portal URL and, when the machine has a LAN address, the same
+	// portal reachable from another device — handy for reviewing on a phone/tablet or
+	// pointing a remote agent at it.
+	if url := m.portal(); url != "" {
+		lines = append(lines, "", m.mode.Role("subtitle").Style().Render("Connect"))
+		lines = append(lines, row("Design portal", url, false))
+		if ip := lanIP(); ip != "" {
+			if lu := lanURL(url, ip); lu != url {
+				lines = append(lines, row("On this network", lu, false))
+			}
+			lines = append(lines, row("This machine", ip, false))
+		}
+	}
+
 	lines = append(lines, "", faint.Render("command mode accepts: :"+strings.Join(commandNames[:8], " :")+" …"))
 	lines = append(lines, faint.Render("press any key to close"))
 
