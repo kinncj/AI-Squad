@@ -45,12 +45,18 @@ func TestStreamCopilotIntegration(t *testing.T) {
 		t.Skip("copilot not on PATH")
 	}
 	ai := Tool{Label: "GitHub Copilot", Kind: "copilot", Path: path}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 	defer cancel()
+	requirement := "As a user I want to add and remove items from a TODO list so I can track tasks."
+	if f := os.Getenv("MAPLE_REQ_FILE"); f != "" {
+		data, rerr := os.ReadFile(f)
+		if rerr != nil {
+			t.Fatalf("read MAPLE_REQ_FILE: %v", rerr)
+		}
+		requirement = string(data)
+	}
 	var lines int
-	out, err := StreamToGherkin(ctx,
-		"As a user I want to add and remove items from a TODO list so I can track tasks.",
-		ai, func(string) { lines++ })
+	out, err := StreamToGherkin(ctx, requirement, ai, func(string) { lines++ })
 	if err != nil {
 		t.Fatalf("StreamToGherkin(copilot): %v", err)
 	}
