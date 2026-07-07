@@ -9,6 +9,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net"
@@ -16,6 +17,8 @@ import (
 	"os/exec"
 	"os/signal"
 	"strconv"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -23,6 +26,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/kinncj/maple/app/internal/gh"
+	"github.com/kinncj/maple/app/internal/portalsock"
 	"github.com/kinncj/maple/app/internal/resume"
 	"github.com/kinncj/maple/app/internal/scaffold"
 	"github.com/kinncj/maple/app/internal/selfupdate"
@@ -72,6 +76,8 @@ func main() {
 		}
 	case "rtk-audit":
 		runRTKAudit()
+	case "emit":
+		runEmit(args[1:])
 	case "version", "--version", "-v":
 		fmt.Println("maple", version)
 	case "help", "--help", "-h":
@@ -168,6 +174,39 @@ func startDesignPortal() (string, func()) {
 	return url, func() { _ = exec.Command("bash", script, "stop").Run() }
 }
 
+// startHeartbeat writes .claude/state/maple-alive with the current time every 2s and
+// removes it when the session ends, so the design portal can tell whether maple is
+// still connected (and show "maple offline" if it was closed/quit). Returns a stop
+// func that removes the file.
+func startHeartbeat() func() {
+	const path = ".claude/state/maple-alive"
+	beat := func() {
+		_ = os.MkdirAll(".claude/state", 0o755)
+		_ = os.WriteFile(path, []byte(nowRFC3339()+"\n"), 0o644)
+	}
+	beat()
+	done := make(chan struct{})
+	go func() {
+		t := time.NewTicker(2 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				beat()
+			}
+		}
+	}()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			close(done)
+			_ = os.Remove(path)
+		})
+	}
+}
+
 // findFreePort returns a free TCP port in [7800,7900), or the MAPLE_DESIGN_PORT
 // override, or 0 if none is available.
 func findFreePort() int {
@@ -191,14 +230,17 @@ func findFreePort() int {
 // launches never come through here — they run in the current terminal via ExecProcess.
 func runDashboardLoop() {
 	portalURL, stopPortal := startDesignPortal()
-	defer stopPortal()
-	// Also stop the portal if the terminal goes away (SIGHUP) or we're terminated,
-	// so the python server doesn't outlive the session as an orphan.
+	stopBeat := startHeartbeat()
+	stopHold := portalsock.Hold(".") // live connectivity for the portal
+	cleanup := func() { stopHold(); stopBeat(); stopPortal() }
+	defer cleanup()
+	// Also clean up if the terminal goes away (SIGHUP) or we're terminated, so the
+	// portal server isn't orphaned and the portal sees maple go offline immediately.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	go func() {
 		<-sigCh
-		stopPortal()
+		cleanup()
 		os.Exit(0)
 	}()
 	defer signal.Stop(sigCh)
@@ -273,6 +315,7 @@ func usage(w *os.File) {
   resume [harness]  re-launch a pinned session (claude/copilot/opencode/cursor)
   self-update       replace the binary with the latest GitHub release
   rtk-audit         show RTK hook wiring and token savings
+  emit <event…>     push a live event to the design portal (agents: progress/stage)
   version           print the version
 `)
 }
@@ -284,6 +327,34 @@ func hasFlag(args []string, flag string) bool {
 		}
 	}
 	return false
+}
+
+// runEmit pushes a real-time event to the design portal's control socket, so an agent
+// can surface progress live. Accepts a raw JSON object, or `<event> [key=value …]`.
+func runEmit(args []string) {
+	if len(args) == 0 {
+		die(fmt.Errorf("usage: maple emit <event> [key=value …]  |  maple emit '<json>'"))
+	}
+	ev := map[string]any{}
+	if strings.HasPrefix(strings.TrimSpace(args[0]), "{") {
+		if err := json.Unmarshal([]byte(strings.Join(args, " ")), &ev); err != nil {
+			die(fmt.Errorf("emit: invalid JSON: %w", err))
+		}
+	} else {
+		ev["event"] = args[0]
+		for _, kv := range args[1:] {
+			if k, v, ok := strings.Cut(kv, "="); ok {
+				ev[k] = v
+			}
+		}
+	}
+	if _, ok := ev["ts"]; !ok {
+		ev["ts"] = nowRFC3339()
+	}
+	if err := portalsock.Emit(".", ev); err != nil {
+		die(fmt.Errorf("emit: %w (is the design portal running?)", err))
+	}
+	fmt.Printf("emitted %v\n", ev["event"])
 }
 
 // runRTKAudit shows RTK hook wiring, token savings, and the audit log.
