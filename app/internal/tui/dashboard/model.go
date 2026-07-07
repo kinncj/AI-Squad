@@ -725,13 +725,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			switch {
 			case m.reviewStory != "":
 				n := m.approveReview()
-				m.status = fmt.Sprintf("approved %d artifact(s) · %s", n, continueNote(harness.NotifyContinue()))
+				m.status = fmt.Sprintf("approved %d artifact(s) · %s", n, continueNote(harness.NotifyContinue(os.Getenv)))
 			case m.detailKind == "pipeline":
 				if m.store.ApprovalPending() == "" {
 					m.status = "no gate awaiting approval"
 				} else if err := m.store.ApproveGate(); err == nil {
 					m.openPipeline()
-					m.status = "approved · " + continueNote(harness.NotifyContinue())
+					m.status = "approved · " + continueNote(harness.NotifyContinue(os.Getenv))
 				} else {
 					m.status = "approve failed: " + err.Error()
 				}
@@ -742,7 +742,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.status = "no gate awaiting approval"
 				} else if err := m.store.RejectGate(); err == nil {
 					m.openPipeline()
-					m.status = "rejected · " + continueNote(harness.NotifyContinue())
+					m.status = "rejected · " + continueNote(harness.NotifyContinue(os.Getenv))
 				} else {
 					m.status = "reject failed: " + err.Error()
 				}

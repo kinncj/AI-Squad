@@ -81,7 +81,8 @@ func TestNotifyContinueSendsToRecordedPanes(t *testing.T) {
 	})
 	defer restore()
 
-	n := NotifyContinue()
+	// getenv returns no TMUX so only recorded panes are nudged (no broadcast).
+	n := NotifyContinue(func(string) string { return "" })
 	if n != 2 {
 		t.Errorf("NotifyContinue nudged %d panes, want 2", n)
 	}
@@ -91,6 +92,46 @@ func TestNotifyContinueSendsToRecordedPanes(t *testing.T) {
 	}
 	if !strings.Contains(joined, "zellij action write-chars continue") {
 		t.Errorf("missing zellij write-chars: %q", joined)
+	}
+}
+
+func TestNotifyContinueBroadcastsToSiblingHarnessPanes(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir) // no panes.json — maple launched nothing
+
+	var sent []string
+	restore := swapRunner(func(name string, args ...string) ([]byte, error) {
+		if name == "tmux" && len(args) >= 1 && args[0] == "list-panes" {
+			// %1 = maple itself, %2 = a copilot (node) pane, %3 = a plain shell.
+			return []byte("%1\tnode\n%2\tnode\n%3\tzsh\n"), nil
+		}
+		sent = append(sent, name+" "+strings.Join(args, " "))
+		return nil, nil
+	})
+	defer restore()
+
+	getenv := func(k string) string {
+		switch k {
+		case "TMUX":
+			return "/tmp/tmux-1000/default,1,0"
+		case "TMUX_PANE":
+			return "%1" // maple's own pane — must be skipped
+		}
+		return ""
+	}
+	n := NotifyContinue(getenv)
+	if n != 1 {
+		t.Errorf("should nudge exactly the sibling harness pane (%%2), got %d", n)
+	}
+	joined := strings.Join(sent, "\n")
+	if !strings.Contains(joined, "tmux send-keys -t %2 continue Enter") {
+		t.Errorf("should send continue to the copilot pane, calls: %q", joined)
+	}
+	if strings.Contains(joined, "-t %1") {
+		t.Error("must not nudge maple's own pane")
+	}
+	if strings.Contains(joined, "-t %3") {
+		t.Error("must not nudge a plain shell pane")
 	}
 }
 

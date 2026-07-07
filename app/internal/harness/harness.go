@@ -92,12 +92,55 @@ func LaunchInPane(getenv func(string) string, harness string, args []string) (Pa
 	return PaneRef{}, false, nil
 }
 
-// NotifyContinue types "continue" into every recorded harness pane, as if the user
-// approved in that terminal. Returns how many panes accepted it.
-func NotifyContinue() int {
+// harnessCommands are foreground pane commands that look like an AI harness worth
+// nudging when we broadcast. copilot/claude/cursor CLIs usually show up as "node".
+var harnessCommands = map[string]bool{
+	"node": true, "bun": true, "deno": true,
+	"claude": true, "copilot": true, "opencode": true,
+	"cursor": true, "cursor-agent": true,
+	"python": true, "python3": true,
+}
+
+// NotifyContinue types "continue" into harness panes so an agent that yielded to wait
+// for a reply resumes. It nudges (1) every pane maple recorded when it launched a
+// harness, and (2) as a fallback for harnesses maple did NOT launch, any *other* pane
+// in the current tmux server whose foreground command looks like a harness. Returns
+// how many panes accepted the keys. getenv is injected for tests.
+func NotifyContinue(getenv func(string) string) int {
 	n := 0
+	nudgedTmux := map[string]bool{}
 	for _, p := range loadPanes() {
+		if p.Kind == "tmux" {
+			nudgedTmux[p.Target] = true
+		}
 		if sendContinue(p) {
+			n++
+		}
+	}
+	if getenv("TMUX") != "" {
+		n += broadcastTmux(getenv("TMUX_PANE"), nudgedTmux)
+	}
+	return n
+}
+
+// broadcastTmux sends "continue" to every tmux pane running a harness-like command,
+// skipping maple's own pane and any already nudged. Avoids typing into shells/editors.
+func broadcastTmux(self string, skip map[string]bool) int {
+	out, err := runner("tmux", "list-panes", "-a", "-F", "#{pane_id}\t#{pane_current_command}")
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		id, cmd := parts[0], parts[1]
+		if id == self || skip[id] || !harnessCommands[cmd] {
+			continue
+		}
+		if _, err := runner("tmux", "send-keys", "-t", id, "continue", "Enter"); err == nil {
 			n++
 		}
 	}
