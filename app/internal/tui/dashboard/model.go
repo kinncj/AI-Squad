@@ -53,6 +53,9 @@ type Store interface {
 	ProjectName() string
 	TaffyCount() int
 	PipelineStatus() string
+	Pipeline() state.Pipeline
+	MergeMapleJSON(map[string]any) error
+	ClearPipeline() error
 }
 
 // linesSource is a scroll-only (non-selectable) pane source backing the fullscreen
@@ -602,15 +605,48 @@ func (m *Model) setDetail(title string, lines []string) {
 // is pending. Marks kind="pipeline" so `a` approves.
 func (m *Model) openPipeline() {
 	lines := m.store.PipelineLines()
-	if stage := m.store.ApprovalPending(); stage != "" {
+	if strings.EqualFold(m.store.PipelineStatus(), "RATE_LIMITED") {
+		auto := "OFF"
+		if m.store.Pipeline().AutoResume {
+			auto = "ON"
+		}
+		lines = append([]string{
+			"⏳ RATE_LIMITED · auto-resume " + auto,
+			"[r] resume now · [A] toggle auto-resume · [c] clear",
+			"",
+		}, lines...)
+	} else if stage := m.store.ApprovalPending(); stage != "" {
 		lines = append([]string{
 			"⚠ awaiting approval: " + stage,
-			"[a] approve · [r] reject · [v] portal",
+			"[a] approve · [r] reject · [v] portal · [c] clear",
 			"",
 		}, lines...)
 	}
 	m.setDetail("Pipeline", lines)
 	m.detailKind = "pipeline"
+}
+
+// resumePipeline resumes a rate-limited run from its stage: clears the rate-limit fields
+// in maple.json and launches the harness with a resume prompt.
+func (m *Model) resumePipeline() tea.Cmd {
+	ps := m.store.Pipeline()
+	h := ps.Harness
+	if h == "" {
+		h = m.firstHarness()
+	}
+	if h == "" {
+		m.status = "can't resume: no harness found — relaunch with [x]"
+		return nil
+	}
+	_ = m.store.MergeMapleJSON(map[string]any{
+		"status":            "RUNNING",
+		"resume_at":         nil,
+		"rate_limit_reason": nil,
+		"updated_at":        time.Now().UTC().Format(time.RFC3339),
+	})
+	m.detail, m.detailKind = nil, ""
+	m.status = "resuming " + ps.Taffy + " from " + ps.Stage
+	return m.launch(reqtui.ResumeArgs(h, ps.Taffy, ps.Stage))
 }
 
 // openReview opens the design review overlay for a story and marks review mode so
@@ -860,6 +896,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case "r":
 			if m.detailKind == "pipeline" {
+				// When rate-limited, [r] resumes the run from its stage; otherwise it
+				// rejects a pending gate (main overloads r the same way).
+				if strings.EqualFold(m.store.PipelineStatus(), "RATE_LIMITED") {
+					return m, m.resumePipeline()
+				}
 				if m.store.ApprovalPending() == "" {
 					m.status = "no gate awaiting approval"
 				} else if err := m.store.RejectGate(); err == nil {
@@ -868,6 +909,21 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				} else {
 					m.status = "reject failed: " + err.Error()
 				}
+			}
+		case "A":
+			if m.detailKind == "pipeline" && strings.EqualFold(m.store.PipelineStatus(), "RATE_LIMITED") {
+				next := !m.store.Pipeline().AutoResume
+				if err := m.store.MergeMapleJSON(map[string]any{"auto_resume": next}); err == nil {
+					m.openPipeline()
+					m.status = map[bool]string{true: "auto-resume: ON", false: "auto-resume: OFF"}[next]
+				}
+			}
+		case "c":
+			if m.detailKind == "pipeline" {
+				_ = m.store.ClearPipeline()
+				m.detail, m.detailKind = nil, ""
+				m.status = "pipeline state cleared"
+				return m, nil
 			}
 		case "v":
 			if m.detailKind == "pipeline" {

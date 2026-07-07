@@ -14,6 +14,19 @@ import (
 // launch `harness` for it: it writes the gherkin handoff + quick-launch state (side
 // effects) and returns the per-harness launch command. The caller runs the argv (in a
 // split pane or the current terminal). Used by the dashboard's `i` action on a story.
+// ResumeArgs builds the launch argv to resume a rate-limited/paused taffy run from its
+// current stage, without restarting from the beginning.
+func ResumeArgs(harness, taffy, stage string) []string {
+	if taffy == "" {
+		taffy = "pipeline-runner implement-stories"
+	}
+	prompt := "/pipeline-runner " + strings.TrimPrefix(taffy, "pipeline-runner ") + "\n\n" +
+		"<maple-resume>\nContinue taffy " + taffy + " from stage \"" + stage +
+		"\" — do not restart from the beginning. Keep .claude/state/maple.json updated (status RUNNING → DONE/FAILED).\n</maple-resume>"
+	writeQuickLaunchState(taffy, "resuming", harness)
+	return buildLaunchCmd(harness, prompt, loadPinnedSessions(), true)
+}
+
 func ImplementArgs(harness string, storyDirs []string) []string {
 	stories := make([]core.Story, 0, len(storyDirs))
 	for _, d := range storyDirs {

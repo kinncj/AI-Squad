@@ -59,6 +59,65 @@ func (s *FS) PipelineStatus() string {
 	return ""
 }
 
+// Pipeline captures the maple.json fields needed to drive or resume a run.
+type Pipeline struct {
+	Taffy      string
+	Stage      string
+	Status     string
+	Harness    string
+	ResumeAt   string
+	AutoResume bool
+}
+
+// Pipeline reads the current run's maple.json fields.
+func (s *FS) Pipeline() Pipeline {
+	data, err := os.ReadFile(filepath.Join(s.Root, ".claude", "state", "maple.json"))
+	if err != nil {
+		return Pipeline{}
+	}
+	var m map[string]any
+	if json.Unmarshal(data, &m) != nil {
+		return Pipeline{}
+	}
+	str := func(k string) string { v, _ := m[k].(string); return v }
+	auto, _ := m["auto_resume"].(bool)
+	return Pipeline{
+		Taffy: str("taffy"), Stage: str("stage"), Status: str("status"),
+		Harness: str("harness"), ResumeAt: str("resume_at"), AutoResume: auto,
+	}
+}
+
+// MergeMapleJSON merges keys into maple.json (read-modify-write), preserving every other
+// key the skill owns. A nil value deletes that key.
+func (s *FS) MergeMapleJSON(updates map[string]any) error {
+	path := filepath.Join(s.Root, ".claude", "state", "maple.json")
+	m := map[string]any{}
+	if data, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(data, &m)
+	}
+	for k, v := range updates {
+		if v == nil {
+			delete(m, k)
+		} else {
+			m[k] = v
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(data, '\n'), 0o644)
+}
+
+// ClearPipeline abandons the current run: removes maple.json and any pending gate file.
+func (s *FS) ClearPipeline() error {
+	_ = os.Remove(filepath.Join(s.Root, ".claude", "state", "approval-pending.txt"))
+	return os.Remove(filepath.Join(s.Root, ".claude", "state", "maple.json"))
+}
+
 // InFlight reports whether a pipeline status represents active work.
 func InFlight(status string) bool {
 	switch strings.ToUpper(status) {

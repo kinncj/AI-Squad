@@ -56,7 +56,10 @@ func (f fakeStore) ProjectConfigExists() bool { return true }
 func (f fakeStore) ClaudeDirExists() bool     { return true }
 func (f fakeStore) ProjectName() string       { return "test-project" }
 func (f fakeStore) TaffyCount() int           { return 5 }
-func (f fakeStore) PipelineStatus() string    { return "DONE" }
+func (f fakeStore) PipelineStatus() string             { return "DONE" }
+func (f fakeStore) Pipeline() state.Pipeline           { return state.Pipeline{Status: "DONE"} }
+func (f fakeStore) MergeMapleJSON(map[string]any) error { return nil }
+func (f fakeStore) ClearPipeline() error               { return nil }
 
 func newModel(t *testing.T) Model {
 	t.Helper()
