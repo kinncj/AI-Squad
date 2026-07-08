@@ -566,7 +566,7 @@
       }[stKey] || "");
       document.getElementById("pending").textContent = s.approval_pending || "-";
       document.getElementById("updated").textContent = s.updated_at || "-";
-      if (s.maple) setMapleConn(s.maple.connected, s.maple.source);
+      setMapleConn(true); // a successful state fetch proves the portal (and maple) are alive
       if (s.approval_pending && s.feedback && s.feedback.message) {
         document.getElementById("feedback").value = s.feedback.message;
       }
@@ -1315,22 +1315,32 @@
       }
     }
 
-    function setMapleConn(connected, source) {
+    // The portal runs inside maple (in-process), so "maple connected" == "the portal is
+    // reachable". We prove that by real signals — the SSE stream being open and /health
+    // responding — not a hardcoded flag. If maple quits, the server dies, both fail, and
+    // the badge flips to offline.
+    let _connected = null;
+    function setMapleConn(connected) {
       const el = document.getElementById("maple-conn");
       if (!el) return;
-      el.className = "conn " + (connected ? "conn-on" : "conn-off");
-      const via = source && source !== "none" ? " (" + source + ")" : "";
-      el.textContent = connected ? "● maple: connected" + via : "● maple: offline";
+      const c = !!connected;
+      if (c === _connected) return;
+      _connected = c;
+      el.className = "conn " + (c ? "conn-on" : "conn-off");
+      el.textContent = c ? "● maple: connected" : "● maple: offline";
+      if (!c) document.title = "⚠ offline · MAPLE Design Review";
+      else document.title = "MAPLE Design Review";
     }
 
-    // Live push: maple/agents emit events over the control socket; the portal relays
-    // them here via SSE so the page updates instantly instead of only on the 4s poll.
+    // Live push over SSE. The stream opening = reachable; an error (server gone / dropped)
+    // = offline. EventSource auto-reconnects, so recovery flips it back on the next open.
     function subscribeEvents() {
       let es;
-      try { es = new EventSource("/api/events"); } catch (e) { return; }
+      try { es = new EventSource("/api/events"); } catch (e) { setMapleConn(false); return; }
+      es.onopen = () => setMapleConn(true);
       es.onmessage = (m) => {
+        setMapleConn(true);
         let ev; try { ev = JSON.parse(m.data); } catch (e) { return; }
-        if (ev.event === "maple") { setMapleConn(!!ev.connected, "socket"); return; }
         if (ev.event === "hello") return;
         if (ev.event === "activity" && ev.payload) {
           // A live agent/portal event: prepend to the feed and toast it (no full refresh).
@@ -1346,7 +1356,16 @@
         }
         refreshAll().catch(() => {});  // change events → pull fresh state
       };
-      es.onerror = () => { /* browser auto-reconnects */ };
+      es.onerror = () => setMapleConn(false); // server unreachable → offline (auto-reconnects)
+    }
+
+    // Backup reachability heartbeat: ping /health on a short interval so the badge flips
+    // quickly even if the SSE error is slow to fire.
+    async function pingHealth() {
+      try {
+        const r = await fetch("/health", { cache: "no-store" });
+        setMapleConn(r.ok);
+      } catch (e) { setMapleConn(false); }
     }
 
     function hideSplash() {
@@ -1358,6 +1377,7 @@
     const _splashTimer = setTimeout(hideSplash, 1200);
     refreshAll().then(() => { clearTimeout(_splashTimer); setTimeout(hideSplash, 400); }).catch(err => {
       document.getElementById("msg").textContent = err.message;
+      setMapleConn(false); // first load failed → maple/portal unreachable
       hideSplash();
     });
     bindMarkdownLinks("previewBody");
@@ -1365,7 +1385,11 @@
     { const sel = document.getElementById("artSort"); if (sel) sel.value = _artSort; }
     subscribeEvents();
     // Updates are event-driven (SSE pushes on real change); this is only a slow safety net.
-    setInterval(() => refreshAll().catch(() => {}), 20000);
+    // A failed poll means the portal (and maple) went away → flip the badge to offline.
+    setInterval(() => refreshAll().catch(() => setMapleConn(false)), 20000);
+    // Fast reachability heartbeat so the badge flips within a few seconds of maple quitting.
+    pingHealth();
+    setInterval(pingHealth, 4000);
 
     // TUI-style keyboard shortcuts (ignored while typing in a field or a modal is open).
     document.addEventListener("keydown", (e) => {

@@ -218,8 +218,10 @@ The portal is `app/internal/portal` — a `net/http` server in the maple binary 
 SPA (`index.html`, `go:embed`) and is backed by `state.FS` (single source of truth). No python3.
 `startDesignPortal` picks a free port (`findFreePort`, 7800–7900, `MAPLE_DESIGN_PORT` override)
 and runs `portal.New(root, token).Serve` on a goroutine; `maple portal serve <port>` runs it
-standalone. Because the portal runs inside maple, connectivity is inherent (`maple: connected
-(in-process)`) — no `portalsock` Unix-socket dance. Updates are event-driven: a change-watcher
+standalone. Because the portal runs inside maple, connectivity == portal reachability: the browser
+proves it via the live SSE stream + a 4s `/health` ping (badge flips to `maple: offline` +
+tab-title warning within ~4s of maple quitting, back to connected on restart) — no hardcoded
+flag, no `portalsock` socket dance. Updates are event-driven: a change-watcher
 (mtime of `maple.json`/`approval-pending.txt`/`design-artifacts.json`/design tree) pushes SSE
 `change` events, so the browser refreshes on real change (slow 20s poll as a safety net).
 Endpoints: `/api/state|artifacts|stories|story|activity|uploads|upload|approve|reject|request-changes|stop|events|token`,
