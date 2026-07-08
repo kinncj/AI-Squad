@@ -240,6 +240,16 @@
     .story-chip { background: rgba(187,154,247,.14) !important; color: var(--purple) !important; border-color: rgba(187,154,247,.4) !important; }
     .item.pending-review { background: rgba(224,175,104,.10); border-left: 3px solid var(--warn); }
     .item.pending-review .path-btn { color: var(--warn); }
+    .stepper-caption { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color: var(--muted); margin: 2px 0 6px; }
+    .legend { font-weight:500; text-transform:none; letter-spacing:0; color: var(--dim); font-size:10px; }
+    .ui-mark { color: var(--purple); cursor: help; }
+    .story .ph.gl-inprogress { color: var(--warn); }
+    .story .ph.gl-done { color: var(--ok); }
+    .story .ph.gl-failed { color: var(--bad); }
+    .story .ph.gl-idle { color: var(--dim); }
+    .step.failed { border-color: rgba(247,118,142,.4); }
+    .step.failed .sn { color: var(--bad); }
+    .step.failed .sl { color: var(--text); }
   </style>
 </head>
 <body>
@@ -257,6 +267,7 @@
       <span id="maple-conn" class="conn conn-off" title="maple TUI connection">● maple: offline</span>
     </div>
     <div class="sub">Live companion to the TUI pipeline · approve stages, review artifacts, upload references. The TUI stays the primary control surface. &nbsp;<span style="color:var(--dim)">keys: <b>a</b> approve · <b>r</b> reject · <b>c</b> changes · <b>u</b> upload · <b>g</b> refresh</span></div>
+    <div id="stepperCaption" class="stepper-caption"></div>
     <div id="stepper" class="stepper"></div>
     <div class="row">
       <div class="card">
@@ -265,7 +276,7 @@
         <div class="label" style="margin-top:10px">Status</div><div id="status" class="value status">-</div>
         <div class="label" style="margin-top:10px">Pending approval</div><div id="pending" class="value">-</div>
         <div class="label" style="margin-top:10px">Updated</div><div id="updated" class="value">-</div>
-        <div class="label" style="margin-top:14px">Stories</div>
+        <div class="label" style="margin-top:14px">Stories <span class="legend">(click to review · ✓ done · ◐ in progress · ✗ failed · · not started · ◈ UI)</span></div>
         <div id="stories" class="stories"></div>
         <div class="label" style="margin-top:14px">Activity</div>
         <div id="activity" class="activity"></div>
@@ -601,7 +612,8 @@
       }
       if (!gate) _lastReviewStory = null;
 
-      renderStepper(s.phase, s.stage, s.status);
+      window._state = s;
+      updateStepper();
 
       // Toast when a gate newly requires approval (or the workflow stops).
       notifyStateChange(stKey, s.approval_pending);
@@ -623,7 +635,12 @@
     }
 
     // ─── stories mini-list ──────────────────────────────────────────────────
-    const STORY_GLYPH = { in_progress: ["◐", "gl-inprogress"], done: ["✓", "gl-done"], failed: ["✗", "gl-failed"] };
+    // glyph, css class, human label, colour for the status word.
+    const STORY_STATUS = {
+      in_progress: ["◐", "gl-inprogress", "in progress"],
+      done:        ["✓", "gl-done", "done"],
+      failed:      ["✗", "gl-failed", "failed"],
+    };
     function renderStories(items) {
       const box = document.getElementById("stories");
       if (!box) return;
@@ -633,13 +650,15 @@
         return;
       }
       for (const s of items) {
-        const [gl, cls] = STORY_GLYPH[s.status] || ["·", "gl-idle"];
+        const [gl, cls, word] = STORY_STATUS[s.status] || ["·", "gl-idle", "not started"];
         const row = document.createElement("div");
         row.className = "story clickable" + (_storyFilter && _storyFilter.id === s.id ? " sel" : "");
-        row.title = "Review this story";
-        row.innerHTML = `<span class="gl ${cls}">${gl}</span>` +
-          `<span class="ti">${esc(s.title)}${s.ui ? " ◈" : ""}</span>` +
-          `<span class="ph">${esc(s.phase || "")}</span>`;
+        row.title = "Click to review this story — its spec + design artifacts";
+        const ui = s.ui ? ' <span class="ui-mark" title="UI story — has design artifacts to review">◈</span>' : "";
+        row.innerHTML =
+          `<span class="gl ${cls}" title="status: ${word}">${gl}</span>` +
+          `<span class="ti">${esc(s.title)}${ui}</span>` +
+          `<span class="ph ${cls}">${word}</span>`;
         row.addEventListener("click", () => selectStory(s.id, s.title));
         box.appendChild(row);
       }
@@ -656,6 +675,7 @@
         showStorySpec(d);
         renderArtifacts();
         renderStories(window._stories || []);
+        updateStepper(); // reflect THIS story's phase progress
       } catch (e) { document.getElementById("msg").textContent = e.message; }
     }
     function clearStoryFilter() {
@@ -663,6 +683,7 @@
       renderArtifacts();
       renderStories(window._stories || []);
       setPreview(null);
+      updateStepper(); // back to the overall pipeline
     }
     function stripFrontmatter(md) {
       const m = String(md || "");
@@ -714,16 +735,37 @@
       }
       return -1;
     }
-    function renderStepper(phase, stage, status) {
+    // updateStepper renders the pipeline phases. Without a selected story it shows the
+    // OVERALL pipeline (from maple.json phase). With a story selected it reflects THAT
+    // story's reality from its run-status: done → all complete, failed → failed at the
+    // current phase, in_progress → the current phase, not-started → all pending.
+    function updateStepper() {
+      const s = window._state || {};
       const box = document.getElementById("stepper");
+      const cap = document.getElementById("stepperCaption");
       if (!box) return;
-      const active = phaseIndex(phase, stage);
-      const complete = String(status || "").toUpperCase() === "DONE";
+      let active = phaseIndex(s.phase, s.stage);
+      let complete = String(s.status || "").toUpperCase() === "DONE";
+      let failedAt = -1;
+      let caption = "Pipeline · overall";
+
+      if (_storyFilter) {
+        const story = (window._stories || []).find((x) => x.id === _storyFilter.id);
+        const st = story ? String(story.status || "") : "";
+        caption = "Pipeline · " + esc(_storyFilter.title);
+        if (st === "done") { complete = true; caption += " — done"; }
+        else if (st === "failed") { failedAt = active >= 0 ? active : 0; complete = false; caption += " — failed"; }
+        else if (st === "in_progress") { caption += " — in progress"; }
+        else { active = -1; complete = false; caption += " — not started"; }
+      }
+
+      if (cap) cap.textContent = caption;
       box.innerHTML = "";
       PHASES.forEach((p, i) => {
         const el = document.createElement("div");
         let cls = "step" + (p.gate ? " gate" : "");
-        if (complete || (active >= 0 && i < active)) cls += " done";
+        if (i === failedAt) cls += " failed";
+        else if (complete || (active >= 0 && i < active)) cls += " done";
         else if (i === active) cls += " active";
         el.className = cls;
         el.innerHTML = `<div class="sn">${String(i + 1).padStart(2, "0")}</div><div class="sl">${p.label}</div>`;
