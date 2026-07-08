@@ -192,6 +192,28 @@
     .art-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
     .sort-select { background: var(--inset); color: var(--text); border:1px solid var(--line); border-radius:9px; padding:5px 9px; font-size:12px; font-weight:600; }
     .sort-select:focus { outline:none; border-color: var(--accent); }
+    /* toasts */
+    .toasts { position: fixed; top: 18px; right: 18px; z-index: 10001; display:flex; flex-direction:column; gap:10px; max-width: 360px; }
+    .toast { background: var(--card); border:1px solid var(--line); border-left-width:3px; border-radius:12px; padding:12px 14px; box-shadow: var(--shadow); animation: toast-in .3s ease both; font-size:13px; }
+    .toast.ok { border-left-color: var(--ok); }
+    .toast.warn { border-left-color: var(--warn); }
+    .toast.info { border-left-color: var(--accent); }
+    .toast.bad { border-left-color: var(--bad); }
+    .toast .tt { font-weight:800; margin-bottom:2px; }
+    .toast .tb { color: var(--muted); }
+    .toast.hide { animation: toast-out .3s ease both; }
+    @keyframes toast-in { from { opacity:0; transform: translateX(24px); } to { opacity:1; transform:none; } }
+    @keyframes toast-out { to { opacity:0; transform: translateX(24px); } }
+    /* stories mini-list */
+    .stories { margin-top:8px; display:flex; flex-direction:column; gap:4px; max-height: 200px; overflow:auto; }
+    .story { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:9px; background: var(--inset); border:1px solid var(--line); font-size:12px; }
+    .story .gl { font-size:13px; width:16px; text-align:center; }
+    .story .ti { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color: var(--text); }
+    .story .ph { color: var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.04em; }
+    .gl-inprogress { color: var(--warn); }
+    .gl-done { color: var(--ok); }
+    .gl-failed { color: var(--bad); }
+    .gl-idle { color: var(--dim); }
   </style>
 </head>
 <body>
@@ -201,6 +223,7 @@
     <div class="tag">Design Review</div>
     <div class="bar"><i></i></div>
   </div>
+  <div id="toasts" class="toasts"></div>
   <div class="wrap">
     <div class="brand">
       <span class="leaf">🍁</span>
@@ -215,6 +238,8 @@
         <div class="label" style="margin-top:10px">Status</div><div id="status" class="value status">-</div>
         <div class="label" style="margin-top:10px">Pending approval</div><div id="pending" class="value">-</div>
         <div class="label" style="margin-top:10px">Updated</div><div id="updated" class="value">-</div>
+        <div class="label" style="margin-top:14px">Stories</div>
+        <div id="stories" class="stories"></div>
         <textarea id="feedback" placeholder="Feedback for the agent (required for reject/change)..."></textarea>
         <input id="uploadInput" class="upload-input" type="file" multiple accept=".excalidraw,.json,.jpg,.jpeg,.png,.webp,.gif,.html,.htm,.txt,.md,.svg,.css" />
         <div id="gateHint" class="sub" style="margin-top:12px"></div>
@@ -524,11 +549,66 @@
           : (inFlight ? "Workflow running — no approval needed right now." : "No active workflow.");
       }
 
+      // Toast when a gate newly requires approval (or the workflow stops).
+      notifyStateChange(stKey, s.approval_pending);
+
       const a = await api("/api/artifacts");
       window._artifacts = a.items || [];
       renderArtifacts();
       const up = await api("/api/uploads");
       renderUploads(up.items || []);
+      try {
+        const st = await api("/api/stories");
+        renderStories(st.items || []);
+      } catch (e) { /* stories are best-effort */ }
+    }
+
+    // ─── stories mini-list ──────────────────────────────────────────────────
+    const STORY_GLYPH = { in_progress: ["◐", "gl-inprogress"], done: ["✓", "gl-done"], failed: ["✗", "gl-failed"] };
+    function renderStories(items) {
+      const box = document.getElementById("stories");
+      if (!box) return;
+      box.innerHTML = "";
+      if (!items.length) {
+        box.innerHTML = '<div class="story"><span class="ti" style="color:var(--dim)">No stories yet</span></div>';
+        return;
+      }
+      for (const s of items) {
+        const [gl, cls] = STORY_GLYPH[s.status] || ["·", "gl-idle"];
+        const row = document.createElement("div");
+        row.className = "story";
+        row.innerHTML = `<span class="gl ${cls}">${gl}</span>` +
+          `<span class="ti">${esc(s.title)}${s.ui ? " ◈" : ""}</span>` +
+          `<span class="ph">${esc(s.phase || "")}</span>`;
+        box.appendChild(row);
+      }
+    }
+
+    // ─── toast notifications ────────────────────────────────────────────────
+    function toast(kind, title, body, ms) {
+      const wrap = document.getElementById("toasts");
+      if (!wrap) return;
+      const el = document.createElement("div");
+      el.className = "toast " + kind;
+      el.innerHTML = `<div class="tt">${esc(title)}</div>` + (body ? `<div class="tb">${esc(body)}</div>` : "");
+      wrap.appendChild(el);
+      setTimeout(() => { el.classList.add("hide"); setTimeout(() => el.remove(), 300); }, ms || 6000);
+    }
+    let _lastGate = null, _lastStatus = null, _toastPrimed = false;
+    function notifyStateChange(status, pending) {
+      // Skip the very first load so we don't toast the current state on open.
+      if (!_toastPrimed) { _toastPrimed = true; _lastGate = pending || ""; _lastStatus = status; return; }
+      if ((pending || "") !== _lastGate) {
+        if (pending) toast("warn", "Approval required", "Stage: " + pending);
+        _lastGate = pending || "";
+      }
+      if (status !== _lastStatus) {
+        if (status === "DONE") toast("ok", "Workflow complete", "");
+        else if (status === "FAILED") toast("bad", "Workflow failed", "");
+        else if (status === "STOPPED") toast("info", "Workflow stopped", "You can talk to the harness directly.");
+        else if (status === "RATE_LIMITED") toast("warn", "Rate limited", "Resume from the TUI when ready.");
+        _lastStatus = status;
+      }
     }
 
     let _artFilter = "all";

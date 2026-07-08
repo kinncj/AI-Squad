@@ -128,6 +128,23 @@ func (s *Server) handleArtifacts(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": s.discoverArtifacts()})
 }
 
+// handleStories returns the project's stories with their taffy-reported run status, so the
+// portal shows the same per-story progress the TUI does.
+func (s *Server) handleStories(w http.ResponseWriter, _ *http.Request) {
+	out := []map[string]any{}
+	for _, st := range s.fs.Stories() {
+		title := st.Title
+		if title == "" {
+			title = st.ID
+		}
+		out = append(out, map[string]any{
+			"id": st.ID, "title": title, "phase": st.Phase,
+			"priority": st.Priority, "ui": st.UI, "status": st.RunStatus,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": out})
+}
+
 // handleArtifactBytes serves a raw artifact file for previews, strictly confined to root.
 func (s *Server) handleArtifactBytes(w http.ResponseWriter, r *http.Request) {
 	if !s.validToken(r) {

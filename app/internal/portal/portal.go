@@ -49,6 +49,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/api/state", s.tokened(s.handleState))
 	mux.HandleFunc("/api/artifacts", s.tokened(s.handleArtifacts))
+	mux.HandleFunc("/api/stories", s.tokened(s.handleStories))
 	mux.HandleFunc("/api/uploads", s.tokened(s.handleUploads))
 	mux.HandleFunc("/api/upload", s.tokened(s.handleUpload))
 	mux.HandleFunc("/api/approve", s.tokened(s.handleApprove))
