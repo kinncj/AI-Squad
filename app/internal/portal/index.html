@@ -215,6 +215,25 @@
     .gl-failed { color: var(--bad); }
     .gl-idle { color: var(--dim); }
     .mini { background: var(--card2); color: var(--text); border:1px solid var(--line); padding:2px 8px; border-radius:7px; font-size:13px; line-height:1; }
+    /* pipeline phase stepper */
+    .stepper { display:flex; align-items:stretch; gap:6px; margin: 4px 0 20px; flex-wrap:wrap; }
+    .step { flex:1 1 90px; min-width:82px; background: var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 10px; position:relative; }
+    .step .sn { font-size:10px; font-weight:800; color: var(--dim); letter-spacing:.05em; }
+    .step .sl { font-size:12px; font-weight:700; margin-top:2px; color: var(--muted); }
+    .step.done { border-color: rgba(158,206,106,.35); }
+    .step.done .sn { color: var(--ok); }
+    .step.done .sl { color: var(--text); }
+    .step.active { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(122,162,247,.18); background: linear-gradient(180deg, rgba(122,162,247,.10), var(--card)); }
+    .step.active .sn { color: var(--accent); }
+    .step.active .sl { color: var(--text); }
+    .step.gate .sl::after { content:" ⚑"; color: var(--warn); }
+    /* activity feed */
+    .activity { margin-top:8px; display:flex; flex-direction:column; gap:5px; max-height: 220px; overflow:auto; }
+    .act { display:flex; gap:8px; align-items:baseline; padding:6px 9px; border-radius:9px; background: var(--inset); border:1px solid var(--line); font-size:12px; animation: toast-in .25s ease both; }
+    .act .ai { font-size:12px; }
+    .act .am { flex:1; color: var(--text); overflow:hidden; text-overflow:ellipsis; }
+    .act .at { color: var(--dim); font-size:10px; white-space:nowrap; }
+    .act .src { color: var(--purple); font-size:9px; text-transform:uppercase; letter-spacing:.04em; }
   </style>
 </head>
 <body>
@@ -232,6 +251,7 @@
       <span id="maple-conn" class="conn conn-off" title="maple TUI connection">● maple: offline</span>
     </div>
     <div class="sub">Live companion to the TUI pipeline · approve stages, review artifacts, upload references. The TUI stays the primary control surface. &nbsp;<span style="color:var(--dim)">keys: <b>a</b> approve · <b>r</b> reject · <b>c</b> changes · <b>u</b> upload · <b>g</b> refresh</span></div>
+    <div id="stepper" class="stepper"></div>
     <div class="row">
       <div class="card">
         <div class="label">Workflow</div><div id="wf" class="value">-</div>
@@ -241,6 +261,8 @@
         <div class="label" style="margin-top:10px">Updated</div><div id="updated" class="value">-</div>
         <div class="label" style="margin-top:14px">Stories</div>
         <div id="stories" class="stories"></div>
+        <div class="label" style="margin-top:14px">Activity</div>
+        <div id="activity" class="activity"></div>
         <textarea id="feedback" placeholder="Feedback for the agent (required for reject/change)..."></textarea>
         <input id="uploadInput" class="upload-input" type="file" multiple accept=".excalidraw,.json,.jpg,.jpeg,.png,.webp,.gif,.html,.htm,.txt,.md,.svg,.css" />
         <div id="gateHint" class="sub" style="margin-top:12px"></div>
@@ -553,6 +575,8 @@
           : (inFlight ? "Workflow running — no approval needed right now." : "No active workflow.");
       }
 
+      renderStepper(s.stage, s.status);
+
       // Toast when a gate newly requires approval (or the workflow stops).
       notifyStateChange(stKey, s.approval_pending);
 
@@ -565,6 +589,10 @@
         const st = await api("/api/stories");
         renderStories(st.items || []);
       } catch (e) { /* stories are best-effort */ }
+      try {
+        const act = await api("/api/activity");
+        renderActivity(act.items || []);
+      } catch (e) { /* activity is best-effort */ }
     }
 
     // ─── stories mini-list ──────────────────────────────────────────────────
@@ -586,6 +614,96 @@
           `<span class="ph">${esc(s.phase || "")}</span>`;
         box.appendChild(row);
       }
+    }
+
+    // ─── pipeline phase stepper ─────────────────────────────────────────────
+    // The canonical MAPLE pipeline. Design sub-stages (wireframe/mockup/identity/tokens)
+    // happen in the ARCHITECT/design area, so they map there.
+    const PHASES = [
+      { key: "discover",  label: "Discover",  aliases: ["discover", "spec", "story", "req"] },
+      { key: "architect", label: "Architect", aliases: ["architect", "design", "wireframe", "mockup", "identity", "token", "visual"] },
+      { key: "plan",      label: "Plan",      aliases: ["plan"] },
+      { key: "infra",     label: "Infra",     aliases: ["infra"] },
+      { key: "implement", label: "Implement", aliases: ["implement", "code", "build"] },
+      { key: "validate",  label: "Validate",  aliases: ["validate", "qa", "test", "karpathy", "audit", "a11y"], gate: true },
+      { key: "document",  label: "Document",  aliases: ["document", "docs"] },
+      { key: "final",     label: "Final Gate",aliases: ["final", "gate", "ship", "release", "done"], gate: true },
+    ];
+    function phaseIndex(stage) {
+      const s = String(stage || "").toLowerCase();
+      for (let i = 0; i < PHASES.length; i++) {
+        if (PHASES[i].aliases.some((a) => s.includes(a))) return i;
+      }
+      return -1;
+    }
+    function renderStepper(stage, status) {
+      const box = document.getElementById("stepper");
+      if (!box) return;
+      const active = phaseIndex(stage);
+      const complete = String(status || "").toUpperCase() === "DONE";
+      box.innerHTML = "";
+      PHASES.forEach((p, i) => {
+        const el = document.createElement("div");
+        let cls = "step" + (p.gate ? " gate" : "");
+        if (complete || (active >= 0 && i < active)) cls += " done";
+        else if (i === active) cls += " active";
+        el.className = cls;
+        el.innerHTML = `<div class="sn">${String(i + 1).padStart(2, "0")}</div><div class="sl">${p.label}</div>`;
+        el.title = p.label + (p.gate ? " (human/quality gate)" : "");
+        box.appendChild(el);
+      });
+    }
+
+    // ─── activity feed ──────────────────────────────────────────────────────
+    function actIcon(ev) {
+      const e = String(ev.event || "").toLowerCase();
+      if (e.includes("approve")) return "✅";
+      if (e.includes("reject")) return "⛔";
+      if (e.includes("change")) return "✏️";
+      if (e.includes("stop")) return "🛑";
+      if (e.includes("fail") || e.includes("error")) return "❌";
+      if (e.includes("done") || e.includes("complete")) return "✓";
+      if (e.includes("start") || e.includes("begin")) return "▸";
+      if (e.includes("warn") || e.includes("block")) return "⚠️";
+      return "•";
+    }
+    function actText(ev) {
+      if (ev.message) return String(ev.message);
+      const extra = Object.keys(ev).filter((k) => !["event", "ts", "source", "message"].includes(k))
+        .map((k) => k + "=" + ev[k]).join(" ");
+      return String(ev.event || "event") + (extra ? "  " + extra : "");
+    }
+    function actTime(ev) {
+      const t = ev.ts ? new Date(ev.ts) : null;
+      if (!t || isNaN(t)) return "";
+      return t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    }
+    function renderActivity(items) {
+      const box = document.getElementById("activity");
+      if (!box) return;
+      box.innerHTML = "";
+      if (!items.length) {
+        box.innerHTML = '<div class="act"><span class="am" style="color:var(--dim)">No activity yet — agent events appear here live.</span></div>';
+        return;
+      }
+      for (const ev of items.slice(-60).reverse()) box.appendChild(actRow(ev));
+    }
+    function actRow(ev) {
+      const el = document.createElement("div");
+      el.className = "act";
+      el.innerHTML = `<span class="ai">${actIcon(ev)}</span>` +
+        `<span class="am">${esc(actText(ev))}${ev.source === "portal" ? ' <span class="src">portal</span>' : ""}</span>` +
+        `<span class="at">${actTime(ev)}</span>`;
+      return el;
+    }
+    function pushActivity(ev) {
+      const box = document.getElementById("activity");
+      if (!box) return;
+      const first = box.firstChild;
+      if (first && first.querySelector && first.querySelector(".am") &&
+          first.querySelector(".am").style.color) box.innerHTML = ""; // clear the empty state
+      box.insertBefore(actRow(ev), box.firstChild);
+      while (box.children.length > 60) box.removeChild(box.lastChild);
     }
 
     // ─── toast notifications ────────────────────────────────────────────────
@@ -1072,8 +1190,21 @@
       try { es = new EventSource("/api/events"); } catch (e) { return; }
       es.onmessage = (m) => {
         let ev; try { ev = JSON.parse(m.data); } catch (e) { return; }
-        if (ev.event === "maple") setMapleConn(!!ev.connected, "socket");
-        refreshAll().catch(() => {});  // any event → pull fresh state
+        if (ev.event === "maple") { setMapleConn(!!ev.connected, "socket"); return; }
+        if (ev.event === "hello") return;
+        if (ev.event === "activity" && ev.payload) {
+          // A live agent/portal event: prepend to the feed and toast it (no full refresh).
+          pushActivity(ev.payload);
+          const p = ev.payload, e = String(p.event || "").toLowerCase();
+          if (p.source !== "portal") {
+            const kind = e.includes("fail") || e.includes("error") ? "bad"
+              : e.includes("warn") || e.includes("block") ? "warn"
+              : e.includes("done") || e.includes("complete") ? "ok" : "info";
+            toast(kind, actText(p), "");
+          }
+          return;
+        }
+        refreshAll().catch(() => {});  // change events → pull fresh state
       };
       es.onerror = () => { /* browser auto-reconnects */ };
     }

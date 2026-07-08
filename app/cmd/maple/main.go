@@ -876,8 +876,10 @@ func runEmit(args []string) {
 	if _, ok := ev["ts"]; !ok {
 		ev["ts"] = nowRFC3339()
 	}
-	if err := portalsock.Emit(".", ev); err != nil {
-		die(fmt.Errorf("emit: %w (is the design portal running?)", err))
+	// Append to the portal's activity log; the Go portal tails it and pushes over SSE.
+	// File-based so it works whether or not the portal is currently running.
+	if err := portal.AppendActivity(".", ev); err != nil {
+		die(fmt.Errorf("emit: %w", err))
 	}
 	fmt.Printf("emitted %v\n", ev["event"])
 }

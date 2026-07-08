@@ -38,6 +38,7 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 	}
 	s.clearFeedback()
 	n := harness.NotifyContinue(s.getenv)
+	s.logActivity("approve", "Stage approved from the portal")
 	s.Publish(map[string]any{"event": "change", "action": "approve"})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "nudged": n})
 }
@@ -50,6 +51,7 @@ func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n := harness.NotifyContinue(s.getenv)
+	s.logActivity("reject", "Stage rejected — feedback sent to the agent")
 	s.Publish(map[string]any{"event": "change", "action": "reject"})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "nudged": n})
 }
@@ -59,6 +61,7 @@ func (s *Server) handleRequestChanges(w http.ResponseWriter, r *http.Request) {
 	s.writeFeedback(s.readBody(r))
 	_ = s.fs.RejectGate()
 	n := harness.NotifyContinue(s.getenv)
+	s.logActivity("request-changes", "Changes requested — feedback sent to the agent")
 	s.Publish(map[string]any{"event": "change", "action": "request-changes"})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "nudged": n})
 }
@@ -75,6 +78,7 @@ func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
 	_ = os.Remove(filepath.Join(s.root, ".claude", "state", "approval-pending.txt"))
 	n := harness.NotifyHarness(s.getenv,
 		"Stop the current workflow now. Do not continue the pipeline. Wait for my next instruction.")
+	s.logActivity("stop", "Workflow stopped from the portal")
 	s.Publish(map[string]any{"event": "change", "action": "stop"})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "stopped": true, "nudged": n})
 }

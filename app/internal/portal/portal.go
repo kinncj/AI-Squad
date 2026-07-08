@@ -30,6 +30,10 @@ type Server struct {
 	mu    sync.Mutex
 	subs  map[chan string]struct{} // SSE subscribers
 	getenv func(string) string
+
+	actMu    sync.Mutex
+	activity []map[string]any // in-memory ring of recent events
+	actSeen  int              // lines of the activity log already processed
 }
 
 // New builds a portal server for root with an access token.
@@ -50,6 +54,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/state", s.tokened(s.handleState))
 	mux.HandleFunc("/api/artifacts", s.tokened(s.handleArtifacts))
 	mux.HandleFunc("/api/stories", s.tokened(s.handleStories))
+	mux.HandleFunc("/api/activity", s.tokened(s.handleActivity))
 	mux.HandleFunc("/api/uploads", s.tokened(s.handleUploads))
 	mux.HandleFunc("/api/upload", s.tokened(s.handleUpload))
 	mux.HandleFunc("/api/approve", s.tokened(s.handleApprove))
@@ -109,6 +114,7 @@ func (s *Server) watch() {
 			last = cur
 			s.Publish(map[string]any{"event": "change", "ts": time.Now().UTC().Format(time.RFC3339)})
 		}
+		s.tailActivity() // push any agent-emitted events over SSE
 		time.Sleep(1500 * time.Millisecond)
 	}
 }
