@@ -149,15 +149,22 @@ harnesses run in the current terminal (suspend/resume). See
 
 Switch with `:theme <name>`, or auto-detected from `~/.config/omarchy/current/theme`.
 
-### Design Review Portal (optional companion)
+### Design Review Portal (built in)
 
-At TAFFY human-approval stages, press `P` then `v` to open a local review UI:
+maple serves a **Go-native** design-review portal from the binary itself — no `python3`, no
+separate process. It starts with the dashboard; press `P` then `v` (or `:portal`) to open it,
+or run it standalone:
 
 ```bash
-scripts/design-review-portal.sh open
+maple portal serve 7800
 ```
 
-It reads `docs/design/**` + `docs/stories/**`, lets you approve a stage (same signal as `P` → `a`), or request changes by recording feedback in `.claude/state/design-feedback.json`. The TUI remains the primary approval surface.
+A themed web UI (matching the TUI) reads `docs/design/**`, lets you approve/reject a stage or
+request changes (recorded in `.claude/state/design-feedback.json`), **stop a running workflow**
+(the harness halts but stays interactive so you can talk to it directly), upload reference
+files, and browse/sort artifacts. Updates are event-driven (SSE) — no polling flicker.
+Connectivity is inherent (`maple: connected (in-process)`). The TUI remains the primary
+approval surface. See [ADR 0002](docs/architecture/0002-go-native-design-review-portal.md).
 
 ### CLI Commands
 

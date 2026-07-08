@@ -36,7 +36,7 @@ other concern is a small, tested `app/internal/*` package.
 │           ├── splash/     # PNG/ASCII splash
 │           └── brand/      # leaf glyph + tagline
 ├── template/               # Everything copied on `maple init` (.claude/.opencode/.cursor,
-│                           #   .github, docs, scripts/design-review-portal.{sh,py}, Makefile)
+│                           #   .github, docs, Makefile — portal is Go-native, app/internal/portal)
 ├── scripts/                # install.sh / install.ps1 / legacy `maple` bash CLI
 ├── docs/                   # this repo's own specs + ADRs (ADR-002/003 = the rebuild)
 ├── tests/                  # shell test suite for the repo (tests/cli, tests/template)
@@ -79,7 +79,7 @@ make test-app && echo OK
 ```
 
 No exceptions — if it doesn't build + pass, it doesn't commit. For the portal Python:
-`python3 -c "import ast; ast.parse(open('template/scripts/design-review-portal.py').read())"`.
+the Go portal lives in `app/internal/portal` (test with `make test-app`).
 For install scripts: `bash -n scripts/install.sh`.
 
 ---
@@ -212,14 +212,20 @@ Any write to `maple.json` reads the existing file, unmarshals to a map, updates 
 keys, and re-marshals. The skill owns the pipeline fields; the TUI/state only reconciles
 `awaiting_approval`/`status`/`updated_at`.
 
-### Design portal: dynamic port, control socket, SPA routing
+### Design portal: Go-native, in-process (ADR-0002)
 
-`startDesignPortal` picks a free port (`findFreePort`, 7800–7900, `MAPLE_DESIGN_PORT` override),
-runs `scripts/design-review-portal.sh start <port>`, and passes the authoritative URL to the
-dashboard header (a clickable OSC-8 hyperlink; a plain click also opens it since mouse capture
-eats OSC-8 clicks). maple holds a Unix-socket connection (`portalsock.Hold`) so the portal shows
-live connectivity, plus a file heartbeat fallback; `maple emit` pushes events. The portal serves
-its SPA for any non-`/api/`, non-`/artifact/` path (so agent-guessed URLs don't 404).
+The portal is `app/internal/portal` — a `net/http` server in the maple binary that embeds the
+SPA (`index.html`, `go:embed`) and is backed by `state.FS` (single source of truth). No python3.
+`startDesignPortal` picks a free port (`findFreePort`, 7800–7900, `MAPLE_DESIGN_PORT` override)
+and runs `portal.New(root, token).Serve` on a goroutine; `maple portal serve <port>` runs it
+standalone. Because the portal runs inside maple, connectivity is inherent (`maple: connected
+(in-process)`) — no `portalsock` Unix-socket dance. Updates are event-driven: a change-watcher
+(mtime of `maple.json`/`approval-pending.txt`/`design-artifacts.json`/design tree) pushes SSE
+`change` events, so the browser refreshes on real change (slow 20s poll as a safety net).
+Endpoints: `/api/state|artifacts|uploads|upload|approve|reject|request-changes|stop|events|token`,
+`/artifact/<path>` (root-confined), and the SPA for any other path (agent-guessed URLs don't 404).
+Token-gated (`?token=` or `X-Maple-Token`). `/api/stop` marks `maple.json` STOPPED, clears the
+gate, and nudges the harness to halt but stay interactive (`harness.NotifyHarness`).
 
 ### Story parsing handles multi-line YAML
 
