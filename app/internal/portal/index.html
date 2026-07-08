@@ -214,6 +214,7 @@
     .gl-done { color: var(--ok); }
     .gl-failed { color: var(--bad); }
     .gl-idle { color: var(--dim); }
+    .mini { background: var(--card2); color: var(--text); border:1px solid var(--line); padding:2px 8px; border-radius:7px; font-size:13px; line-height:1; }
   </style>
 </head>
 <body>
@@ -269,7 +270,10 @@
         <div class="preview">
           <div class="preview-head">
             <span>Visual preview</span>
-            <span id="previewPath">No preview selected</span>
+            <span style="display:flex; gap:10px; align-items:center;">
+              <span id="previewPath">No preview selected</span>
+              <button id="previewExpand" class="mini" onclick="expandPreview()" title="Open large">⤢</button>
+            </span>
           </div>
           <div id="previewBody" class="preview-body">No preview available yet for this stage.</div>
         </div>
@@ -764,9 +768,14 @@
       return `<div style="overflow:auto;max-height:78vh"><svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX} ${vbY} ${vbW} ${vbH}" style="width:100%;height:auto;background:#fff;border-radius:8px;border:1px solid #d9e2ec">${pieces.join("")}</svg></div>`;
     }
 
+    let _currentPreview = null;
+    function expandPreview() { if (_currentPreview) openArtifactModal(_currentPreview); }
     async function setPreview(item) {
+      _currentPreview = item;
       const pathEl = document.getElementById("previewPath");
       const body = document.getElementById("previewBody");
+      const exp = document.getElementById("previewExpand");
+      if (exp) exp.style.display = item ? "" : "none";
       if (!item) {
         pathEl.textContent = "No preview selected";
         body.textContent = "No preview available yet for this stage.";
