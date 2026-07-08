@@ -234,6 +234,10 @@
     .act .am { flex:1; color: var(--text); overflow:hidden; text-overflow:ellipsis; }
     .act .at { color: var(--dim); font-size:10px; white-space:nowrap; }
     .act .src { color: var(--purple); font-size:9px; text-transform:uppercase; letter-spacing:.04em; }
+    .story.clickable { cursor:pointer; transition: background .12s ease, border-color .12s ease; }
+    .story.clickable:hover { background: rgba(122,162,247,.08); border-color: rgba(122,162,247,.35); }
+    .story.sel { background: rgba(122,162,247,.12); border-color: var(--accent); }
+    .story-chip { background: rgba(187,154,247,.14) !important; color: var(--purple) !important; border-color: rgba(187,154,247,.4) !important; }
   </style>
 </head>
 <body>
@@ -575,7 +579,7 @@
           : (inFlight ? "Workflow running — no approval needed right now." : "No active workflow.");
       }
 
-      renderStepper(s.stage, s.status);
+      renderStepper(s.phase, s.stage, s.status);
 
       // Toast when a gate newly requires approval (or the workflow stops).
       notifyStateChange(stKey, s.approval_pending);
@@ -587,7 +591,8 @@
       renderUploads(up.items || []);
       try {
         const st = await api("/api/stories");
-        renderStories(st.items || []);
+        window._stories = st.items || [];
+        renderStories(window._stories);
       } catch (e) { /* stories are best-effort */ }
       try {
         const act = await api("/api/activity");
@@ -608,12 +613,54 @@
       for (const s of items) {
         const [gl, cls] = STORY_GLYPH[s.status] || ["·", "gl-idle"];
         const row = document.createElement("div");
-        row.className = "story";
+        row.className = "story clickable" + (_storyFilter && _storyFilter.id === s.id ? " sel" : "");
+        row.title = "Review this story";
         row.innerHTML = `<span class="gl ${cls}">${gl}</span>` +
           `<span class="ti">${esc(s.title)}${s.ui ? " ◈" : ""}</span>` +
           `<span class="ph">${esc(s.phase || "")}</span>`;
+        row.addEventListener("click", () => selectStory(s.id, s.title));
         box.appendChild(row);
       }
+    }
+
+    // ─── story review (click a story → its spec + linked artifacts) ─────────
+    let _storyFilter = null; // { id, title, paths:Set }
+    async function selectStory(id, title) {
+      try {
+        const d = await api("/api/story?id=" + encodeURIComponent(id));
+        _storyFilter = { id, title: d.title || title, paths: new Set((d.artifacts || []).map((a) => a.path)) };
+        showStorySpec(d);
+        renderArtifacts();
+        renderStories(window._stories || []);
+      } catch (e) { document.getElementById("msg").textContent = e.message; }
+    }
+    function clearStoryFilter() {
+      _storyFilter = null;
+      renderArtifacts();
+      renderStories(window._stories || []);
+      setPreview(null);
+    }
+    function stripFrontmatter(md) {
+      const m = String(md || "");
+      if (m.startsWith("---")) {
+        const end = m.indexOf("\n---", 3);
+        if (end >= 0) {
+          const nl = m.indexOf("\n", end + 1);
+          return nl >= 0 ? m.slice(nl + 1) : "";
+        }
+      }
+      return m;
+    }
+    function showStorySpec(d) {
+      const pathEl = document.getElementById("previewPath");
+      const body = document.getElementById("previewBody");
+      const exp = document.getElementById("previewExpand");
+      if (exp) exp.style.display = "none";
+      _currentPreview = null;
+      pathEl.textContent = "Story spec · " + (d.title || d.id);
+      body.innerHTML = renderMarkdown(stripFrontmatter(d.spec || ""));
+      renderMermaidIn(body);
+      bindMarkdownLinks("previewBody");
     }
 
     // ─── pipeline phase stepper ─────────────────────────────────────────────
@@ -629,17 +676,24 @@
       { key: "document",  label: "Document",  aliases: ["document", "docs"] },
       { key: "final",     label: "Final Gate",aliases: ["final", "gate", "ship", "release", "done"], gate: true },
     ];
-    function phaseIndex(stage) {
+    // Exact match on the canonical phase key (authoritative), else heuristic on the
+    // freeform stage string (older runs that don't write `phase`).
+    function phaseIndex(phase, stage) {
+      const p = String(phase || "").toLowerCase();
+      if (p) {
+        const exact = PHASES.findIndex((x) => x.key === p || p.includes(x.key));
+        if (exact >= 0) return exact;
+      }
       const s = String(stage || "").toLowerCase();
       for (let i = 0; i < PHASES.length; i++) {
         if (PHASES[i].aliases.some((a) => s.includes(a))) return i;
       }
       return -1;
     }
-    function renderStepper(stage, status) {
+    function renderStepper(phase, stage, status) {
       const box = document.getElementById("stepper");
       if (!box) return;
-      const active = phaseIndex(stage);
+      const active = phaseIndex(phase, stage);
       const complete = String(status || "").toUpperCase() === "DONE";
       box.innerHTML = "";
       PHASES.forEach((p, i) => {
@@ -756,12 +810,22 @@
       } catch (e) { document.getElementById("msg").textContent = e.message; }
     }
     function renderArtifacts() {
-      const items = sortArtifacts(window._artifacts || []);
+      let items = sortArtifacts(window._artifacts || []);
       const box = document.getElementById("artifacts");
       const filters = document.getElementById("filters");
       box.innerHTML = "";
       filters.innerHTML = "";
-      if (items.length) {
+      // Story filter: when reviewing a story, scope artifacts to that story + show a chip.
+      if (_storyFilter) {
+        items = items.filter((i) => _storyFilter.paths.has(i.path));
+        const chip = document.createElement("button");
+        chip.className = "active story-chip";
+        chip.innerHTML = "◈ " + esc(_storyFilter.title) + " ✕";
+        chip.title = "Clear story filter";
+        chip.addEventListener("click", clearStoryFilter);
+        filters.appendChild(chip);
+      }
+      if (items.length && !_storyFilter) {
         const kinds = Array.from(new Set(items.map((i) => i.kind || "file"))).sort();
         const mk = (key, label) => {
           const b = document.createElement("button");
@@ -773,7 +837,7 @@
         mk("all", "all · " + items.length);
         for (const k of kinds) mk(k, k + " · " + items.filter((i) => (i.kind || "file") === k).length);
       }
-      const shown = items.filter((i) => _artFilter === "all" || (i.kind || "file") === _artFilter);
+      const shown = _storyFilter ? items : items.filter((i) => _artFilter === "all" || (i.kind || "file") === _artFilter);
       let selected = null;
       if (!shown.length) {
         box.innerHTML = '<div class="empty">' + (items.length
@@ -803,7 +867,8 @@
           if (!selected && isPreviewable(item)) selected = item;
         }
       }
-      setPreview(selected);
+      // While reviewing a story, keep its spec in the preview; otherwise auto-select one.
+      if (!_storyFilter) setPreview(selected);
     }
 
     function isPreviewable(item) {

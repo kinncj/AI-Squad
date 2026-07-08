@@ -54,6 +54,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/state", s.tokened(s.handleState))
 	mux.HandleFunc("/api/artifacts", s.tokened(s.handleArtifacts))
 	mux.HandleFunc("/api/stories", s.tokened(s.handleStories))
+	mux.HandleFunc("/api/story", s.tokened(s.handleStory))
 	mux.HandleFunc("/api/activity", s.tokened(s.handleActivity))
 	mux.HandleFunc("/api/uploads", s.tokened(s.handleUploads))
 	mux.HandleFunc("/api/upload", s.tokened(s.handleUpload))
@@ -196,6 +197,7 @@ func (s *Server) handleState(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"taffy":            p.Taffy,
 		"stage":            p.Stage,
+		"phase":            p.Phase,
 		"status":           p.Status,
 		"harness":          p.Harness,
 		"approval_pending": s.fs.ApprovalPending(),

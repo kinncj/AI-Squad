@@ -63,6 +63,7 @@ func (s *FS) PipelineStatus() string {
 type Pipeline struct {
 	Taffy      string
 	Stage      string
+	Phase      string // canonical 8-phase name (DISCOVER…FINAL); "" on older runs
 	Status     string
 	Harness    string
 	ResumeAt   string
@@ -82,7 +83,7 @@ func (s *FS) Pipeline() Pipeline {
 	str := func(k string) string { v, _ := m[k].(string); return v }
 	auto, _ := m["auto_resume"].(bool)
 	return Pipeline{
-		Taffy: str("taffy"), Stage: str("stage"), Status: str("status"),
+		Taffy: str("taffy"), Stage: str("stage"), Phase: str("phase"), Status: str("status"),
 		Harness: str("harness"), ResumeAt: str("resume_at"), AutoResume: auto,
 	}
 }

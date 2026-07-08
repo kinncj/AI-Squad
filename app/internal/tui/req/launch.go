@@ -238,8 +238,10 @@ func buildImplementationPrompt(harness string, stories []core.Story) string {
 <maple-pipeline>
 You were launched from MAPLE.
 Keep .claude/state/maple.json updated as you work by writing (merge, never overwrite other keys):
-  {"taffy":"pipeline-runner implement-stories","stage":"<current step>","status":"RUNNING","updated_at":"<ISO-8601 timestamp>"}
-Set status to "DONE" when finished, "FAILED" if you cannot complete.
+  {"taffy":"pipeline-runner implement-stories","stage":"<current step>","phase":"<PHASE>","status":"RUNNING","updated_at":"<ISO-8601 timestamp>"}
+"phase" MUST be one of the 8 canonical pipeline phases (uppercase), updated at each phase transition so the maple TUI and design portal show an accurate stepper:
+  DISCOVER, ARCHITECT, PLAN, INFRA, IMPLEMENT, VALIDATE, DOCUMENT, FINAL
+"stage" is the finer-grained step within a phase (e.g. "wireframe", "mockup"). Set status to "DONE" when finished, "FAILED" if you cannot complete.
 
 Also track EACH story's progress in .claude/state/story-status.json (merge, never overwrite other keys):
   {"<story directory path>":"in_progress"} when you begin a story, "done" once its tests pass, "failed" if you abandon it.

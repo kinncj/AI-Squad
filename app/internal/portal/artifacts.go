@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/kinncj/maple/app/internal/state"
 )
 
 type artifact struct {
@@ -126,6 +128,42 @@ func (s *Server) discoverArtifacts() []artifact {
 
 func (s *Server) handleArtifacts(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": s.discoverArtifacts()})
+}
+
+// handleStory returns one story's full spec (Story.md content) plus the design artifacts
+// linked to it (path contains the story id/slug) — the portal's story-review entry point.
+func (s *Server) handleStory(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	var found *state.Story
+	for _, st := range s.fs.Stories() {
+		if st.ID == id {
+			cp := st
+			found = &cp
+			break
+		}
+	}
+	if found == nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "story not found: " + id})
+		return
+	}
+	spec := ""
+	if b, err := os.ReadFile(found.Path); err == nil {
+		spec = string(b)
+	}
+	var linked []artifact
+	for _, a := range s.discoverArtifacts() {
+		if strings.Contains(a.Path, found.ID) || (found.Slug != "" && strings.Contains(a.Path, found.Slug)) {
+			linked = append(linked, a)
+		}
+	}
+	title := found.Title
+	if title == "" {
+		title = found.ID
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id": found.ID, "title": title, "phase": found.Phase, "ui": found.UI,
+		"status": found.RunStatus, "spec": spec, "artifacts": linked,
+	})
 }
 
 // handleStories returns the project's stories with their taffy-reported run status, so the
