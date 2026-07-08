@@ -222,14 +222,17 @@ standalone. Because the portal runs inside maple, connectivity is inherent (`map
 (in-process)`) — no `portalsock` Unix-socket dance. Updates are event-driven: a change-watcher
 (mtime of `maple.json`/`approval-pending.txt`/`design-artifacts.json`/design tree) pushes SSE
 `change` events, so the browser refreshes on real change (slow 20s poll as a safety net).
-Endpoints: `/api/state|artifacts|stories|activity|uploads|upload|approve|reject|request-changes|stop|events|token`,
+Endpoints: `/api/state|artifacts|stories|story|activity|uploads|upload|approve|reject|request-changes|stop|events|token`,
 `/artifact/<path>` (root-confined), and the SPA for any other path (agent-guessed URLs don't 404).
 Token-gated (`?token=` or `X-Maple-Token`). `/api/stop` marks `maple.json` STOPPED, clears the
 gate, and nudges the harness to halt but stay interactive (`harness.NotifyHarness`).
 **Activity feed:** `maple emit <event> k=v` appends to `.claude/state/portal-events.jsonl`; the
 portal tails it (in `watch()`) and pushes each line as an SSE `activity` event → the browser's
 live feed + toasts. Agents should `maple emit` at meaningful pipeline moments. The portal also
-shows a **stories panel** (per-story run status) and an **8-phase stepper** (stage → phase).
+shows a **stories panel** (click a story → its highlighted gherkin spec + linked design
+artifacts, the review entry point) and an **8-phase stepper**. The stepper reads a canonical
+`phase` field from `maple.json` (DISCOVER…FINAL, written by the skill at each transition),
+falling back to a heuristic on the freeform `stage` only when `phase` is absent.
 
 ### Story parsing handles multi-line YAML
 

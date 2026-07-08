@@ -72,6 +72,7 @@ Write to `.claude/state/maple.json` (merge — do not overwrite unowned fields):
 ```json
 {
   "taffy": "<name>",
+  "phase": "<PHASE>",
   "stage": "<first-stage or skill-name>",
   "status": "RUNNING",
   "awaiting_approval": null,
@@ -79,6 +80,16 @@ Write to `.claude/state/maple.json` (merge — do not overwrite unowned fields):
   "updated_at": "<iso8601>"
 }
 ```
+
+`phase` MUST be one of the 8 canonical pipeline phases (UPPERCASE), updated at **every phase
+transition** so the maple TUI and design-review portal render an accurate stepper:
+
+```
+DISCOVER → ARCHITECT → PLAN → INFRA → IMPLEMENT → VALIDATE → DOCUMENT → FINAL
+```
+
+`stage` is the finer-grained step within a phase (e.g. `wireframe`, `mockup`, `karpathy-audit`).
+Write both: `phase` for the coarse stepper, `stage` for the live detail.
 
 ### Step 2b: Runtime policy enforcement (mandatory)
 
@@ -131,12 +142,13 @@ For each stage:
 - `skill: <name>` → invoke the skill
 - `pipeline: standard` → run the full 8-phase orchestrator pipeline
 
-After each stage: update `maple.json` with current stage + `RUNNING`.
+After each stage: update `maple.json` with current `phase` + `stage` + `RUNNING`.
 
 **Progress heartbeats (mandatory):**
 - Send an immediate kickoff status before the first long-running tool/agent call.
 - While a taffy run is active, send a concise progress update at least every 60-120 seconds.
-- On each heartbeat, refresh `maple.json` `updated_at` and current `stage`.
+- On each heartbeat, refresh `maple.json` `updated_at`, `phase`, and current `stage`.
+- Optionally push a live event to the design portal + TUI: `maple emit stage stage=<name>` (best-effort; no-ops with no portal, never gate on it).
 - Every heartbeat must include concrete progress evidence:
   - changed files/artifacts since last update (explicit paths), or
   - a specific blocker that prevented changes.
