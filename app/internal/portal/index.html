@@ -238,6 +238,8 @@
     .story.clickable:hover { background: rgba(122,162,247,.08); border-color: rgba(122,162,247,.35); }
     .story.sel { background: rgba(122,162,247,.12); border-color: var(--accent); }
     .story-chip { background: rgba(187,154,247,.14) !important; color: var(--purple) !important; border-color: rgba(187,154,247,.4) !important; }
+    .item.pending-review { background: rgba(224,175,104,.10); border-left: 3px solid var(--warn); }
+    .item.pending-review .path-btn { color: var(--warn); }
   </style>
 </head>
 <body>
@@ -572,12 +574,32 @@
       }
       const stopB = document.getElementById("btnStop");
       if (stopB) stopB.disabled = !inFlight;
+
+      // Connect the gate to WHAT is being reviewed: which story + which files. On a new gate,
+      // auto-open that story (its spec + its artifacts), and mark the exact pending files.
+      const rv = s.review || null;
+      _reviewArtifacts = (rv && rv.artifacts && rv.artifacts.length) ? new Set(rv.artifacts) : null;
       const hint = document.getElementById("gateHint");
       if (hint) {
-        hint.textContent = gate
-          ? "⏳ Approval required — stage: " + s.approval_pending
-          : (inFlight ? "Workflow running — no approval needed right now." : "No active workflow.");
+        if (gate && rv && rv.title) {
+          const files = (rv.artifacts || []).length;
+          hint.innerHTML = "⏳ <b>Approval required</b> — " + esc(rv.stage || s.approval_pending) +
+            " for <b>" + esc(rv.title) + "</b>" +
+            (files ? " · " + files + " file" + (files === 1 ? "" : "s") + " to review" : "") +
+            (rv.inferred ? ' <span style="color:var(--dim)">(inferred)</span>' : "");
+        } else {
+          hint.textContent = gate
+            ? "⏳ Approval required — stage: " + s.approval_pending
+            : (inFlight ? "Workflow running — no approval needed right now." : "No active workflow.");
+        }
       }
+      // Auto-focus the story under review when the gate first appears (don't fight the user
+      // once they navigate away).
+      if (gate && rv && rv.story && rv.story !== _lastReviewStory) {
+        _lastReviewStory = rv.story;
+        selectStory(rv.story, rv.title);
+      }
+      if (!gate) _lastReviewStory = null;
 
       renderStepper(s.phase, s.stage, s.status);
 
@@ -624,7 +646,9 @@
     }
 
     // ─── story review (click a story → its spec + linked artifacts) ─────────
-    let _storyFilter = null; // { id, title, paths:Set }
+    let _storyFilter = null;       // { id, title, paths:Set } — the story being reviewed
+    let _reviewArtifacts = null;   // Set of paths the pending gate is asking to review
+    let _lastReviewStory = null;   // last auto-focused gate story (don't re-trigger)
     async function selectStory(id, title) {
       try {
         const d = await api("/api/story?id=" + encodeURIComponent(id));
@@ -810,23 +834,27 @@
       } catch (e) { document.getElementById("msg").textContent = e.message; }
     }
     function renderArtifacts() {
-      let items = sortArtifacts(window._artifacts || []);
+      const all = sortArtifacts(window._artifacts || []);
       const box = document.getElementById("artifacts");
       const filters = document.getElementById("filters");
       box.innerHTML = "";
       filters.innerHTML = "";
-      // Story filter: when reviewing a story, scope artifacts to that story + show a chip.
+
+      // Story scope is an ADDITIVE layer (a removable chip). The kind filter always shows,
+      // operating within the scoped set — so browsing all artifacts (incl. orphans with no
+      // story) still works, and reviewing a story still narrows to its files.
+      let scoped = all;
       if (_storyFilter) {
-        items = items.filter((i) => _storyFilter.paths.has(i.path));
+        scoped = all.filter((i) => _storyFilter.paths.has(i.path));
         const chip = document.createElement("button");
         chip.className = "active story-chip";
         chip.innerHTML = "◈ " + esc(_storyFilter.title) + " ✕";
-        chip.title = "Clear story filter";
+        chip.title = "Clear story scope — back to all artifacts";
         chip.addEventListener("click", clearStoryFilter);
         filters.appendChild(chip);
       }
-      if (items.length && !_storyFilter) {
-        const kinds = Array.from(new Set(items.map((i) => i.kind || "file"))).sort();
+      if (scoped.length) {
+        const kinds = Array.from(new Set(scoped.map((i) => i.kind || "file"))).sort();
         const mk = (key, label) => {
           const b = document.createElement("button");
           b.textContent = label;
@@ -834,23 +862,26 @@
           b.addEventListener("click", () => { _artFilter = key; renderArtifacts(); });
           filters.appendChild(b);
         };
-        mk("all", "all · " + items.length);
-        for (const k of kinds) mk(k, k + " · " + items.filter((i) => (i.kind || "file") === k).length);
+        mk("all", "all · " + scoped.length);
+        for (const k of kinds) mk(k, k + " · " + scoped.filter((i) => (i.kind || "file") === k).length);
       }
-      const shown = _storyFilter ? items : items.filter((i) => _artFilter === "all" || (i.kind || "file") === _artFilter);
+
+      const shown = scoped.filter((i) => _artFilter === "all" || (i.kind || "file") === _artFilter);
+      const pending = _reviewArtifacts; // Set of paths the pending gate is asking to review
       let selected = null;
       if (!shown.length) {
-        box.innerHTML = '<div class="empty">' + (items.length
-          ? "No artifacts match this filter."
-          : "No artifacts yet for this stage. Expected previewable files (.excalidraw/.html/.svg/.png/.jpg/.md).") + "</div>";
+        box.innerHTML = '<div class="empty">' + (all.length
+          ? "No artifacts match this filter." + (_storyFilter ? " Clear the story chip to see all." : "")
+          : "No artifacts yet. Design artifacts (wireframes/mockups) and uploads appear here.") + "</div>";
       } else {
         for (const item of shown) {
+          const isPending = pending && pending.has(item.path);
           const row = document.createElement("div");
-          row.className = "item";
+          row.className = "item" + (isPending ? " pending-review" : "");
           const left = document.createElement("span");
           const pathBtn = document.createElement("button");
           pathBtn.className = "path-btn";
-          pathBtn.textContent = item.path;
+          pathBtn.textContent = (isPending ? "⏳ " : "") + item.path;
           pathBtn.addEventListener("click", () => openArtifactModal(item));
           left.appendChild(pathBtn);
           const right = document.createElement("span");
@@ -864,7 +895,9 @@
           row.appendChild(left);
           row.appendChild(right);
           box.appendChild(row);
-          if (!selected && isPreviewable(item)) selected = item;
+          // Prefer a pending-review artifact for the auto-preview, else the first previewable.
+          if (isPending && isPreviewable(item)) selected = selected && pending.has(selected.path) ? selected : item;
+          else if (!selected && isPreviewable(item)) selected = item;
         }
       }
       // While reviewing a story, keep its spec in the preview; otherwise auto-select one.

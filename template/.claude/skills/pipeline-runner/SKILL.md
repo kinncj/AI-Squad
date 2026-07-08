@@ -228,10 +228,26 @@ When a stage has `gate: human-approval`:
      ```
      If the gate fails, produce the missing files before re-running the gate check.
    - If no reviewable artifact exists for a design gate, set `maple.json` to `FAILED` and stop.
-2. Write PAUSED state:
+2. Write PAUSED state — and a `review` object naming EXACTLY what the human must review (the
+   story + the artifact files), so the TUI and design portal show "approve the `<stage>` for
+   `<story>` → [these files]" instead of a bare stage name:
 ```json
-{ "stage": "<name>", "status": "PAUSED", "awaiting_approval": "<name>", "updated_at": "<iso8601>" }
+{
+  "stage": "<name>",
+  "status": "PAUSED",
+  "awaiting_approval": "<name>",
+  "review": {
+    "story": "<story-id being reviewed>",
+    "title": "<story title>",
+    "stage": "<name>",
+    "artifacts": ["docs/design/wireframes/<story-id>.wireframe.md", "…"]
+  },
+  "updated_at": "<iso8601>"
+}
 ```
+   Clear `review` (set to `null`) when the gate is approved/resolved. If you omit `review`, the
+   portal infers the story + files from the newest artifacts matching the stage — declaring it
+   is exact, inference is best-effort.
 3. Write stage name to `.claude/state/approval-pending.txt`.
 4. Output:
 ```

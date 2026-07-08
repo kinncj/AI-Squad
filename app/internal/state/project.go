@@ -174,6 +174,98 @@ func (s *FS) ApprovalPending() string {
 	return ""
 }
 
+// Review describes what a pending approval gate is actually asking a human to review: the
+// story, the stage, and the exact artifact files. This is the connective tissue the portal
+// and TUI need to show "approve the wireframe for <story> → [these files]".
+type Review struct {
+	Story     string   `json:"story"`
+	Title     string   `json:"title"`
+	Stage     string   `json:"stage"`
+	Artifacts []string `json:"artifacts"`
+	Inferred  bool     `json:"inferred"` // true when derived from filenames, not declared by the skill
+}
+
+// Review returns what the pending gate is reviewing. It prefers an explicit `review` object
+// the skill wrote to maple.json; failing that it infers the story + files from the pending
+// stage by matching design artifacts (named <storyID>.<stage>.*). ok=false when no gate.
+func (s *FS) Review() (Review, bool) {
+	m := s.readMapleJSON()
+	if rv, isObj := m["review"].(map[string]any); isObj {
+		r := Review{
+			Story: mapStr(rv, "story"), Title: mapStr(rv, "title"), Stage: mapStr(rv, "stage"),
+		}
+		if arr, ok := rv["artifacts"].([]any); ok {
+			for _, a := range arr {
+				if p, ok := a.(string); ok {
+					r.Artifacts = append(r.Artifacts, p)
+				}
+			}
+		}
+		if r.Stage == "" {
+			r.Stage = s.ApprovalPending()
+		}
+		if r.Title == "" && r.Story != "" {
+			r.Title = s.storyTitle(r.Story)
+		}
+		return r, true
+	}
+	stage := s.ApprovalPending()
+	if stage == "" {
+		return Review{}, false
+	}
+	return s.inferReview(stage), true
+}
+
+func mapStr(m map[string]any, k string) string { v, _ := m[k].(string); return v }
+
+func (s *FS) storyTitle(id string) string {
+	for _, st := range s.Stories() {
+		if st.ID == id && st.Title != "" {
+			return st.Title
+		}
+	}
+	return id
+}
+
+// inferReview derives the story + artifact files under review from the pending stage, using
+// the design-artifact naming convention (<storyID>.<stage>.*). It picks the story whose
+// matching artifact was modified most recently — the one the agent just produced.
+func (s *FS) inferReview(stage string) Review {
+	sl := strings.ToLower(stage)
+	type cand struct {
+		path string
+		mod  time.Time
+	}
+	var cands []cand
+	for _, kind := range []string{"wireframes", "mockups", "identity", "system"} {
+		matches, _ := filepath.Glob(filepath.Join(s.Root, "docs", "design", kind, "*"))
+		for _, p := range matches {
+			base := strings.ToLower(filepath.Base(p))
+			singular := strings.TrimSuffix(kind, "s")
+			if strings.Contains(base, sl) || strings.HasPrefix(sl, singular) || strings.HasPrefix(singular, sl) {
+				if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+					cands = append(cands, cand{p, fi.ModTime()})
+				}
+			}
+		}
+	}
+	if len(cands) == 0 {
+		return Review{Stage: stage, Inferred: true}
+	}
+	sort.Slice(cands, func(i, j int) bool { return cands[i].mod.After(cands[j].mod) })
+	storyID := strings.SplitN(filepath.Base(cands[0].path), ".", 2)[0]
+	var arts []string
+	for _, c := range cands {
+		if strings.SplitN(filepath.Base(c.path), ".", 2)[0] == storyID {
+			if rel, err := filepath.Rel(s.Root, c.path); err == nil {
+				arts = append(arts, filepath.ToSlash(rel))
+			}
+		}
+	}
+	sort.Strings(arts)
+	return Review{Story: storyID, Title: s.storyTitle(storyID), Stage: stage, Artifacts: arts, Inferred: true}
+}
+
 // ApproveGate clears the pending human gate so both surfaces agree and the harness
 // continues: it deletes approval-pending.txt AND clears maple.json's awaiting_approval,
 // flipping a PAUSED status back to RUNNING (mirrors the portal's approve). Merges

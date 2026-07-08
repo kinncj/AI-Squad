@@ -194,7 +194,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleState(w http.ResponseWriter, _ *http.Request) {
 	p := s.fs.Pipeline()
-	writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"taffy":            p.Taffy,
 		"stage":            p.Stage,
 		"phase":            p.Phase,
@@ -204,7 +204,15 @@ func (s *Server) handleState(w http.ResponseWriter, _ *http.Request) {
 		"updated_at":       s.updatedAt(),
 		"maple":            map[string]any{"connected": true, "source": "in-process"},
 		"feedback":         s.readFeedback(),
-	})
+	}
+	// What is the pending gate actually asking a human to review? (story + files)
+	if rv, ok := s.fs.Review(); ok {
+		out["review"] = map[string]any{
+			"story": rv.Story, "title": rv.Title, "stage": rv.Stage,
+			"artifacts": rv.Artifacts, "inferred": rv.Inferred,
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) updatedAt() string {
