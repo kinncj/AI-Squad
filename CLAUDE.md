@@ -123,7 +123,7 @@ draft→publish flow reveal it fully-formed. There is exactly one trigger (`push
 
 ## Versioning
 
-Semver (`vMAJOR.MINOR.PATCH`). Current stream: `v4.x.x`.
+Semver (`vMAJOR.MINOR.PATCH`). Current stream: `v5.x.x`.
 
 | Change type | Bump |
 |-------------|------|
@@ -292,11 +292,11 @@ Communication goes through files in `.claude/state/` plus a control socket:
 
 ## Current State
 
-The TUI/CLI is the `app/`-based rebuild (ADR-002/003), developed on `feature/better-ui-ux`.
-It reached full parity with the old `tui/` and added: real-time refresh, tmux side-pane
-launch + auto-wrap, portal control socket, reviewable `maple update`, story rendering/
-highlighting. Track further work as GitHub issues on the current milestone. Do not merge or
-release without explicit direction.
+The `app/`-based rebuild (ADR-002/003) is **merged to `main` and shipped as v5** — the old
+`tui/` package is gone; `./maple` builds from `app/cmd/maple`. Current release stream is
+`v5.0.x` (latest v5.0.3). Releases go out via a pushed `v*` tag → the draft→publish workflow
+(see Release Process); do **not** `gh release create` a published release up front. Track
+further work as GitHub issues on the current milestone.
 
 ---
 
