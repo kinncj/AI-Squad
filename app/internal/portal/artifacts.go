@@ -272,7 +272,7 @@ func (s *Server) handleStories(w http.ResponseWriter, _ *http.Request) {
 			title = st.ID
 		}
 		out = append(out, map[string]any{
-			"id": st.ID, "title": title, "phase": st.Phase,
+			"id": st.ID, "title": title, "phase": st.Phase, "run_phase": st.RunPhase,
 			"priority": st.Priority, "ui": st.UI, "status": st.RunStatus,
 		})
 	}

@@ -60,6 +60,13 @@ func TestStoriesReadRunStatus(t *testing.T) {
 	if got := NewFS(root).Stories(); got[0].RunStatus != "done" {
 		t.Errorf("RunStatus by basename = %q, want done", got[0].RunStatus)
 	}
+	// rich form carries a per-story phase.
+	os.WriteFile(filepath.Join(root, ".claude", "state", "story-status.json"),
+		[]byte(`{"add-todo-0001":{"status":"in_progress","phase":"IMPLEMENT"}}`), 0o644)
+	got = NewFS(root).Stories()
+	if got[0].RunStatus != "in_progress" || got[0].RunPhase != "IMPLEMENT" {
+		t.Errorf("rich form: status=%q phase=%q, want in_progress/IMPLEMENT", got[0].RunStatus, got[0].RunPhase)
+	}
 }
 
 func TestStoryPhaseDefaultsAndBracketLabels(t *testing.T) {

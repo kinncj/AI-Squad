@@ -31,6 +31,40 @@ func gitOutput(dir string, args ...string) string {
 	return string(out)
 }
 
+// GitFile is one changed file in the working tree.
+type GitFile struct {
+	Path   string
+	Status string // porcelain XY code, e.g. " M", "??", "A "
+}
+
+// GitFiles lists the changed files from `git status --porcelain`.
+func (s *FS) GitFiles() []GitFile {
+	out := gitOutput(s.Root, "status", "--porcelain")
+	var files []GitFile
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		if len(line) < 4 {
+			continue
+		}
+		files = append(files, GitFile{Status: line[:2], Path: strings.TrimSpace(line[3:])})
+	}
+	return files
+}
+
+// GitDiff returns the diff for one file (staged + unstaged) as lines.
+func (s *FS) GitDiff(path string) []string {
+	if path == "" {
+		return []string{"(no file selected)"}
+	}
+	diff := gitOutput(s.Root, "diff", "HEAD", "--", path)
+	if strings.TrimSpace(diff) == "" {
+		diff = gitOutput(s.Root, "diff", "--", path) // untracked/unstaged fallback
+	}
+	if strings.TrimSpace(diff) == "" {
+		return []string{"(no diff — new/untracked file or no textual change)"}
+	}
+	return strings.Split(strings.TrimRight(diff, "\n"), "\n")
+}
+
 // formatGitChanges composes the status + diff sections into display lines.
 func formatGitChanges(status, diff string) []string {
 	out := []string{"── status ──"}

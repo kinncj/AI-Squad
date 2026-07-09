@@ -824,10 +824,12 @@
       if (_storyFilter) {
         const story = (window._stories || []).find((x) => x.id === _storyFilter.id);
         const st = story ? String(story.status || "") : "";
+        // Prefer the story's EXACT reported phase (run_phase) over the global one.
+        if (story && story.run_phase) { const idx = phaseIndex(story.run_phase, ""); if (idx >= 0) active = idx; }
         caption = "Pipeline · " + esc(_storyFilter.title);
         if (st === "done") { complete = true; caption += " — done"; }
         else if (st === "failed") { failedAt = active >= 0 ? active : 0; complete = false; caption += " — failed"; }
-        else if (st === "in_progress") { caption += " — in progress"; }
+        else if (st === "in_progress") { caption += " — in progress" + (story.run_phase ? " · " + esc(story.run_phase) : ""); }
         else { active = -1; complete = false; caption += " — not started"; }
       }
 

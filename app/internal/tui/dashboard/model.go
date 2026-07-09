@@ -40,6 +40,8 @@ type Store interface {
 	DesignTree() []string
 	LogLines(n int) []string
 	GitChanges() []string
+	GitFiles() []state.GitFile
+	GitDiff(path string) []string
 	PipelineLines() []string
 	Skills() []string
 	Agents() []string
@@ -115,6 +117,8 @@ type Model struct {
 	reviewCursor int
 	implStoryDir string // story dir captured when the [i] harness picker opens
 	debugMode    bool   // :debug — tee state snapshots to .claude/logs/tui.log
+	gitFiles     []state.GitFile
+	gitCursor    int
 	detailKind   string
 	storyPath    string // Story.md path of the open story detail (for `i` implement)
 	lastGate     string // last-seen pending approval stage, to detect gate-clear → nudge
@@ -1102,12 +1106,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.status = "no design portal running"
 			}
 		case "up", "k":
-			if m.moveReviewCursor(-1) {
+			if m.moveReviewCursor(-1) || m.moveGitCursor(-1) {
 				break
 			}
 			p.ScrollBy(-1, p.VisibleRows())
 		case "down", "j":
-			if m.moveReviewCursor(1) {
+			if m.moveReviewCursor(1) || m.moveGitCursor(1) {
 				break
 			}
 			p.ScrollBy(1, p.VisibleRows())
@@ -1141,7 +1145,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.openDetail()
 	case "C":
-		m.setDetail("Git Changes", m.store.GitChanges())
+		m.openGitChanges()
 	case "D":
 		if m.group.FocusIndex() == paneStories {
 			if st, ok := m.stories.at(m.group.Focused().Selected()); ok {
@@ -1318,6 +1322,57 @@ var commandNames = []string{
 	"skills-search", "skill-add", "skill-remove", "debug",
 }
 
+// openGitChanges opens the git overlay: a changed-file list (j/k) with the selected file's
+// diff below it. Falls back to a "clean" note when there are no changes.
+func (m *Model) openGitChanges() {
+	m.gitFiles = m.store.GitFiles()
+	m.gitCursor = 0
+	m.renderGit()
+	m.detailKind = "git"
+}
+
+// moveGitCursor shifts the selected file and re-renders. Returns false when no git overlay.
+func (m *Model) moveGitCursor(d int) bool {
+	if m.detailKind != "git" || len(m.gitFiles) == 0 {
+		return false
+	}
+	m.gitCursor = clampInt(m.gitCursor+d, 0, len(m.gitFiles)-1)
+	m.renderGit()
+	return true
+}
+
+func (m *Model) renderGit() {
+	lines := []string{"── changed files ──  (j/k select · gg/G top/bottom · esc close)", ""}
+	if len(m.gitFiles) == 0 {
+		lines = append(lines, "(clean working tree)")
+		m.setDetail("Git Changes", lines)
+		m.detailKind = "git"
+		return
+	}
+	for i, f := range m.gitFiles {
+		cur := "  "
+		if i == m.gitCursor {
+			cur = "▶ "
+		}
+		lines = append(lines, fmt.Sprintf("%s%s  %s", cur, f.Status, f.Path))
+	}
+	sel := m.gitFiles[m.gitCursor]
+	lines = append(lines, "", "── diff · "+sel.Path+" ──", "")
+	lines = append(lines, m.store.GitDiff(sel.Path)...)
+	m.setDetail("Git Changes", lines)
+	m.detailKind = "git"
+}
+
+func clampInt(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
 // writeDebugSnapshot appends a one-line state snapshot to .claude/logs/tui.log — the target
 // of the `:debug` toggle, for diagnosing what the TUI is seeing.
 func (m Model) writeDebugSnapshot() {
@@ -1356,7 +1411,7 @@ func (m Model) runCommand(line string) (tea.Model, tea.Cmd) {
 	case "P", "pipeline", "taffy":
 		m.openPipeline()
 	case "C", "changes", "diff", "git":
-		m.setDetail("Git Changes", m.store.GitChanges())
+		m.openGitChanges()
 	case "D", "review", "design-review":
 		if id := m.targetStoryID(); id != "" {
 			m.openReview(id)

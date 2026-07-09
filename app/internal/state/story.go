@@ -25,6 +25,7 @@ type Story struct {
 	Issue     int
 	Path      string
 	RunStatus string // taffy-reported run status: "in_progress" | "done" | "failed" | ""
+	RunPhase  string // taffy-reported current phase for this story (DISCOVER…FINAL), or ""
 }
 
 // StoryStore reads the project's stories.
@@ -61,42 +62,65 @@ func (s *FS) Stories() []Story {
 	}
 	statuses := s.storyStatuses()
 	for i := range out {
-		out[i].RunStatus = matchStoryStatus(statuses, s.Root, out[i])
+		if st, ok := matchStoryStatus(statuses, s.Root, out[i]); ok {
+			out[i].RunStatus = st.Status
+			out[i].RunPhase = st.Phase
+		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
 
-// storyStatuses reads the per-story run status the taffy harness writes to
-// .claude/state/story-status.json (keyed by story directory path, dir basename, or id).
-func (s *FS) storyStatuses() map[string]string {
+// StoryState is the per-story status + phase the taffy harness reports.
+type StoryState struct {
+	Status string `json:"status"`
+	Phase  string `json:"phase"`
+}
+
+// storyStatuses reads .claude/state/story-status.json (keyed by story dir path, basename, or
+// id). Each value may be a bare status string ("in_progress") OR an object
+// {"status":"in_progress","phase":"IMPLEMENT"} — both are supported.
+func (s *FS) storyStatuses() map[string]StoryState {
 	data, err := os.ReadFile(filepath.Join(s.Root, ".claude", "state", "story-status.json"))
 	if err != nil {
 		return nil
 	}
-	var m map[string]string
-	if json.Unmarshal(data, &m) != nil {
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(data, &raw) != nil {
 		return nil
 	}
-	return m
+	out := map[string]StoryState{}
+	for k, v := range raw {
+		var str string
+		if json.Unmarshal(v, &str) == nil {
+			out[k] = StoryState{Status: str}
+			continue
+		}
+		var obj StoryState
+		if json.Unmarshal(v, &obj) == nil {
+			out[k] = obj
+		}
+	}
+	return out
 }
 
-// matchStoryStatus resolves a story's run status by trying the relative dir path, the dir
+// matchStoryStatus resolves a story's state by trying the relative dir path, the dir
 // basename, and the id — so the harness can key by whichever it has from the handoff.
-func matchStoryStatus(m map[string]string, root string, st Story) string {
+func matchStoryStatus(m map[string]StoryState, root string, st Story) (StoryState, bool) {
 	if len(m) == 0 {
-		return ""
+		return StoryState{}, false
 	}
 	dir := filepath.Dir(st.Path)
 	if rel, err := filepath.Rel(root, dir); err == nil {
-		if v := m[rel]; v != "" {
-			return v
+		if v, ok := m[rel]; ok {
+			return v, true
 		}
 	}
-	if v := m[filepath.Base(dir)]; v != "" {
-		return v
+	if v, ok := m[filepath.Base(dir)]; ok {
+		return v, true
 	}
-	return m[st.ID]
+	v, ok := m[st.ID]
+	return v, ok
 }
 
 func parseStory(path string) (Story, bool) {

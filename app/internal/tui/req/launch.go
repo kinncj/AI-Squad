@@ -243,9 +243,13 @@ Keep .claude/state/maple.json updated as you work by writing (merge, never overw
   DISCOVER, ARCHITECT, PLAN, INFRA, IMPLEMENT, VALIDATE, DOCUMENT, FINAL
 "stage" is the finer-grained step within a phase (e.g. "wireframe", "mockup"). Set status to "DONE" when finished, "FAILED" if you cannot complete.
 
-Also track EACH story's progress in .claude/state/story-status.json (merge, never overwrite other keys):
-  {"<story directory path>":"in_progress"} when you begin a story, "done" once its tests pass, "failed" if you abandon it.
-Use the exact story directory paths listed in the handoff below (e.g. "docs/stories/<slug>-<ts>-<idx>"). The maple TUI renders these per-story.
+Also track EACH story's progress in .claude/state/story-status.json (merge, never overwrite other keys).
+Use the rich per-story form so the TUI + portal show an accurate per-story stepper:
+  {"<story id>": {"status":"in_progress","phase":"IMPLEMENT"}}
+  status = "in_progress" when you begin, "done" once its tests pass, "failed" if you abandon it.
+  phase  = the current canonical phase for THAT story (DISCOVER…FINAL), updated as it advances.
+A bare {"<story id>":"in_progress"} is also accepted (no per-story phase). Key by the story id
+(e.g. "add-a-todo-item-0002") or its directory path from the handoff below.
 </maple-pipeline>
 
 <maple-progress>

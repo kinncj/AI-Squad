@@ -44,7 +44,11 @@ func (f fakeStore) SkillRemove(n string) []string         { return []string{"rem
 func (f fakeStore) ShipSafeAudit() []string               { return []string{"$ npx ship-safe audit .", "✓ passed"} }
 func (f fakeStore) DesignTree() []string                  { return []string{"📁 wireframes", "  📄 home.md"} }
 func (f fakeStore) LogLines(n int) []string               { return []string{"ts=12:00  agent=qa"} }
-func (f fakeStore) GitChanges() []string                  { return []string{"── status ──", " M app/x.go"} }
+func (f fakeStore) GitChanges() []string { return []string{"── status ──", " M app/x.go"} }
+func (f fakeStore) GitFiles() []state.GitFile {
+	return []state.GitFile{{Status: " M", Path: "app/x.go"}, {Status: "??", Path: "new.txt"}}
+}
+func (f fakeStore) GitDiff(p string) []string { return []string{"--- a/" + p, "+++ b/" + p, "+line"} }
 func (f fakeStore) PipelineLines() []string               { return []string{"status  RUNNING", "stage  IMPLEMENT"} }
 func (f fakeStore) Skills() []string                      { return []string{"gh-issues", "humanizer"} }
 func (f fakeStore) Agents() []string                      { return []string{"orchestrator"} }
