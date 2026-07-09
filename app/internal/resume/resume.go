@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -56,7 +57,12 @@ func resolve(sessions map[string]string, harness, cursorBin string) (string, str
 	var args []string
 	switch harness {
 	case "claude":
-		args = []string{"claude", "--resume", id}
+		// Claude records the JSONL transcript path as the id; --resume needs the bare UUID.
+		uuid := id
+		if strings.HasSuffix(uuid, ".jsonl") {
+			uuid = strings.TrimSuffix(filepath.Base(uuid), ".jsonl")
+		}
+		args = []string{"claude", "--resume", uuid}
 	case "opencode":
 		args = []string{"opencode", "--session", id}
 	case "copilot":

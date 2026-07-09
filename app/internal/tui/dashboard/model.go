@@ -114,6 +114,7 @@ type Model struct {
 	reviewStory  string
 	reviewCursor int
 	implStoryDir string // story dir captured when the [i] harness picker opens
+	debugMode    bool   // :debug — tee state snapshots to .claude/logs/tui.log
 	detailKind   string
 	storyPath    string // Story.md path of the open story detail (for `i` implement)
 	lastGate     string // last-seen pending approval stage, to detect gate-clear → nudge
@@ -499,7 +500,9 @@ func (m *Model) launch(args []string) tea.Cmd {
 	ref, inPane, err := harness.LaunchInPane(os.Getenv, name, args)
 	if inPane {
 		if err != nil {
-			m.status = "split failed (" + ref.Kind + "): " + err.Error()
+			// The split failed — show the exact command so the user can run it by hand
+			// (the story handoff + governance state are already written).
+			m.showManualLaunch(name, args, ref.Kind, err)
 		} else {
 			m.status = "opened " + name + " in a " + ref.Kind + " split pane · [P]→[a] to approve gates"
 		}
@@ -508,6 +511,24 @@ func (m *Model) launch(args []string) tea.Cmd {
 	// No tmux/zellij/wezterm/kitty detected — run in this terminal (suspends maple).
 	m.status = "no multiplexer — running " + name + " in this terminal; use tmux for a side pane"
 	return realExec(args)
+}
+
+// showManualLaunch opens an overlay with the launch command when a split fails, so the user
+// can copy/run it in another pane instead of being left with a one-line error.
+func (m *Model) showManualLaunch(name string, args []string, kind string, err error) {
+	lines := []string{
+		"Could not open " + name + " in a " + kind + " split:",
+		"  " + err.Error(),
+		"",
+		"Run it manually in another pane or terminal (the story handoff + governance",
+		"state are already written to .claude/state):",
+		"",
+		"  " + strings.Join(args, " "),
+		"",
+		"esc to close.",
+	}
+	m.setDetail("Manual launch — run this command", lines)
+	m.detailKind = "manual"
 }
 
 // continueNote describes how the just-approved harness will proceed, given how many
@@ -1294,8 +1315,26 @@ var commandNames = []string{
 	"quit", "reload", "help", "pipeline", "changes", "design", "logs", "review",
 	"skills", "launch", "resume", "prompt", "rtk", "ship", "portal", "filter",
 	"theme", "req", "update", "labels", "project", "install-herdr",
-	"skills-search", "skill-add", "skill-remove",
+	"skills-search", "skill-add", "skill-remove", "debug",
 }
+
+// writeDebugSnapshot appends a one-line state snapshot to .claude/logs/tui.log — the target
+// of the `:debug` toggle, for diagnosing what the TUI is seeing.
+func (m Model) writeDebugSnapshot() {
+	_ = os.MkdirAll(".claude/logs", 0o755)
+	line := fmt.Sprintf("%s  size=%dx%d focus=%d stories=%d prs=%d status=%q gate=%q detail=%q\n",
+		nowRFC3339Local(), m.width, m.height, m.group.FocusIndex(),
+		m.stories.RowCount(), m.prs.RowCount(),
+		m.store.PipelineStatus(), m.store.ApprovalPending(), m.detailKind)
+	f, err := os.OpenFile(".claude/logs/tui.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = f.WriteString(line)
+}
+
+func nowRFC3339Local() string { return time.Now().Format("15:04:05.000") }
 
 // runCommand dispatches a `:` command line. Accepts the full action vocabulary plus
 // short aliases, so anything reachable by a key is also reachable by name.
@@ -1376,6 +1415,14 @@ func (m Model) runCommand(line string) (tea.Model, tea.Cmd) {
 		return m, m.shipSafeCmd()
 	case "install-herdr", "herdr", "H":
 		return m, m.installHerdr()
+	case "debug":
+		m.debugMode = !m.debugMode
+		m.writeDebugSnapshot()
+		if m.debugMode {
+			m.status = "debug on — state teed to .claude/logs/tui.log"
+		} else {
+			m.status = "debug off"
+		}
 	case "v", "portal":
 		if url := m.portal(); url != "" {
 			return m, m.openExternal(browserOpen(url))
@@ -1510,6 +1557,9 @@ func (m *Model) reload() {
 	if m.store == nil {
 		return
 	}
+	if m.debugMode {
+		m.writeDebugSnapshot()
+	}
 	m.stories = newStorySource(m.store.Stories())
 	m.sessions = newSessionSource(m.store.Sessions(), m.store.PinnedSessions())
 	m.qa = newQASource(m.store.Tests())
@@ -1593,6 +1643,9 @@ func (m Model) View() string {
 		bodyH = 2
 	}
 	body := m.grid(bodyH)
+	if m.width < 80 {
+		body = m.narrowGrid(bodyH) // a 2×2 grid is unreadable under 80 cols
+	}
 	if m.showHelp {
 		body = m.helpView(bodyH)
 	} else if m.picker != nil {
@@ -1916,6 +1969,20 @@ func bar(left, right string, width int) string {
 }
 
 // grid lays the four panes out in a 2×2 grid filling bodyH rows below the header.
+// narrowGrid renders just the FOCUSED pane full-width — the degraded layout for terminals
+// under 80 columns, where a 2×2 grid is unreadable. Tab/Shift+Tab still cycle panes.
+func (m Model) narrowGrid(bodyH int) string {
+	panes := m.group.Panes()
+	if len(panes) == 0 {
+		return ""
+	}
+	fi := m.group.FocusIndex()
+	if fi < 0 || fi >= len(panes) {
+		fi = 0
+	}
+	return panes[fi].RenderAt(0, 1, m.width, bodyH, m.mode)
+}
+
 func (m Model) grid(bodyH int) string {
 	panes := m.group.Panes()
 	if len(panes) == 0 {

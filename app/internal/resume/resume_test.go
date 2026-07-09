@@ -38,6 +38,8 @@ func TestResolvePerHarnessArgv(t *testing.T) {
 		harness, id, cursorBin, want string
 	}{
 		{"claude", "x", "cursor-agent", "claude --resume x"},
+		// claude stores the JSONL path — resume must use the bare UUID.
+		{"claude", "/Users/x/.claude/projects/p/abc-123.jsonl", "cursor-agent", "claude --resume abc-123"},
 		{"copilot", "y", "cursor-agent", "copilot --resume=y"},
 		{"opencode", "z", "cursor-agent", "opencode --session z"},
 		{"cursor", "w", "cursor", "cursor"},
