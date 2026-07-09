@@ -684,7 +684,13 @@
     async function selectStory(id, title) {
       try {
         const d = await api("/api/story?id=" + encodeURIComponent(id));
-        _storyFilter = { id, title: d.title || title, paths: new Set((d.artifacts || []).map((a) => a.path)) };
+        // Carry the story's OWN artifact objects (incl. ADRs/tokens not in the global list)
+        // so renderArtifacts shows everything related to the story.
+        _storyFilter = {
+          id, title: d.title || title,
+          paths: new Set((d.artifacts || []).map((a) => a.path)),
+          artifacts: d.artifacts || [],
+        };
         showStorySpec(d);
         renderArtifacts();
         renderStories(window._stories || []);
@@ -702,18 +708,28 @@
     // review's artifact paths (story-named wireframes/mockups OR project-wide identity/token
     // files). Shows the story spec when there's a story, else previews the first pending file.
     async function focusReview(rv) {
-      const paths = rv.artifacts || [];
-      _storyFilter = { id: rv.story || "", title: rv.title || ("Review: " + (rv.stage || "stage")), paths: new Set(paths) };
-      renderArtifacts();
-      renderStories(window._stories || []);
-      updateStepper();
+      // Scope to EVERYTHING related to the story (its /api/story set) so the reviewer sees
+      // wireframes + mockups + tokens + ADRs together; the pending files (rv.artifacts) stay
+      // highlighted via _reviewArtifacts.
+      let paths = rv.artifacts || [];
+      let objs = null;
+      let specDoc = null;
       if (rv.story) {
         try {
           const d = await api("/api/story?id=" + encodeURIComponent(rv.story));
-          showStorySpec(d);
-          return;
-        } catch (e) { /* fall through to artifact preview */ }
+          specDoc = d;
+          objs = d.artifacts || [];
+          paths = Array.from(new Set([...(rv.artifacts || []), ...objs.map((a) => a.path)]));
+        } catch (e) { /* keep just the pending files */ }
       }
+      _storyFilter = {
+        id: rv.story || "", title: rv.title || ("Review: " + (rv.stage || "stage")),
+        paths: new Set(paths), artifacts: objs,
+      };
+      renderArtifacts();
+      renderStories(window._stories || []);
+      updateStepper();
+      if (specDoc) { showStorySpec(specDoc); return; }
       // No story (project-wide review): preview the first pending artifact.
       const first = (window._artifacts || []).find((a) => _storyFilter.paths.has(a.path) && isPreviewable(a));
       setPreview(first || null);
@@ -926,24 +942,27 @@
       } catch (e) { document.getElementById("msg").textContent = e.message; }
     }
     function renderArtifacts() {
-      const all = sortArtifacts(window._artifacts || []);
       const box = document.getElementById("artifacts");
       const filters = document.getElementById("filters");
       box.innerHTML = "";
       filters.innerHTML = "";
 
-      // Story scope is an ADDITIVE layer (a removable chip). The kind filter always shows,
-      // operating within the scoped set — so browsing all artifacts (incl. orphans with no
-      // story) still works, and reviewing a story still narrows to its files.
-      let scoped = all;
+      // When a story is scoped, render ITS OWN artifact set (from /api/story — includes ADRs,
+      // tokens, story-dir files that aren't in the global design list). Otherwise show the
+      // global list. The kind filter always operates within whatever is scoped.
+      let scoped;
       if (_storyFilter) {
-        scoped = all.filter((i) => _storyFilter.paths.has(i.path));
+        scoped = sortArtifacts(_storyFilter.artifacts && _storyFilter.artifacts.length
+          ? _storyFilter.artifacts
+          : (window._artifacts || []).filter((i) => _storyFilter.paths.has(i.path)));
         const chip = document.createElement("button");
         chip.className = "active story-chip";
         chip.innerHTML = "◈ " + esc(_storyFilter.title) + " ✕";
         chip.title = "Clear story scope — back to all artifacts";
         chip.addEventListener("click", clearStoryFilter);
         filters.appendChild(chip);
+      } else {
+        scoped = sortArtifacts(window._artifacts || []);
       }
       if (scoped.length) {
         const kinds = Array.from(new Set(scoped.map((i) => i.kind || "file"))).sort();

@@ -126,6 +126,107 @@ func (s *Server) discoverArtifacts() []artifact {
 	return out
 }
 
+// makeArtifact builds an artifact record for a repo-relative previewable file, or ok=false.
+func (s *Server) makeArtifact(rel, source string) (artifact, bool) {
+	rel = filepath.ToSlash(rel)
+	full := filepath.Join(s.root, rel)
+	fi, err := os.Stat(full)
+	if err != nil || fi.IsDir() {
+		return artifact{}, false
+	}
+	if !artifactExts[strings.ToLower(filepath.Ext(rel))] {
+		return artifact{}, false
+	}
+	created, updated := fileTimes(fi)
+	return artifact{
+		Path: rel, Name: filepath.Base(rel), Kind: artifactKind(strings.ToLower(filepath.Ext(rel))),
+		Platform: artifactPlatform(rel), Source: source, Created: created, Updated: updated,
+	}, true
+}
+
+// textExts are scanned for a story reference (id/slug) when deciding relevance.
+var textExts = map[string]bool{
+	".md": true, ".txt": true, ".json": true, ".html": true, ".htm": true,
+	".svg": true, ".excalidraw": true, ".css": true,
+}
+
+// relatedArtifacts collects EVERYTHING under docs/ related to a story: files named for the
+// story (wireframes/mockups/…), the shared design system (identity/tokens/system — used by
+// every story), and any doc that references the story id/slug in its content (ADRs, specs).
+func (s *Server) relatedArtifacts(st state.Story) []artifact {
+	seen := map[string]bool{}
+	var out []artifact
+	id, slug := st.ID, st.Slug
+	_ = filepath.Walk(filepath.Join(s.root, "docs"), func(p string, fi os.FileInfo, err error) error {
+		if err != nil || fi.IsDir() {
+			return nil
+		}
+		base := filepath.Base(p)
+		if strings.HasPrefix(base, ".") {
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(p))
+		if !artifactExts[ext] {
+			return nil
+		}
+		rel, e := filepath.Rel(s.root, p)
+		if e != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		if seen[rel] {
+			return nil
+		}
+		source := ""
+		switch {
+		case id != "" && strings.Contains(rel, id):
+			source = "story"
+		case slug != "" && strings.Contains(rel, slug):
+			source = "story"
+		case strings.Contains(rel, "docs/design/identity/") || strings.Contains(rel, "docs/design/system/"):
+			source = "design-system" // shared tokens/identity/components — relevant to every story
+		case fi.Size() < 512*1024 && textExts[ext] && s.fileReferences(p, id, slug):
+			source = "reference" // ADRs, specs, etc. that mention the story
+		}
+		if source == "" {
+			return nil
+		}
+		if a, ok := s.makeArtifact(rel, source); ok {
+			seen[rel] = true
+			out = append(out, a)
+		}
+		return nil
+	})
+	sort.Slice(out, func(i, j int) bool {
+		// story-named first, then design-system, then references; newest within each.
+		rank := func(a artifact) int {
+			switch a.Source {
+			case "story":
+				return 0
+			case "design-system":
+				return 1
+			default:
+				return 2
+			}
+		}
+		if ra, rb := rank(out[i]), rank(out[j]); ra != rb {
+			return ra < rb
+		}
+		return out[i].Updated > out[j].Updated
+	})
+	return out
+}
+
+// fileReferences reports whether a file's content mentions the story id or slug.
+func (s *Server) fileReferences(path, id, slug string) bool {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	c := string(b)
+	return (id != "" && strings.Contains(c, id)) || (slug != "" && len(slug) >= 3 && strings.Contains(c, slug))
+}
+
 func (s *Server) handleArtifacts(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": s.discoverArtifacts()})
 }
@@ -150,12 +251,7 @@ func (s *Server) handleStory(w http.ResponseWriter, r *http.Request) {
 	if b, err := os.ReadFile(found.Path); err == nil {
 		spec = string(b)
 	}
-	var linked []artifact
-	for _, a := range s.discoverArtifacts() {
-		if strings.Contains(a.Path, found.ID) || (found.Slug != "" && strings.Contains(a.Path, found.Slug)) {
-			linked = append(linked, a)
-		}
-	}
+	linked := s.relatedArtifacts(*found)
 	title := found.Title
 	if title == "" {
 		title = found.ID
