@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -146,6 +147,38 @@ func loadPinnedSessions() map[string]string {
 	return out
 }
 
+// copilotSessionExists reports whether copilot has a session recorded for id, at its
+// canonical ~/.copilot/session-state/<id>/ path. Only such a session can be `--resume`d.
+func copilotSessionExists(id string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil || id == "" {
+		return false
+	}
+	info, err := os.Stat(filepath.Join(home, ".copilot", "session-state", id))
+	return err == nil && info.IsDir()
+}
+
+// looksLikeUUID reports whether s is a canonical 8-4-4-4-12 hex uuid, so it's safe to hand
+// to `copilot --session-id`.
+func looksLikeUUID(s string) bool {
+	groups := []int{8, 4, 4, 4, 12}
+	parts := strings.Split(s, "-")
+	if len(parts) != len(groups) {
+		return false
+	}
+	for i, p := range parts {
+		if len(p) != groups[i] {
+			return false
+		}
+		for _, c := range p {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // buildLaunchCmd builds the argv to launch a harness with an opening prompt.
 func buildLaunchCmd(tool, cmd string, pinned map[string]string, dangerous bool) []string {
 	pinnedID := pinned[tool]
@@ -173,8 +206,16 @@ func buildLaunchCmd(tool, cmd string, pinned map[string]string, dangerous bool) 
 		if dangerous {
 			args = append(args, "--allow-all")
 		}
-		if pinnedID != "" {
+		// `--resume=<id>` fails hard when the session doesn't exist yet (stale pin, cleared
+		// state, or a first-ever run). Resume only a session that's actually on disk; for a
+		// pinned uuid that isn't there yet, start a new session WITH that id so future
+		// resumes work — matching copilot's own `--session-id=<valid-uuid>` hint.
+		switch {
+		case pinnedID == "":
+		case copilotSessionExists(pinnedID):
 			args = append(args, "--resume="+pinnedID)
+		case looksLikeUUID(pinnedID):
+			args = append(args, "--session-id="+pinnedID)
 		}
 		if cmd != "" {
 			args = append(args, "-i", cmd)

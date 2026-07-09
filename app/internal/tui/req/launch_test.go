@@ -100,6 +100,43 @@ func TestBuildLaunchCmd(t *testing.T) {
 	})
 }
 
+func TestBuildLaunchCmdCopilotSession(t *testing.T) {
+	strip := func(a []string) []string {
+		if len(a) >= 2 && a[0] == "env" && strings.HasPrefix(a[1], "RTK_HOOK_AUDIT=") {
+			return a[2:]
+		}
+		return a
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	const uuid = "b7eddba5-7bae-41e2-9120-ff2e6a33be28"
+
+	t.Run("pinned uuid with no existing session → new session, not resume", func(t *testing.T) {
+		got := strip(buildLaunchCmd("copilot", "go", map[string]string{"copilot": uuid}, true))
+		want := []string{"copilot", "--allow-all", "--session-id=" + uuid, "-i", "go"}
+		if strings.Join(got, " ") != strings.Join(want, " ") {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("pinned uuid with existing session → resume", func(t *testing.T) {
+		os.MkdirAll(home+"/.copilot/session-state/"+uuid, 0o755)
+		got := strip(buildLaunchCmd("copilot", "go", map[string]string{"copilot": uuid}, true))
+		want := []string{"copilot", "--allow-all", "--resume=" + uuid, "-i", "go"}
+		if strings.Join(got, " ") != strings.Join(want, " ") {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("non-uuid pin → plain new session", func(t *testing.T) {
+		got := strip(buildLaunchCmd("copilot", "go", map[string]string{"copilot": "not-a-uuid"}, false))
+		want := []string{"copilot", "-i", "go"}
+		if strings.Join(got, " ") != strings.Join(want, " ") {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
+}
+
 func TestBuildImplementationPrompt(t *testing.T) {
 	stories := []core.Story{
 		{Title: "A", SavedTo: "docs/stories/a-1"},
