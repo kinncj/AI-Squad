@@ -37,7 +37,21 @@ New-Item -ItemType Directory -Path $tmp | Out-Null
 
 try {
     $archivePath = Join-Path $tmp $Archive
-    Invoke-WebRequest $Url -OutFile $archivePath -UseBasicParsing
+    # A freshly-cut release can appear before its binaries finish uploading; retry a little.
+    $attempt = 0
+    while ($true) {
+        try {
+            Invoke-WebRequest $Url -OutFile $archivePath -UseBasicParsing
+            break
+        } catch {
+            $attempt++
+            if ($attempt -ge 5) {
+                throw "Could not download $Url after $attempt tries. The release may still be publishing — wait a minute and re-run, or pass -Version vX.Y.Z."
+            }
+            Write-Host "  binary not ready yet (attempt $attempt/5) — retrying in 5s…"
+            Start-Sleep -Seconds 5
+        }
+    }
     Expand-Archive $archivePath -DestinationPath $tmp -Force
     Copy-Item (Join-Path $tmp "maple.exe") (Join-Path $InstallDir "maple.exe") -Force
     Write-Host "✓ Installed maple $Version"

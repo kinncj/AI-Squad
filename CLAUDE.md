@@ -86,12 +86,25 @@ For install scripts: `bash -n scripts/install.sh`.
 
 ## Release Process
 
+`release.yml` triggers on a pushed `v*` tag, cross-compiles all 5 platforms, uploads them
+to a **draft** release, then flips it public — so the release never appears (and install.sh
+never resolves it) until every binary is attached. No 404 window.
+
 1. Commit and push to `main`
 2. Wait for CI to go green (`gh run list --limit 3`)
-3. Create the release tag — this triggers `release.yml` which cross-compiles all 5 platforms:
+3. Push the version tag — this triggers the build+publish:
 
 ```bash
-gh release create vX.Y.Z --title "vX.Y.Z — short description" --notes "..."
+git tag vX.Y.Z -m "vX.Y.Z — short description"
+git push origin vX.Y.Z
+```
+
+4. Wait for `release.yml` to finish (it publishes with binaries + auto-generated notes).
+5. (Optional) Replace the notes with your own prose — the release is already live with
+   binaries, so this only touches text:
+
+```bash
+gh release edit vX.Y.Z --title "vX.Y.Z — …" --notes "…"
 ```
 
 The release workflow builds:
@@ -101,7 +114,10 @@ The release workflow builds:
 - `maple-linux-arm64.tar.gz`
 - `maple-windows-amd64.zip`
 
-**Never push a tag directly** — always use `gh release create`. The release action reads `on: release: types: [published]`.
+**Do NOT `gh release create` a published release up front** — it becomes the "latest" the
+install script finds before its binaries exist. Push the tag and let the workflow's
+draft→publish flow reveal it fully-formed. There is exactly one trigger (`push: tags`) and a
+`concurrency` guard, so a tag never spawns two racing runs.
 
 ---
 

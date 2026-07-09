@@ -77,7 +77,21 @@ mkdir -p "$INSTALL_DIR"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-curl -fsSL "$URL" -o "$TMP/$ARCHIVE"
+# A freshly-cut release can appear in the API a few seconds before its binaries finish
+# uploading. Retry a little so a well-timed install doesn't die on a transient 404.
+attempts=0
+until curl -fsSL "$URL" -o "$TMP/$ARCHIVE"; do
+    attempts=$((attempts + 1))
+    if [ "$attempts" -ge 5 ]; then
+        echo "Could not download after $attempts tries:"
+        echo "  $URL"
+        echo "The release may still be publishing its binaries — wait a minute and re-run,"
+        echo "or pin a known-good version with --version vX.Y.Z."
+        exit 1
+    fi
+    echo "  binary not ready yet (attempt $attempts/5) — retrying in 5s…"
+    sleep 5
+done
 tar -xzf "$TMP/$ARCHIVE" -C "$TMP"
 mv "$TMP/maple" "$INSTALL_DIR/maple"
 chmod +x "$INSTALL_DIR/maple"

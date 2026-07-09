@@ -98,10 +98,14 @@ jobs:
           sha256sum * > checksums.txt
           cat checksums.txt
 
-      - name: Upload to GitHub Release
+      # Attach binaries to a DRAFT release first so the release is invisible to the
+      # public releases API (and thus to install.sh's version scan) until every archive
+      # is uploaded. Publishing an empty release up front left a window where install.sh
+      # resolved the new version but 404'd on the not-yet-uploaded binary.
+      - name: Upload binaries to draft release
         uses: softprops/action-gh-release@v2
         with:
-          # On a tag push this creates the release and attaches every platform archive.
+          draft: true
           generate_release_notes: true
           files: |
             dist/maple-darwin-amd64.tar.gz
@@ -112,3 +116,9 @@ jobs:
             dist/checksums.txt
             scripts/install.sh
             scripts/install.ps1
+
+      # Flip to public only now that all assets are present — no 404 window.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${{ github.ref_name }}" --draft=false --latest --repo "${{ github.repository }}"
