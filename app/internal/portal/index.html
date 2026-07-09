@@ -260,6 +260,12 @@
     .rl-stage { color: var(--muted); font-size:11px; margin-left:6px; }
     .rl-ts { color: var(--dim); font-size:10px; float:right; }
     .rl-msg { color: var(--text); font-size:13px; margin-top:4px; white-space:pre-wrap; }
+    .item.pending-review { background: rgba(224,175,104,.14); border-left: 4px solid var(--warn); box-shadow: inset 0 0 0 1px rgba(224,175,104,.25); }
+    .item.pending-review .path-btn { color: var(--warn); font-weight: 700; }
+    .item.pending-review .left, .item .left { display:flex; align-items:center; gap:8px; min-width:0; }
+    .needs-review-badge { flex:none; font-size:9px; font-weight:800; letter-spacing:.05em; color:#1a1b26; background:var(--warn); border-radius:5px; padding:2px 6px; box-shadow:0 0 10px rgba(224,175,104,.4); animation: pulse-badge 2s ease-in-out infinite; }
+    @keyframes pulse-badge { 0%,100% { opacity:1; } 50% { opacity:.6; } }
+    .review-count { background: var(--warn) !important; color:#1a1b26 !important; border-color: var(--warn) !important; font-weight:800; box-shadow:0 0 12px rgba(224,175,104,.35); cursor:default; }
   </style>
 </head>
 <body>
@@ -977,11 +983,24 @@
         for (const k of kinds) mk(k, k + " · " + scoped.filter((i) => (i.kind || "file") === k).length);
       }
 
-      const shown = scoped.filter((i) => _artFilter === "all" || (i.kind || "file") === _artFilter);
-      const pending = _reviewArtifacts; // Set of paths the pending gate is asking to review
+      const pending = _reviewArtifacts; // Set of paths the harness flagged for review
+      const pendingCount = pending ? scoped.filter((i) => pending.has(i.path)).length : 0;
+      if (pendingCount > 0) {
+        const rc = document.createElement("button");
+        rc.className = "review-count";
+        rc.innerHTML = "⏳ " + pendingCount + " need" + (pendingCount === 1 ? "s" : "") + " review";
+        rc.title = "The harness flagged these files for approval";
+        filters.appendChild(rc);
+      }
+
+      // Pending-review files first, so the ones the harness wants reviewed are at the top.
+      let shown = scoped.filter((i) => _artFilter === "all" || (i.kind || "file") === _artFilter);
+      if (pending) {
+        shown = shown.slice().sort((a, b) => (pending.has(b.path) ? 1 : 0) - (pending.has(a.path) ? 1 : 0));
+      }
       let selected = null;
       if (!shown.length) {
-        box.innerHTML = '<div class="empty">' + (all.length
+        box.innerHTML = '<div class="empty">' + (scoped.length
           ? "No artifacts match this filter." + (_storyFilter ? " Clear the story chip to see all." : "")
           : "No artifacts yet. Design artifacts (wireframes/mockups) and uploads appear here.") + "</div>";
       } else {
@@ -990,9 +1009,15 @@
           const row = document.createElement("div");
           row.className = "item" + (isPending ? " pending-review" : "");
           const left = document.createElement("span");
+          if (isPending) {
+            const badge = document.createElement("span");
+            badge.className = "needs-review-badge";
+            badge.textContent = "NEEDS REVIEW";
+            left.appendChild(badge);
+          }
           const pathBtn = document.createElement("button");
           pathBtn.className = "path-btn";
-          pathBtn.textContent = (isPending ? "⏳ " : "") + item.path;
+          pathBtn.textContent = item.path;
           pathBtn.addEventListener("click", () => openArtifactModal(item));
           left.appendChild(pathBtn);
           const right = document.createElement("span");
