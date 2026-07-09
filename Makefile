@@ -1,29 +1,49 @@
 # Makefile — maple repo root
 # Targets for building, testing, and maintaining the MAPLE platform itself.
 # For targets in your project template, see template/Makefile.
-.PHONY: build-tui build-tui-all test lint sdlc-report sdlc-rotate-logs clean help
+.PHONY: build build-tui build-tui-all build-app test test-app lint lint-app sdlc-report sdlc-rotate-logs clean help
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS  = -s -w -X main.version=$(VERSION)
+OUT     ?= maple   # output path; override for bin/ or dist/ builds
 
-## Build the maple TUI binary
+## Build the maple binary → $(OUT). Single source of truth; every build target
+## delegates here (CI and release.yml call it too, so there's one recipe).
+## app/cmd/maple/template is a symlink → ../../../template; go:embed can't follow it,
+## so swap it for a real copy for the build, then restore the symlink.
+build:
+	@echo "Building maple → $(OUT)$(if $(GOOS), ($(GOOS)/$(GOARCH)))..."
+	@rm -f app/cmd/maple/template && cp -rL template app/cmd/maple/template
+	@$(if $(GOOS),GOOS=$(GOOS) GOARCH=$(GOARCH) )go build -ldflags="$(LDFLAGS)" -o "$(OUT)" ./app/cmd/maple; \
+		status=$$?; rm -rf app/cmd/maple/template && ln -s ../../../template app/cmd/maple/template; exit $$status
+	@echo "Built: $(OUT)"
+
+## Build the canonical binary → ./maple
 build-tui:
-	@echo "Building maple TUI..."
-	@rm -f tui/template && cp -rL template tui/template
-	@go build -ldflags="$(LDFLAGS)" -o maple ./tui
-	@rm -rf tui/template && ln -s ../template tui/template
-	@echo "Built: ./maple"
+	@$(MAKE) --no-print-directory build OUT=maple
 
-## Cross-compile maple for all platforms
+## Build into ./bin/maple for local dev
+build-app:
+	@$(MAKE) --no-print-directory build OUT=bin/maple
+
+## Run the rebuilt binary's unit tests (with the same template dance for the embed)
+test-app:
+	@rm -f app/cmd/maple/template && cp -rL template app/cmd/maple/template
+	@go test ./app/... && go vet ./app/...; \
+		status=$$?; rm -rf app/cmd/maple/template && ln -s ../../../template app/cmd/maple/template; exit $$status
+
+## gofmt-check the rebuilt binary sources
+lint-app:
+	@gofmt -e ./app >/dev/null && echo "gofmt(app): clean" || (echo "gofmt(app): issues found" && exit 1)
+
+## Cross-compile maple for all platforms (each delegates to `build`)
 build-tui-all:
 	@mkdir -p dist
-	@rm -f tui/template && cp -rL template tui/template
-	GOOS=darwin  GOARCH=amd64  go build -ldflags="$(LDFLAGS)" -o dist/maple-darwin-amd64  ./tui
-	GOOS=darwin  GOARCH=arm64  go build -ldflags="$(LDFLAGS)" -o dist/maple-darwin-arm64  ./tui
-	GOOS=linux   GOARCH=amd64  go build -ldflags="$(LDFLAGS)" -o dist/maple-linux-amd64   ./tui
-	GOOS=linux   GOARCH=arm64  go build -ldflags="$(LDFLAGS)" -o dist/maple-linux-arm64   ./tui
-	GOOS=windows GOARCH=amd64  go build -ldflags="$(LDFLAGS)" -o dist/maple-windows-amd64.exe ./tui
-	@rm -rf tui/template && ln -s ../template tui/template
+	@$(MAKE) --no-print-directory build GOOS=darwin  GOARCH=amd64 OUT=dist/maple-darwin-amd64
+	@$(MAKE) --no-print-directory build GOOS=darwin  GOARCH=arm64 OUT=dist/maple-darwin-arm64
+	@$(MAKE) --no-print-directory build GOOS=linux   GOARCH=amd64 OUT=dist/maple-linux-amd64
+	@$(MAKE) --no-print-directory build GOOS=linux   GOARCH=arm64 OUT=dist/maple-linux-arm64
+	@$(MAKE) --no-print-directory build GOOS=windows GOARCH=amd64 OUT=dist/maple-windows-amd64.exe
 	@echo "Binaries in dist/"
 
 ## Run the test suite for this repo
@@ -32,7 +52,7 @@ test:
 
 ## Lint Go code
 lint:
-	@gofmt -e ./tui >/dev/null && echo "gofmt: clean" || (echo "gofmt: issues found" && exit 1)
+	@gofmt -e ./app >/dev/null && echo "gofmt: clean" || (echo "gofmt: issues found" && exit 1)
 
 ## Print per-story agent invocation counts and estimated costs
 ## Reads .claude/logs/skills.jsonl; safe to run offline (shows cached data)
@@ -67,10 +87,13 @@ clean:
 ## Show available targets
 help:
 	@echo ""
-	@echo "  make build-tui          Build maple TUI binary"
+	@echo "  make build              Build → \$$(OUT) (default ./maple); the shared recipe"
+	@echo "  make build-tui          Build the maple binary (./maple, from app/cmd/maple)"
+	@echo "  make build-app          Build into ./bin/maple (local dev)"
 	@echo "  make build-tui-all      Cross-compile for darwin/linux/windows"
-	@echo "  make test               Run test suite (218 tests)"
-	@echo "  make lint               Lint Go code"
+	@echo "  make test-app           Run app unit tests (with the embed dance)"
+	@echo "  make test               Run the shell test suite"
+	@echo "  make lint               Lint Go code (gofmt ./app)"
 	@echo "  make sdlc-report        Print cost + invocation report"
 	@echo "  make sdlc-rotate-logs   Rotate .claude/logs/ (keep last 5)"
 	@echo "  make clean              Remove built binaries"

@@ -1,0 +1,1510 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MAPLE Design Review</title>
+  <style>
+    /* MAPLE design-review portal — tokyo-night, themed to match the TUI. */
+    :root {
+      --bg: #1a1b26;
+      --bg2: #16161e;
+      --card: #1f2335;
+      --card2: #232945;
+      --inset: #16161e;
+      --text: #c0caf5;
+      --muted: #565f89;
+      --dim: #414868;
+      --ok: #9ece6a;
+      --warn: #e0af68;
+      --bad: #f7768e;
+      --line: #2b2f44;
+      --accent: #7aa2f7;
+      --purple: #bb9af7;
+      --cyan: #7dcfff;
+      --leaf: #9ece6a;
+      --radius: 14px;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin:0; color:var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(1200px 600px at 12% -8%, rgba(122,162,247,.10), transparent 60%),
+        radial-gradient(1000px 500px at 100% 0%, rgba(187,154,247,.08), transparent 55%),
+        var(--bg);
+      -webkit-font-smoothing: antialiased;
+    }
+    .wrap { max-width:1240px; margin:0 auto; padding:28px 24px 48px; }
+    .brand { display:flex; align-items:center; gap:12px; margin-bottom:4px; }
+    .brand .leaf { font-size:26px; filter: drop-shadow(0 2px 6px rgba(158,206,106,.4)); }
+    .h1 {
+      font-size:26px; font-weight:800; letter-spacing:-.02em; margin:0;
+      background: linear-gradient(92deg, var(--accent), var(--purple) 70%, var(--cyan));
+      -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+    }
+    .sub { color:var(--muted); font-size:13px; margin:6px 0 22px; }
+    .conn { font-size:11px; font-weight:700; padding:4px 10px; border-radius:999px; vertical-align:middle; margin-left:6px; border:1px solid transparent; }
+    .conn-on { color:var(--ok); background:rgba(158,206,106,.12); border-color:rgba(158,206,106,.35); }
+    .conn-off { color:var(--bad); background:rgba(247,118,142,.12); border-color:rgba(247,118,142,.30); }
+    .row { display:grid; grid-template-columns: 380px 1fr; gap:20px; align-items:start; }
+    @media (max-width: 980px) { .row { grid-template-columns: 1fr; } }
+    .card {
+      background: linear-gradient(180deg, var(--card), var(--bg2));
+      border:1px solid var(--line); border-radius:var(--radius); padding:18px;
+      box-shadow: var(--shadow);
+    }
+    .label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.09em; font-weight:700; }
+    .value { font-size:15px; margin-top:4px; }
+    /* status pill, colour-coded by state (set via id on the value) */
+    #status { display:inline-block; font-weight:800; font-size:13px; padding:3px 12px; border-radius:999px; border:1px solid var(--line); }
+    .st-running { color:var(--accent); background:rgba(122,162,247,.12); border-color:rgba(122,162,247,.35)!important; }
+    .st-paused, .st-rate { color:var(--warn); background:rgba(224,175,104,.12); border-color:rgba(224,175,104,.35)!important; }
+    .st-done { color:var(--ok); background:rgba(158,206,106,.12); border-color:rgba(158,206,106,.35)!important; }
+    .st-failed { color:var(--bad); background:rgba(247,118,142,.12); border-color:rgba(247,118,142,.35)!important; }
+    .divider { height:1px; background:var(--line); margin:14px 0; }
+    .btns { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
+    button {
+      border:1px solid transparent; border-radius:10px; padding:9px 15px; color:#1a1b26; font-weight:700;
+      cursor:pointer; font-size:13px; transition: transform .06s ease, filter .15s ease, box-shadow .15s ease;
+    }
+    button:hover { filter:brightness(1.08); transform:translateY(-1px); }
+    button:active { transform:translateY(0); }
+    .approve { background:var(--ok); box-shadow:0 6px 16px rgba(158,206,106,.25); }
+    .changes { background:var(--warn); }
+    .reject { background:var(--bad); box-shadow:0 6px 16px rgba(247,118,142,.22); }
+    .refresh { background:transparent; color:var(--text); border-color:var(--line); }
+    .upload { background:var(--accent); box-shadow:0 6px 16px rgba(122,162,247,.25); }
+    textarea { width:100%; min-height:88px; margin-top:14px; background:var(--inset); color:var(--text); border:1px solid var(--line); border-radius:12px; padding:12px; font-family:inherit; font-size:13px; resize:vertical; }
+    textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(122,162,247,.15); }
+    .list { margin-top:12px; max-height:560px; overflow:auto; border:1px solid var(--line); border-radius:12px; background:var(--inset); }
+    .item { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 13px; border-bottom:1px solid var(--line); transition:background .12s ease; }
+    .item:hover { background:rgba(122,162,247,.06); }
+    .item:last-child { border-bottom:none; }
+    .item button { background:var(--card2); color:var(--text); border-color:var(--line); padding:5px 10px; border-radius:8px; font-size:12px; }
+    .item .path-btn { background:none; border:0; color:var(--accent); cursor:pointer; text-align:left; padding:0; font-size:13px; font-weight:600; }
+    .item .path-btn:hover { text-decoration:underline; }
+    .preview { margin-top:14px; border:1px solid var(--line); border-radius:12px; background:var(--inset); min-height:280px; overflow:hidden; }
+    .preview-head { display:flex; justify-content:space-between; gap:8px; border-bottom:1px solid var(--line); padding:11px 13px; color:var(--muted); font-size:12px; background:var(--bg2); }
+    .preview-body { padding:14px; max-height:560px; overflow:auto; }
+    .preview-body img { max-width:100%; border-radius:10px; box-shadow:var(--shadow); }
+    .preview-body iframe { width:100%; height:540px; border:0; border-radius:10px; background:#fff; }
+    .preview-body video { width:100%; max-height:540px; border-radius:10px; background:#000; }
+    .empty { color:var(--dim); font-size:13px; text-align:center; padding:40px 12px; }
+    .code { white-space:pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; color:var(--text); }
+    .md { line-height:1.6; font-size:14px; }
+    .md h1, .md h2, .md h3, .md h4 { margin: 18px 0 8px; line-height:1.25; color:var(--text); }
+    .md h1 { font-size: 22px; }
+    .md h2 { font-size: 19px; color:var(--accent); }
+    .md h3 { font-size: 16px; }
+    .md p { margin: 8px 0; }
+    .md ul, .md ol { margin: 8px 0 8px 22px; }
+    .md li { margin: 4px 0; }
+    .md pre { background:var(--bg2); border:1px solid var(--line); border-radius:10px; padding:12px; overflow:auto; }
+    .md code { background:var(--bg2); border:1px solid var(--line); border-radius:6px; padding:1px 5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; color:var(--cyan); }
+    .md blockquote { margin:10px 0; padding:8px 14px; border-left:3px solid var(--accent); color:var(--muted); background:rgba(122,162,247,.05); border-radius:0 8px 8px 0; }
+    a { color:var(--accent); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .chip { font-size:10px; font-weight:700; color:var(--purple); background:rgba(187,154,247,.10); border:1px solid rgba(187,154,247,.25); border-radius:999px; padding:2px 9px; text-transform:uppercase; letter-spacing:.04em; }
+    .status { font-weight:800; }
+    .upload-input {
+      width: 100%; margin-top: 12px;
+      border: 1px dashed var(--dim); border-radius: 12px; padding: 12px;
+      color: var(--muted); background: var(--inset); font-size:12px;
+    }
+    .upload-input:hover { border-color:var(--accent); }
+    ::-webkit-scrollbar { width:10px; height:10px; }
+    ::-webkit-scrollbar-thumb { background:var(--dim); border-radius:8px; border:2px solid var(--inset); }
+    ::-webkit-scrollbar-track { background:transparent; }
+    .uploads { margin-top: 10px; max-height: 180px; overflow: auto; border:1px solid var(--line); border-radius:10px; }
+    .upload-item { display:flex; justify-content:space-between; gap:10px; padding:8px 10px; border-bottom:1px solid var(--line); font-size:12px; }
+    .upload-item:last-child { border-bottom:none; }
+    .upload-left { display:flex; align-items:center; gap:8px; min-width:0; }
+    .upload-left label { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:330px; }
+    .upload-actions button { background:var(--card2); color:var(--text); border-color:var(--line); padding:4px 8px; border-radius:7px; font-size:11px; }
+    .modal {
+      position: fixed; inset: 0;
+      background: rgba(13, 14, 22, 0.78); backdrop-filter: blur(4px);
+      display: none; align-items: center; justify-content: center; z-index: 9999; padding: 24px;
+    }
+    .modal.open { display: flex; }
+    .modal-card {
+      width: min(1240px, 96vw); max-height: 92vh;
+      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+      overflow: hidden; display: grid; grid-template-rows: auto 1fr; box-shadow: var(--shadow);
+    }
+    .modal-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 13px 16px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px;
+      background: var(--bg2);
+    }
+    .modal-close { background: var(--card2); color:var(--text); border-color:var(--line); }
+    .modal-body { padding: 16px; overflow: auto; min-height: 200px; }
+    /* ── Splash / loading overlay (maple charm) ── */
+    #splash {
+      position: fixed; inset: 0; z-index: 10000;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+      background: radial-gradient(1100px 560px at 50% 32%, rgba(122,162,247,.14), transparent 60%),
+                  radial-gradient(800px 420px at 50% 90%, rgba(187,154,247,.08), transparent 60%), var(--bg);
+      transition: opacity .55s ease, visibility .55s ease;
+    }
+    #splash.hide { opacity: 0; visibility: hidden; pointer-events: none; }
+    #splash .leaf { font-size: 78px; line-height:1; animation: leaf-float 3s ease-in-out infinite; filter: drop-shadow(0 10px 26px rgba(158,206,106,.45)); }
+    #splash .word {
+      font-size: 48px; font-weight: 900; letter-spacing: -.03em; margin-top: 4px;
+      background: linear-gradient(92deg, var(--accent), var(--purple) 62%, var(--cyan));
+      -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+      animation: rise .7s ease both;
+    }
+    #splash .tag { color: var(--muted); font-size: 12px; letter-spacing:.34em; text-transform:uppercase; animation: rise .7s .08s ease both; }
+    #splash .bar { width: 220px; height: 4px; border-radius: 999px; background: var(--card2); overflow: hidden; margin-top: 10px; }
+    #splash .bar > i { display:block; height:100%; width:40%; border-radius:999px; background: linear-gradient(90deg, var(--accent), var(--purple)); animation: slide 1.15s ease-in-out infinite; }
+    @keyframes leaf-float { 0%,100% { transform: translateY(0) rotate(-5deg); } 50% { transform: translateY(-13px) rotate(5deg); } }
+    @keyframes rise { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform:none; } }
+    @keyframes slide { 0% { transform: translateX(-130%); } 100% { transform: translateX(330%); } }
+    /* markdown extras */
+    .md table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 13px; }
+    .md th, .md td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; }
+    .md th { background: var(--bg2); color: var(--accent); font-weight: 700; }
+    .md tr:nth-child(even) td { background: rgba(122,162,247,.04); }
+    .md hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
+    .md del { color: var(--muted); }
+    .md img { max-width: 100%; border-radius: 8px; }
+    /* gherkin highlighting */
+    .gherkin { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; }
+    .gk-feature { color: var(--accent); font-weight: 700; }
+    .gk-scenario { color: var(--purple); font-weight: 700; }
+    .gk-given { color: var(--ok); }
+    .gk-when { color: var(--warn); }
+    .gk-then { color: var(--cyan); }
+    .gk-and { color: var(--muted); }
+    .gk-tag { color: var(--purple); }
+    .gk-comment { color: var(--dim); }
+    .gk-table { color: var(--muted); }
+    /* artifact filters */
+    .filters { display:flex; gap:6px; flex-wrap:wrap; margin: 10px 0 4px; }
+    .filters button { background: var(--inset); color: var(--muted); border:1px solid var(--line); padding:4px 11px; border-radius:999px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+    .filters button.active { background: rgba(122,162,247,.14); color: var(--accent); border-color: rgba(122,162,247,.4); }
+    .stop { background: transparent; color: var(--bad); border-color: var(--bad); }
+    .stop:hover { background: rgba(247,118,142,.12); }
+    button:disabled { opacity: .38; cursor: not-allowed; filter: grayscale(.4); transform: none !important; }
+    .art-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .sort-select { background: var(--inset); color: var(--text); border:1px solid var(--line); border-radius:9px; padding:5px 9px; font-size:12px; font-weight:600; }
+    .sort-select:focus { outline:none; border-color: var(--accent); }
+    /* toasts */
+    .toasts { position: fixed; top: 18px; right: 18px; z-index: 10001; display:flex; flex-direction:column; gap:10px; max-width: 360px; }
+    .toast { background: var(--card); border:1px solid var(--line); border-left-width:3px; border-radius:12px; padding:12px 14px; box-shadow: var(--shadow); animation: toast-in .3s ease both; font-size:13px; }
+    .toast.ok { border-left-color: var(--ok); }
+    .toast.warn { border-left-color: var(--warn); }
+    .toast.info { border-left-color: var(--accent); }
+    .toast.bad { border-left-color: var(--bad); }
+    .toast .tt { font-weight:800; margin-bottom:2px; }
+    .toast .tb { color: var(--muted); }
+    .toast.hide { animation: toast-out .3s ease both; }
+    @keyframes toast-in { from { opacity:0; transform: translateX(24px); } to { opacity:1; transform:none; } }
+    @keyframes toast-out { to { opacity:0; transform: translateX(24px); } }
+    /* stories mini-list */
+    .stories { margin-top:8px; display:flex; flex-direction:column; gap:4px; max-height: 200px; overflow:auto; }
+    .story { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:9px; background: var(--inset); border:1px solid var(--line); font-size:12px; }
+    .story .gl { font-size:13px; width:16px; text-align:center; }
+    .story .ti { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color: var(--text); }
+    .story .ph { color: var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.04em; }
+    .gl-inprogress { color: var(--warn); }
+    .gl-done { color: var(--ok); }
+    .gl-failed { color: var(--bad); }
+    .gl-idle { color: var(--dim); }
+    .mini { background: var(--card2); color: var(--text); border:1px solid var(--line); padding:2px 8px; border-radius:7px; font-size:13px; line-height:1; }
+    /* pipeline phase stepper */
+    .stepper { display:flex; align-items:stretch; gap:6px; margin: 4px 0 20px; flex-wrap:wrap; }
+    .step { flex:1 1 90px; min-width:82px; background: var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 10px; position:relative; }
+    .step .sn { font-size:10px; font-weight:800; color: var(--dim); letter-spacing:.05em; }
+    .step .sl { font-size:12px; font-weight:700; margin-top:2px; color: var(--muted); }
+    .step.done { border-color: rgba(158,206,106,.35); }
+    .step.done .sn { color: var(--ok); }
+    .step.done .sl { color: var(--text); }
+    .step.active { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(122,162,247,.18); background: linear-gradient(180deg, rgba(122,162,247,.10), var(--card)); }
+    .step.active .sn { color: var(--accent); }
+    .step.active .sl { color: var(--text); }
+    .step.gate .sl::after { content:" ⚑"; color: var(--warn); }
+    /* activity feed */
+    .activity { margin-top:8px; display:flex; flex-direction:column; gap:5px; max-height: 220px; overflow:auto; }
+    .act { display:flex; gap:8px; align-items:baseline; padding:6px 9px; border-radius:9px; background: var(--inset); border:1px solid var(--line); font-size:12px; animation: toast-in .25s ease both; }
+    .act .ai { font-size:12px; }
+    .act .am { flex:1; color: var(--text); overflow:hidden; text-overflow:ellipsis; }
+    .act .at { color: var(--dim); font-size:10px; white-space:nowrap; }
+    .act .src { color: var(--purple); font-size:9px; text-transform:uppercase; letter-spacing:.04em; }
+    .story.clickable { cursor:pointer; transition: background .12s ease, border-color .12s ease; }
+    .story.clickable:hover { background: rgba(122,162,247,.08); border-color: rgba(122,162,247,.35); }
+    .story.sel { background: rgba(122,162,247,.12); border-color: var(--accent); }
+    .story-chip { background: rgba(187,154,247,.14) !important; color: var(--purple) !important; border-color: rgba(187,154,247,.4) !important; }
+    .item.pending-review { background: rgba(224,175,104,.10); border-left: 3px solid var(--warn); }
+    .item.pending-review .path-btn { color: var(--warn); }
+    .stepper-caption { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color: var(--muted); margin: 2px 0 6px; }
+    .legend { font-weight:500; text-transform:none; letter-spacing:0; color: var(--dim); font-size:10px; }
+    .ui-mark { color: var(--purple); cursor: help; }
+    .story .ph.gl-inprogress { color: var(--warn); }
+    .story .ph.gl-done { color: var(--ok); }
+    .story .ph.gl-failed { color: var(--bad); }
+    .story .ph.gl-idle { color: var(--dim); }
+    .step.failed { border-color: rgba(247,118,142,.4); }
+    .step.failed .sn { color: var(--bad); }
+    .step.failed .sl { color: var(--text); }
+    .review-log { border:1px solid var(--line); border-radius:12px; background: var(--bg2); padding:12px 14px; margin-bottom:16px; }
+    .rl-title { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color: var(--warn); margin-bottom:8px; }
+    .rl-item { border-top:1px solid var(--line); padding:8px 0; }
+    .rl-item:first-of-type { border-top:0; }
+    .rl-verb { font-size:11px; font-weight:800; }
+    .rl-bad { color: var(--bad); }
+    .rl-warn { color: var(--warn); }
+    .rl-stage { color: var(--muted); font-size:11px; margin-left:6px; }
+    .rl-ts { color: var(--dim); font-size:10px; float:right; }
+    .rl-msg { color: var(--text); font-size:13px; margin-top:4px; white-space:pre-wrap; }
+    .item.pending-review { background: rgba(224,175,104,.14); border-left: 4px solid var(--warn); box-shadow: inset 0 0 0 1px rgba(224,175,104,.25); }
+    .item.pending-review .path-btn { color: var(--warn); font-weight: 700; }
+    .item.pending-review .left, .item .left { display:flex; align-items:center; gap:8px; min-width:0; }
+    .needs-review-badge { flex:none; font-size:9px; font-weight:800; letter-spacing:.05em; color:#1a1b26; background:var(--warn); border-radius:5px; padding:2px 6px; box-shadow:0 0 10px rgba(224,175,104,.4); animation: pulse-badge 2s ease-in-out infinite; }
+    @keyframes pulse-badge { 0%,100% { opacity:1; } 50% { opacity:.6; } }
+    .review-count { background: var(--warn) !important; color:#1a1b26 !important; border-color: var(--warn) !important; font-weight:800; box-shadow:0 0 12px rgba(224,175,104,.35); cursor:default; }
+  </style>
+</head>
+<body>
+  <div id="splash">
+    <div class="leaf">🍁</div>
+    <div class="word">MAPLE</div>
+    <div class="tag">Design Review</div>
+    <div class="bar"><i></i></div>
+  </div>
+  <div id="toasts" class="toasts"></div>
+  <div class="wrap">
+    <div class="brand">
+      <span class="leaf">🍁</span>
+      <div class="h1">MAPLE Design Review</div>
+      <span id="maple-conn" class="conn conn-off" title="maple TUI connection">● maple: offline</span>
+    </div>
+    <div class="sub">Live companion to the TUI pipeline · approve stages, review artifacts, upload references. The TUI stays the primary control surface. &nbsp;<span style="color:var(--dim)">keys: <b>a</b> approve · <b>r</b> reject · <b>c</b> changes · <b>u</b> upload · <b>g</b> refresh</span></div>
+    <div id="stepperCaption" class="stepper-caption"></div>
+    <div id="stepper" class="stepper"></div>
+    <div class="row">
+      <div class="card">
+        <div class="label">Workflow</div><div id="wf" class="value">-</div>
+        <div class="label" style="margin-top:10px">Stage</div><div id="stage" class="value">-</div>
+        <div class="label" style="margin-top:10px">Status</div><div id="status" class="value status">-</div>
+        <div class="label" style="margin-top:10px">Pending approval</div><div id="pending" class="value">-</div>
+        <div class="label" style="margin-top:10px">Updated</div><div id="updated" class="value">-</div>
+        <div class="label" style="margin-top:14px">Stories <span class="legend">(click to review · ✓ done · ◐ in progress · ✗ failed · · not started · ◈ UI)</span></div>
+        <div id="stories" class="stories"></div>
+        <div class="label" style="margin-top:14px">Activity</div>
+        <div id="activity" class="activity"></div>
+        <textarea id="feedback" placeholder="Feedback for the agent (required for reject/change)..."></textarea>
+        <input id="uploadInput" class="upload-input" type="file" multiple accept=".excalidraw,.json,.jpg,.jpeg,.png,.webp,.gif,.html,.htm,.txt,.md,.svg,.css" />
+        <div id="gateHint" class="sub" style="margin-top:12px"></div>
+        <div class="btns">
+          <button id="btnApprove" class="approve" onclick="approveStage()">Approve stage</button>
+          <button id="btnReject" class="reject" onclick="rejectStage()">Reject</button>
+          <button id="btnChanges" class="changes" onclick="requestChanges()">Request changes</button>
+          <button class="upload" onclick="uploadFiles()">Upload files</button>
+          <button id="btnStop" class="stop" onclick="stopWorkflow()">Stop workflow</button>
+          <button class="refresh" onclick="refreshAll()">Refresh</button>
+        </div>
+        <div class="label" style="margin-top:10px">Uploaded review files</div>
+        <div id="uploads" class="uploads"></div>
+        <div id="msg" class="sub" style="margin-top:10px"></div>
+      </div>
+      <div class="card">
+        <div class="art-head">
+          <div class="label">Artifacts</div>
+          <select id="artSort" class="sort-select" onchange="onSortChange()">
+            <option value="updated">sort: updated ↓</option>
+            <option value="created">sort: created ↓</option>
+            <option value="name">sort: name ↑</option>
+          </select>
+        </div>
+        <div id="filters" class="filters"></div>
+        <div id="artifacts" class="list"></div>
+        <div class="preview">
+          <div class="preview-head">
+            <span>Visual preview</span>
+            <span style="display:flex; gap:10px; align-items:center;">
+              <span id="previewPath">No preview selected</span>
+              <button id="previewExpand" class="mini" onclick="expandPreview()" title="Open large">⤢</button>
+            </span>
+          </div>
+          <div id="previewBody" class="preview-body">No preview available yet for this stage.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="artifactModal" class="modal" onclick="onModalBackdrop(event)">
+    <div class="modal-card">
+      <div class="modal-head">
+        <span id="modalPath">Artifact preview</span>
+        <button class="modal-close" onclick="closeArtifactModal()">Close</button>
+      </div>
+      <div id="modalBody" class="modal-body">No artifact selected.</div>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script>
+    let TOKEN = "__MAPLE_PORTAL_TOKEN__";
+    const selectedUploads = new Set();
+
+    function esc(s) {
+      return String(s || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function looksLikeTerminalArtifact(txt) {
+      // box-drawing chars signal an ASCII/TUI wireframe or mockup — render raw monospace
+      return /[┌┐└┘├┤┬┴┼─│]/.test(String(txt || ""));
+    }
+
+    function renderInlineMarkdown(text) {
+      let out = esc(text || "");
+      out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+      out = out.replace(/!\[([^\]]*)\]\(([^\s)]+)\)/g, '<img alt="$1" src="$2" />');
+      out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      out = out.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+      out = out.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+      out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+      out = out.replace(/\[([^\]]+)\]\(([^\s)]+)\)/g, '<a href="$2" class="md-link" rel="noreferrer noopener">$1</a>');
+      return out;
+    }
+
+    // renderGherkin colourises Given/When/Then, Feature/Scenario, tags, tables — matching
+    // the TUI's story highlighting so .feature files read the same in the portal.
+    function renderGherkin(text) {
+      const rows = String(text || "").replace(/\r\n/g, "\n").split("\n").map((raw) => {
+        const line = esc(raw);
+        const t = raw.trim();
+        let cls = "";
+        if (/^#/.test(t)) cls = "gk-comment";
+        else if (/^@/.test(t)) cls = "gk-tag";
+        else if (/^(Feature|Background|Rule):/i.test(t)) cls = "gk-feature";
+        else if (/^(Scenario Outline|Scenario|Example|Examples):/i.test(t)) cls = "gk-scenario";
+        else if (/^Given\b/i.test(t)) cls = "gk-given";
+        else if (/^When\b/i.test(t)) cls = "gk-when";
+        else if (/^Then\b/i.test(t)) cls = "gk-then";
+        else if (/^(And|But)\b/i.test(t)) cls = "gk-and";
+        else if (/^\|/.test(t)) cls = "gk-table";
+        return cls ? `<span class="${cls}">${line}</span>` : line;
+      });
+      return `<div class="gherkin">${rows.join("\n")}</div>`;
+    }
+
+    function renderMarkdown(md) {
+      const lines = String(md || "").replace(/\r\n/g, "\n").split("\n");
+      let htmlOut = '<div class="md">';
+      let inCode = false;
+      let codeLang = "";
+      let codeLines = [];
+      let inUl = false;
+      let inOl = false;
+      let inTable = false;
+      let tableRows = [];
+
+      const flushLists = () => {
+        if (inUl) { htmlOut += "</ul>"; inUl = false; }
+        if (inOl) { htmlOut += "</ol>"; inOl = false; }
+      };
+
+      const flushTable = () => {
+        if (!inTable) return;
+        const rows = tableRows;
+        inTable = false; tableRows = [];
+        const cells = (r) => r.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+        const isSep = (r) => /-/.test(r) && /^[\s:|-]+$/.test(r.trim());
+        if (rows.length >= 2 && isSep(rows[1])) {
+          let tbl = "<table><thead><tr>" + cells(rows[0]).map((c) => `<th>${renderInlineMarkdown(c)}</th>`).join("") + "</tr></thead><tbody>";
+          for (let i = 2; i < rows.length; i++) {
+            tbl += "<tr>" + cells(rows[i]).map((c) => `<td>${renderInlineMarkdown(c)}</td>`).join("") + "</tr>";
+          }
+          htmlOut += tbl + "</tbody></table>";
+        } else {
+          for (const r of rows) htmlOut += `<p>${renderInlineMarkdown(r.trim())}</p>`;
+        }
+      };
+
+      const flushCode = () => {
+        if (!inCode) return;
+        const codeText = codeLines.join("\n");
+        if (codeLang === "mermaid") {
+          htmlOut += `<pre class="mermaid-source">${esc(codeText)}</pre>`;
+        } else if (codeLang === "gherkin" || codeLang === "feature" || codeLang === "cucumber") {
+          htmlOut += renderGherkin(codeText);
+        } else {
+          htmlOut += `<pre><code>${esc(codeText)}</code></pre>`;
+        }
+        inCode = false;
+        codeLang = "";
+        codeLines = [];
+      };
+
+      for (const rawLine of lines) {
+        const line = rawLine || "";
+        const trimmed = line.trim();
+        if (trimmed.startsWith("```")) {
+          if (inCode) {
+            flushCode();
+          } else {
+            flushLists();
+            inCode = true;
+            const fence = trimmed.match(/^```([A-Za-z0-9_-]+)?\s*$/);
+            codeLang = String((fence && fence[1]) || "").toLowerCase();
+            codeLines = [];
+          }
+          continue;
+        }
+        if (inCode) {
+          codeLines.push(line);
+          continue;
+        }
+        if (trimmed.startsWith("|")) {
+          flushLists();
+          inTable = true;
+          tableRows.push(trimmed);
+          continue;
+        }
+        if (inTable) { flushTable(); }
+        if (!trimmed) {
+          flushLists();
+          htmlOut += "<p></p>";
+          continue;
+        }
+        if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+          flushLists();
+          htmlOut += "<hr>";
+          continue;
+        }
+        if (/^#{1,4}\s+/.test(trimmed)) {
+          flushLists();
+          const level = (trimmed.match(/^#+/) || ["#"])[0].length;
+          const content = trimmed.replace(/^#{1,4}\s+/, "");
+          htmlOut += `<h${level}>${renderInlineMarkdown(content)}</h${level}>`;
+          continue;
+        }
+        if (/^>\s?/.test(trimmed)) {
+          flushLists();
+          htmlOut += `<blockquote>${renderInlineMarkdown(trimmed.replace(/^>\s?/, ""))}</blockquote>`;
+          continue;
+        }
+        if (/^[-*]\s+/.test(trimmed)) {
+          if (!inUl) { flushLists(); htmlOut += "<ul>"; inUl = true; }
+          htmlOut += `<li>${renderInlineMarkdown(trimmed.replace(/^[-*]\s+/, ""))}</li>`;
+          continue;
+        }
+        if (/^\d+\.\s+/.test(trimmed)) {
+          if (!inOl) { flushLists(); htmlOut += "<ol>"; inOl = true; }
+          htmlOut += `<li>${renderInlineMarkdown(trimmed.replace(/^\d+\.\s+/, ""))}</li>`;
+          continue;
+        }
+        flushLists();
+        htmlOut += `<p>${renderInlineMarkdown(trimmed)}</p>`;
+      }
+      flushCode();
+      flushTable();
+      flushLists();
+      htmlOut += "</div>";
+      return htmlOut;
+    }
+
+    let mermaidInitialized = false;
+
+    function ensureMermaid() {
+      if (!window.mermaid) return false;
+      if (!mermaidInitialized) {
+        window.mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: "loose",
+          theme: "default",
+        });
+        mermaidInitialized = true;
+      }
+      return true;
+    }
+
+    async function renderMermaidIn(container) {
+      if (!container) return;
+      const sources = Array.from(container.querySelectorAll("pre.mermaid-source"));
+      if (!sources.length) return;
+      if (!ensureMermaid()) return;
+      for (const pre of sources) {
+        const holder = document.createElement("div");
+        holder.className = "mermaid";
+        holder.textContent = pre.textContent || "";
+        pre.replaceWith(holder);
+      }
+      try {
+        await window.mermaid.run({ nodes: container.querySelectorAll(".mermaid") });
+      } catch (_e) {
+      }
+    }
+
+    async function api(path, options={}) {
+      const headers = options.headers || {};
+      headers["X-Maple-Token"] = TOKEN;
+      const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+      if (!headers["Content-Type"] && options.body && !isFormData) headers["Content-Type"] = "application/json";
+      let res = await fetch(path, {...options, headers});
+      let txt = await res.text();
+      let data = {};
+      try { data = JSON.parse(txt || "{}"); } catch (e) { data = { raw: txt }; }
+      if (res.status === 403 && String(data.error || "").toLowerCase() === "invalid token") {
+        const tokenRes = await fetch("/api/token");
+        if (tokenRes.ok) {
+          const tokenPayload = await tokenRes.json();
+          if (tokenPayload && tokenPayload.token) {
+            TOKEN = String(tokenPayload.token);
+            headers["X-Maple-Token"] = TOKEN;
+            res = await fetch(path, {...options, headers});
+            txt = await res.text();
+            try { data = JSON.parse(txt || "{}"); } catch (e) { data = { raw: txt }; }
+          }
+        }
+      }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      return data;
+    }
+
+    async function refreshAll() {
+      const s = await api("/api/state");
+      document.getElementById("wf").textContent = s.taffy || "-";
+      document.getElementById("stage").textContent = s.stage || "-";
+      const stEl = document.getElementById("status");
+      // A pending gate means the pipeline is effectively paused for review — reflect that even
+      // if the agent left status=RUNNING (agents don't always flip it when they pause).
+      let stKey = String(s.status || "").toUpperCase();
+      if (s.approval_pending && (stKey === "RUNNING" || stKey === "")) stKey = "PAUSED";
+      stEl.textContent = (stKey === "PAUSED" && s.approval_pending) ? "PAUSED · awaiting review" : (s.status || "-");
+      stEl.className = "value status " + ({
+        "RUNNING": "st-running", "PAUSED": "st-paused", "RATE_LIMITED": "st-rate",
+        "DONE": "st-done", "FAILED": "st-failed"
+      }[stKey] || "");
+      document.getElementById("pending").textContent = s.approval_pending || "-";
+      document.getElementById("updated").textContent = s.updated_at || "-";
+      setMapleConn(true); // a successful state fetch proves the portal (and maple) are alive
+      // The feedback box is for NEW input only — never auto-populated from server state, so
+      // a refresh/SSE tick can't re-render or wipe it. Past change requests are shown in the
+      // per-story "Change requests" history instead.
+
+      // Contextual controls: approve/reject/changes only when a gate is pending; stop only
+      // while a workflow is in-flight.
+      const gate = !!s.approval_pending;
+      const inFlight = ["RUNNING", "PAUSED", "RATE_LIMITED"].includes(stKey);
+      for (const id of ["btnApprove", "btnReject", "btnChanges"]) {
+        const b = document.getElementById(id);
+        if (b) b.disabled = !gate;
+      }
+      const stopB = document.getElementById("btnStop");
+      if (stopB) stopB.disabled = !inFlight;
+
+      // Connect the gate to WHAT is being reviewed: which story + which files. On a new gate,
+      // auto-open that story (its spec + its artifacts), and mark the exact pending files.
+      const rv = s.review || null;
+      _reviewArtifacts = (rv && rv.artifacts && rv.artifacts.length) ? new Set(rv.artifacts) : null;
+      const hint = document.getElementById("gateHint");
+      if (hint) {
+        if (gate && rv && (rv.title || (rv.artifacts || []).length)) {
+          const files = (rv.artifacts || []).length;
+          const who = rv.title ? " for <b>" + esc(rv.title) + "</b>" : "";
+          hint.innerHTML = "⏳ <b>Approval required</b> — " + esc(rv.stage || s.approval_pending) + who +
+            (files ? " · " + files + " file" + (files === 1 ? "" : "s") + " to review" : "") +
+            (rv.inferred ? ' <span style="color:var(--dim)">(inferred)</span>' : "");
+        } else {
+          hint.textContent = gate
+            ? "⏳ Approval required — stage: " + s.approval_pending
+            : (inFlight ? "Workflow running — no approval needed right now." : "No active workflow.");
+        }
+      }
+      // On a NEW gate, focus exactly what's under review — scope the artifact list to the
+      // pending files (story-named OR project-wide identity/token files), show the story spec
+      // when there is a story. Keyed by stage+story so it re-focuses each new gate but doesn't
+      // fight the user once they navigate away within the same gate.
+      const gateKey = gate && rv ? (rv.stage || s.approval_pending) + "|" + (rv.story || "") : "";
+      if (gate && rv && (rv.artifacts || []).length && gateKey !== _lastReviewStory) {
+        _lastReviewStory = gateKey;
+        focusReview(rv);
+      }
+      if (!gate) _lastReviewStory = null;
+
+      window._state = s;
+      updateStepper();
+
+      // Toast when a gate newly requires approval (or the workflow stops).
+      notifyStateChange(stKey, s.approval_pending);
+
+      const a = await api("/api/artifacts");
+      window._artifacts = a.items || [];
+      renderArtifacts();
+      const up = await api("/api/uploads");
+      renderUploads(up.items || []);
+      try {
+        const st = await api("/api/stories");
+        window._stories = st.items || [];
+        renderStories(window._stories);
+      } catch (e) { /* stories are best-effort */ }
+      try {
+        const act = await api("/api/activity");
+        renderActivity(act.items || []);
+      } catch (e) { /* activity is best-effort */ }
+    }
+
+    // ─── stories mini-list ──────────────────────────────────────────────────
+    // glyph, css class, human label, colour for the status word.
+    const STORY_STATUS = {
+      in_progress: ["◐", "gl-inprogress", "in progress"],
+      done:        ["✓", "gl-done", "done"],
+      failed:      ["✗", "gl-failed", "failed"],
+    };
+    function renderStories(items) {
+      const box = document.getElementById("stories");
+      if (!box) return;
+      box.innerHTML = "";
+      if (!items.length) {
+        box.innerHTML = '<div class="story"><span class="ti" style="color:var(--dim)">No stories yet</span></div>';
+        return;
+      }
+      for (const s of items) {
+        const [gl, cls, word] = STORY_STATUS[s.status] || ["·", "gl-idle", "not started"];
+        const row = document.createElement("div");
+        row.className = "story clickable" + (_storyFilter && _storyFilter.id === s.id ? " sel" : "");
+        row.title = "Click to review this story — its spec + design artifacts";
+        const ui = s.ui ? ' <span class="ui-mark" title="UI story — has design artifacts to review">◈</span>' : "";
+        row.innerHTML =
+          `<span class="gl ${cls}" title="status: ${word}">${gl}</span>` +
+          `<span class="ti">${esc(s.title)}${ui}</span>` +
+          `<span class="ph ${cls}">${word}</span>`;
+        row.addEventListener("click", () => selectStory(s.id, s.title));
+        box.appendChild(row);
+      }
+    }
+
+    // ─── story review (click a story → its spec + linked artifacts) ─────────
+    let _storyFilter = null;       // { id, title, paths:Set } — the story being reviewed
+    let _reviewArtifacts = null;   // Set of paths the pending gate is asking to review
+    let _feedbackDirty = false;    // true once the user types feedback (don't let a refresh wipe it)
+    let _lastReviewStory = null;   // last auto-focused gate story (don't re-trigger)
+    async function selectStory(id, title) {
+      try {
+        const d = await api("/api/story?id=" + encodeURIComponent(id));
+        // Carry the story's OWN artifact objects (incl. ADRs/tokens not in the global list)
+        // so renderArtifacts shows everything related to the story.
+        _storyFilter = {
+          id, title: d.title || title,
+          paths: new Set((d.artifacts || []).map((a) => a.path)),
+          artifacts: d.artifacts || [],
+        };
+        showStorySpec(d);
+        renderArtifacts();
+        renderStories(window._stories || []);
+        updateStepper(); // reflect THIS story's phase progress
+      } catch (e) { document.getElementById("msg").textContent = e.message; }
+    }
+    function clearStoryFilter() {
+      _storyFilter = null;
+      renderArtifacts();
+      renderStories(window._stories || []);
+      setPreview(null);
+      updateStepper(); // back to the overall pipeline
+    }
+    // focusReview scopes the portal to exactly what a pending gate is asking to review — the
+    // review's artifact paths (story-named wireframes/mockups OR project-wide identity/token
+    // files). Shows the story spec when there's a story, else previews the first pending file.
+    async function focusReview(rv) {
+      // Scope to EVERYTHING related to the story (its /api/story set) so the reviewer sees
+      // wireframes + mockups + tokens + ADRs together; the pending files (rv.artifacts) stay
+      // highlighted via _reviewArtifacts.
+      let paths = rv.artifacts || [];
+      let objs = null;
+      let specDoc = null;
+      if (rv.story) {
+        try {
+          const d = await api("/api/story?id=" + encodeURIComponent(rv.story));
+          specDoc = d;
+          objs = d.artifacts || [];
+          paths = Array.from(new Set([...(rv.artifacts || []), ...objs.map((a) => a.path)]));
+        } catch (e) { /* keep just the pending files */ }
+      }
+      _storyFilter = {
+        id: rv.story || "", title: rv.title || ("Review: " + (rv.stage || "stage")),
+        paths: new Set(paths), artifacts: objs,
+      };
+      renderArtifacts();
+      renderStories(window._stories || []);
+      updateStepper();
+      if (specDoc) { showStorySpec(specDoc); return; }
+      // No story (project-wide review): preview the first pending artifact.
+      const first = (window._artifacts || []).find((a) => _storyFilter.paths.has(a.path) && isPreviewable(a));
+      setPreview(first || null);
+    }
+    function stripFrontmatter(md) {
+      const m = String(md || "");
+      if (m.startsWith("---")) {
+        const end = m.indexOf("\n---", 3);
+        if (end >= 0) {
+          const nl = m.indexOf("\n", end + 1);
+          return nl >= 0 ? m.slice(nl + 1) : "";
+        }
+      }
+      return m;
+    }
+    async function showStorySpec(d) {
+      const pathEl = document.getElementById("previewPath");
+      const body = document.getElementById("previewBody");
+      const exp = document.getElementById("previewExpand");
+      if (exp) exp.style.display = "none";
+      _currentPreview = null;
+      pathEl.textContent = "Story spec · " + (d.title || d.id);
+      let html = "";
+      // Change-request history for this story, if any — "what was asked for" across rounds.
+      try {
+        const h = await api("/api/review-history?story=" + encodeURIComponent(d.id || ""));
+        const items = h.items || [];
+        if (items.length) {
+          html += '<div class="review-log"><div class="rl-title">Change requests · ' + items.length + '</div>';
+          for (const e of items) {
+            const verb = e.action === "rejected" ? "Rejected" : "Changes requested";
+            html += '<div class="rl-item"><span class="rl-verb ' + (e.action === "rejected" ? "rl-bad" : "rl-warn") + '">' +
+              verb + '</span> <span class="rl-stage">' + esc(e.stage || "") + '</span>' +
+              '<span class="rl-ts">' + actTime(e) + '</span>' +
+              (e.message ? '<div class="rl-msg">' + esc(e.message) + '</div>' : '') + '</div>';
+          }
+          html += '</div>';
+        }
+      } catch (e) { /* history is best-effort */ }
+      body.innerHTML = html + renderMarkdown(stripFrontmatter(d.spec || ""));
+      renderMermaidIn(body);
+      bindMarkdownLinks("previewBody");
+    }
+
+    // ─── pipeline phase stepper ─────────────────────────────────────────────
+    // The canonical MAPLE pipeline. Design sub-stages (wireframe/mockup/identity/tokens)
+    // happen in the ARCHITECT/design area, so they map there.
+    const PHASES = [
+      { key: "discover",  label: "Discover",  aliases: ["discover", "spec", "story", "req"] },
+      { key: "architect", label: "Architect", aliases: ["architect", "design", "wireframe", "mockup", "identity", "token", "visual"] },
+      { key: "plan",      label: "Plan",      aliases: ["plan"] },
+      { key: "infra",     label: "Infra",     aliases: ["infra"] },
+      { key: "implement", label: "Implement", aliases: ["implement", "code", "build"] },
+      { key: "validate",  label: "Validate",  aliases: ["validate", "qa", "test", "karpathy", "audit", "a11y"], gate: true },
+      { key: "document",  label: "Document",  aliases: ["document", "docs"] },
+      { key: "final",     label: "Final Gate",aliases: ["final", "gate", "ship", "release", "done"], gate: true },
+    ];
+    // Exact match on the canonical phase key (authoritative), else heuristic on the
+    // freeform stage string (older runs that don't write `phase`).
+    function phaseIndex(phase, stage) {
+      const p = String(phase || "").toLowerCase();
+      if (p) {
+        const exact = PHASES.findIndex((x) => x.key === p || p.includes(x.key));
+        if (exact >= 0) return exact;
+      }
+      const s = String(stage || "").toLowerCase();
+      for (let i = 0; i < PHASES.length; i++) {
+        if (PHASES[i].aliases.some((a) => s.includes(a))) return i;
+      }
+      return -1;
+    }
+    // updateStepper renders the pipeline phases. Without a selected story it shows the
+    // OVERALL pipeline (from maple.json phase). With a story selected it reflects THAT
+    // story's reality from its run-status: done → all complete, failed → failed at the
+    // current phase, in_progress → the current phase, not-started → all pending.
+    function updateStepper() {
+      const s = window._state || {};
+      const box = document.getElementById("stepper");
+      const cap = document.getElementById("stepperCaption");
+      if (!box) return;
+      let active = phaseIndex(s.phase, s.stage);
+      let complete = String(s.status || "").toUpperCase() === "DONE";
+      let failedAt = -1;
+      let caption = "Pipeline · overall";
+
+      if (_storyFilter) {
+        const story = (window._stories || []).find((x) => x.id === _storyFilter.id);
+        const st = story ? String(story.status || "") : "";
+        // Prefer the story's EXACT reported phase (run_phase) over the global one.
+        if (story && story.run_phase) { const idx = phaseIndex(story.run_phase, ""); if (idx >= 0) active = idx; }
+        caption = "Pipeline · " + esc(_storyFilter.title);
+        if (st === "done") { complete = true; caption += " — done"; }
+        else if (st === "failed") { failedAt = active >= 0 ? active : 0; complete = false; caption += " — failed"; }
+        else if (st === "in_progress") { caption += " — in progress" + (story.run_phase ? " · " + esc(story.run_phase) : ""); }
+        else { active = -1; complete = false; caption += " — not started"; }
+      }
+
+      if (cap) cap.textContent = caption;
+      box.innerHTML = "";
+      PHASES.forEach((p, i) => {
+        const el = document.createElement("div");
+        let cls = "step" + (p.gate ? " gate" : "");
+        if (i === failedAt) cls += " failed";
+        else if (complete || (active >= 0 && i < active)) cls += " done";
+        else if (i === active) cls += " active";
+        el.className = cls;
+        el.innerHTML = `<div class="sn">${String(i + 1).padStart(2, "0")}</div><div class="sl">${p.label}</div>`;
+        el.title = p.label + (p.gate ? " (human/quality gate)" : "");
+        box.appendChild(el);
+      });
+    }
+
+    // ─── activity feed ──────────────────────────────────────────────────────
+    function actIcon(ev) {
+      const e = String(ev.event || "").toLowerCase();
+      if (e.includes("approve")) return "✅";
+      if (e.includes("reject")) return "⛔";
+      if (e.includes("change")) return "✏️";
+      if (e.includes("stop")) return "🛑";
+      if (e.includes("fail") || e.includes("error")) return "❌";
+      if (e.includes("done") || e.includes("complete")) return "✓";
+      if (e.includes("start") || e.includes("begin")) return "▸";
+      if (e.includes("warn") || e.includes("block")) return "⚠️";
+      return "•";
+    }
+    function actText(ev) {
+      if (ev.message) return String(ev.message);
+      const extra = Object.keys(ev).filter((k) => !["event", "ts", "source", "message"].includes(k))
+        .map((k) => k + "=" + ev[k]).join(" ");
+      return String(ev.event || "event") + (extra ? "  " + extra : "");
+    }
+    function actTime(ev) {
+      const t = ev.ts ? new Date(ev.ts) : null;
+      if (!t || isNaN(t)) return "";
+      return t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    }
+    function renderActivity(items) {
+      const box = document.getElementById("activity");
+      if (!box) return;
+      box.innerHTML = "";
+      if (!items.length) {
+        box.innerHTML = '<div class="act"><span class="am" style="color:var(--dim)">No activity yet — agent events appear here live.</span></div>';
+        return;
+      }
+      for (const ev of items.slice(-60).reverse()) box.appendChild(actRow(ev));
+    }
+    function actRow(ev) {
+      const el = document.createElement("div");
+      el.className = "act";
+      el.innerHTML = `<span class="ai">${actIcon(ev)}</span>` +
+        `<span class="am">${esc(actText(ev))}${ev.source === "portal" ? ' <span class="src">portal</span>' : ""}</span>` +
+        `<span class="at">${actTime(ev)}</span>`;
+      return el;
+    }
+    function pushActivity(ev) {
+      const box = document.getElementById("activity");
+      if (!box) return;
+      const first = box.firstChild;
+      if (first && first.querySelector && first.querySelector(".am") &&
+          first.querySelector(".am").style.color) box.innerHTML = ""; // clear the empty state
+      box.insertBefore(actRow(ev), box.firstChild);
+      while (box.children.length > 60) box.removeChild(box.lastChild);
+    }
+
+    // ─── toast notifications ────────────────────────────────────────────────
+    function toast(kind, title, body, ms) {
+      const wrap = document.getElementById("toasts");
+      if (!wrap) return;
+      const el = document.createElement("div");
+      el.className = "toast " + kind;
+      el.innerHTML = `<div class="tt">${esc(title)}</div>` + (body ? `<div class="tb">${esc(body)}</div>` : "");
+      wrap.appendChild(el);
+      setTimeout(() => { el.classList.add("hide"); setTimeout(() => el.remove(), 300); }, ms || 6000);
+    }
+    let _lastGate = null, _lastStatus = null, _toastPrimed = false;
+    function notifyStateChange(status, pending) {
+      // Skip the very first load so we don't toast the current state on open.
+      if (!_toastPrimed) { _toastPrimed = true; _lastGate = pending || ""; _lastStatus = status; return; }
+      if ((pending || "") !== _lastGate) {
+        if (pending) toast("warn", "Approval required", "Stage: " + pending);
+        _lastGate = pending || "";
+      }
+      if (status !== _lastStatus) {
+        if (status === "DONE") toast("ok", "Workflow complete", "");
+        else if (status === "FAILED") toast("bad", "Workflow failed", "");
+        else if (status === "STOPPED") toast("info", "Workflow stopped", "You can talk to the harness directly.");
+        else if (status === "RATE_LIMITED") toast("warn", "Rate limited", "Resume from the TUI when ready.");
+        _lastStatus = status;
+      }
+    }
+
+    let _artFilter = "all";
+    let _artSort = localStorage.getItem("maple.artSort") || "updated";
+    function sortArtifacts(items) {
+      const arr = items.slice();
+      if (_artSort === "name") arr.sort((a, b) => (a.name || a.path).localeCompare(b.name || b.path));
+      else if (_artSort === "created") arr.sort((a, b) => (b.created || 0) - (a.created || 0));
+      else arr.sort((a, b) => (b.updated || 0) - (a.updated || 0));
+      return arr;
+    }
+    function onSortChange() {
+      _artSort = document.getElementById("artSort").value;
+      localStorage.setItem("maple.artSort", _artSort);
+      renderArtifacts();
+    }
+    async function stopWorkflow() {
+      if (!confirm("Stop the current workflow? The harness halts the pipeline but stays open — you can talk to it directly.")) return;
+      try {
+        await api("/api/stop", { method: "POST" });
+        document.getElementById("msg").textContent = "workflow stopped — talk to the harness directly.";
+        refreshAll();
+      } catch (e) { document.getElementById("msg").textContent = e.message; }
+    }
+    function renderArtifacts() {
+      const box = document.getElementById("artifacts");
+      const filters = document.getElementById("filters");
+      box.innerHTML = "";
+      filters.innerHTML = "";
+
+      // When a story is scoped, render ITS OWN artifact set (from /api/story — includes ADRs,
+      // tokens, story-dir files that aren't in the global design list). Otherwise show the
+      // global list. The kind filter always operates within whatever is scoped.
+      let scoped;
+      if (_storyFilter) {
+        scoped = sortArtifacts(_storyFilter.artifacts && _storyFilter.artifacts.length
+          ? _storyFilter.artifacts
+          : (window._artifacts || []).filter((i) => _storyFilter.paths.has(i.path)));
+        const chip = document.createElement("button");
+        chip.className = "active story-chip";
+        chip.innerHTML = "◈ " + esc(_storyFilter.title) + " ✕";
+        chip.title = "Clear story scope — back to all artifacts";
+        chip.addEventListener("click", clearStoryFilter);
+        filters.appendChild(chip);
+      } else {
+        scoped = sortArtifacts(window._artifacts || []);
+      }
+      if (scoped.length) {
+        const kinds = Array.from(new Set(scoped.map((i) => i.kind || "file"))).sort();
+        const mk = (key, label) => {
+          const b = document.createElement("button");
+          b.textContent = label;
+          if (_artFilter === key) b.className = "active";
+          b.addEventListener("click", () => { _artFilter = key; renderArtifacts(); });
+          filters.appendChild(b);
+        };
+        mk("all", "all · " + scoped.length);
+        for (const k of kinds) mk(k, k + " · " + scoped.filter((i) => (i.kind || "file") === k).length);
+      }
+
+      const pending = _reviewArtifacts; // Set of paths the harness flagged for review
+      const pendingCount = pending ? scoped.filter((i) => pending.has(i.path)).length : 0;
+      if (pendingCount > 0) {
+        const rc = document.createElement("button");
+        rc.className = "review-count";
+        rc.innerHTML = "⏳ " + pendingCount + " need" + (pendingCount === 1 ? "s" : "") + " review";
+        rc.title = "The harness flagged these files for approval";
+        filters.appendChild(rc);
+      }
+
+      // Pending-review files first, so the ones the harness wants reviewed are at the top.
+      let shown = scoped.filter((i) => _artFilter === "all" || (i.kind || "file") === _artFilter);
+      if (pending) {
+        shown = shown.slice().sort((a, b) => (pending.has(b.path) ? 1 : 0) - (pending.has(a.path) ? 1 : 0));
+      }
+      let selected = null;
+      if (!shown.length) {
+        box.innerHTML = '<div class="empty">' + (scoped.length
+          ? "No artifacts match this filter." + (_storyFilter ? " Clear the story chip to see all." : "")
+          : "No artifacts yet. Design artifacts (wireframes/mockups) and uploads appear here.") + "</div>";
+      } else {
+        for (const item of shown) {
+          const isPending = pending && pending.has(item.path);
+          const row = document.createElement("div");
+          row.className = "item" + (isPending ? " pending-review" : "");
+          const left = document.createElement("span");
+          if (isPending) {
+            const badge = document.createElement("span");
+            badge.className = "needs-review-badge";
+            badge.textContent = "NEEDS REVIEW";
+            left.appendChild(badge);
+          }
+          const pathBtn = document.createElement("button");
+          pathBtn.className = "path-btn";
+          pathBtn.textContent = item.path;
+          pathBtn.addEventListener("click", () => openArtifactModal(item));
+          left.appendChild(pathBtn);
+          const right = document.createElement("span");
+          const sourceChip = item.source ? ` <span class="chip">${esc(item.source)}</span>` : "";
+          right.innerHTML = `<span class="chip">${esc(item.platform || "general")}</span> <span class="chip">${esc(item.kind)}</span>${sourceChip}`;
+          const btn = document.createElement("button");
+          btn.textContent = "preview";
+          btn.addEventListener("click", () => setPreview(item));
+          right.appendChild(document.createTextNode(" "));
+          right.appendChild(btn);
+          row.appendChild(left);
+          row.appendChild(right);
+          box.appendChild(row);
+          // Prefer a pending-review artifact for the auto-preview, else the first previewable.
+          if (isPending && isPreviewable(item)) selected = selected && pending.has(selected.path) ? selected : item;
+          else if (!selected && isPreviewable(item)) selected = item;
+        }
+      }
+      // While reviewing a story, keep its spec in the preview; otherwise auto-select one.
+      if (!_storyFilter) setPreview(selected);
+    }
+
+    function isPreviewable(item) {
+      if (!item) return false;
+      if (item.kind === "image" || item.kind === "preview" || item.kind === "video") return true;
+      const p = String(item.path || "").toLowerCase();
+      return p.endsWith(".md") || p.endsWith(".tsx") || p.endsWith(".ts") || p.endsWith(".css") || p.endsWith(".json") || p.endsWith(".excalidraw") || isImagePath(p);
+    }
+
+    function isImagePath(lowerPath) {
+      const p = String(lowerPath || "");
+      return p.endsWith(".png") || p.endsWith(".jpg") || p.endsWith(".jpeg") || p.endsWith(".gif") || p.endsWith(".webp");
+    }
+
+    function renderExcalidrawSvg(rawText, maxChars) {
+      let parsed = null;
+      try { parsed = JSON.parse(String(rawText || "")); } catch (_e) { parsed = null; }
+      if (!parsed || !Array.isArray(parsed.elements)) {
+        return `<div class="code">${esc(String(rawText || "").slice(0, maxChars))}</div>`;
+      }
+      const elems = parsed.elements.filter(e => e && !e.isDeleted);
+      if (!elems.length) {
+        return '<div class="code">Empty Excalidraw scene.</div>';
+      }
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const e of elems) {
+        const x = Number(e.x || 0);
+        const y = Number(e.y || 0);
+        const w = Math.abs(Number(e.width || 0));
+        const h = Math.abs(Number(e.height || 0));
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x + w);
+        maxY = Math.max(maxY, y + h);
+      }
+      if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+        minX = 0; minY = 0; maxX = 1200; maxY = 800;
+      }
+      const pad = 24;
+      const vbX = minX - pad;
+      const vbY = minY - pad;
+      const vbW = Math.max(200, (maxX - minX) + pad * 2);
+      const vbH = Math.max(120, (maxY - minY) + pad * 2);
+      const stroke = (e) => esc(e.strokeColor || "#1f2937");
+      const fill = (e) => esc(e.backgroundColor && e.backgroundColor !== "transparent" ? e.backgroundColor : "none");
+      const sw = (e) => Math.max(1, Number(e.strokeWidth || 1));
+      const pieces = [];
+      for (const e of elems.slice(0, 600)) {
+        const t = String(e.type || "");
+        const x = Number(e.x || 0);
+        const y = Number(e.y || 0);
+        const w = Math.abs(Number(e.width || 0));
+        const h = Math.abs(Number(e.height || 0));
+        if (t === "rectangle") {
+          pieces.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" ry="6" fill="${fill(e)}" stroke="${stroke(e)}" stroke-width="${sw(e)}"></rect>`);
+          continue;
+        }
+        if (t === "ellipse") {
+          pieces.push(`<ellipse cx="${x + w / 2}" cy="${y + h / 2}" rx="${Math.max(1, w / 2)}" ry="${Math.max(1, h / 2)}" fill="${fill(e)}" stroke="${stroke(e)}" stroke-width="${sw(e)}"></ellipse>`);
+          continue;
+        }
+        if (t === "diamond") {
+          const p = `${x + w / 2},${y} ${x + w},${y + h / 2} ${x + w / 2},${y + h} ${x},${y + h / 2}`;
+          pieces.push(`<polygon points="${p}" fill="${fill(e)}" stroke="${stroke(e)}" stroke-width="${sw(e)}"></polygon>`);
+          continue;
+        }
+        if (t === "text") {
+          const fontSize = Math.max(12, Number(e.fontSize || 16));
+          const text = esc(String(e.text || ""));
+          pieces.push(`<text x="${x}" y="${y + fontSize}" font-size="${fontSize}" fill="${stroke(e)}" font-family="Inter, system-ui, sans-serif">${text}</text>`);
+          continue;
+        }
+        if (Array.isArray(e.points) && e.points.length > 0) {
+          const pts = e.points.map(p => `${x + Number(p[0] || 0)},${y + Number(p[1] || 0)}`).join(" ");
+          pieces.push(`<polyline points="${pts}" fill="none" stroke="${stroke(e)}" stroke-width="${sw(e)}" stroke-linecap="round" stroke-linejoin="round"></polyline>`);
+          continue;
+        }
+        pieces.push(`<rect x="${x}" y="${y}" width="${Math.max(12, w)}" height="${Math.max(12, h)}" fill="${fill(e)}" stroke="${stroke(e)}" stroke-width="${sw(e)}"></rect>`);
+      }
+      return `<div style="overflow:auto;max-height:78vh"><svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX} ${vbY} ${vbW} ${vbH}" style="width:100%;height:auto;background:#fff;border-radius:8px;border:1px solid #d9e2ec">${pieces.join("")}</svg></div>`;
+    }
+
+    let _currentPreview = null;
+    function expandPreview() { if (_currentPreview) openArtifactModal(_currentPreview); }
+    async function setPreview(item) {
+      _currentPreview = item;
+      const pathEl = document.getElementById("previewPath");
+      const body = document.getElementById("previewBody");
+      const exp = document.getElementById("previewExpand");
+      if (exp) exp.style.display = item ? "" : "none";
+      if (!item) {
+        pathEl.textContent = "No preview selected";
+        body.textContent = "No preview available yet for this stage.";
+        return;
+      }
+      const path = String(item.path || "");
+      const lower = path.toLowerCase();
+      const href = "/artifact/" + encodeURIComponent(path) + "?token=" + encodeURIComponent(TOKEN);
+      pathEl.textContent = path;
+      if (item.kind === "image" || isImagePath(lower)) {
+        body.innerHTML = `<img src="${href}" alt="${esc(path)}"/>`;
+        return;
+      }
+      if (item.kind === "video" || lower.endsWith(".mp4") || lower.endsWith(".webm")) {
+        body.innerHTML = `<video controls src="${href}"></video>`;
+        return;
+      }
+      if (item.kind === "preview" || lower.endsWith(".html") || lower.endsWith(".htm") || lower.endsWith(".svg")) {
+        body.innerHTML = `<iframe src="${href}" title="${esc(path)}"></iframe>`;
+        return;
+      }
+      try {
+        const res = await fetch(href);
+        const txt = await res.text();
+        if (lower.endsWith(".md")) {
+          if (looksLikeTerminalArtifact(txt)) {
+            body.innerHTML = `<div class="code">${esc(txt.slice(0, 200000))}</div>`;
+            return;
+          }
+          body.innerHTML = renderMarkdown(txt.slice(0, 200000));
+          await renderMermaidIn(body);
+          return;
+        }
+        if (lower.endsWith(".excalidraw")) {
+          body.innerHTML = renderExcalidrawSvg(txt, 120000);
+          return;
+        }
+        body.innerHTML = `<div class="code">${esc(txt.slice(0, 120000))}</div>`;
+      } catch (e) {
+        body.textContent = "Failed to load preview content.";
+      }
+    }
+
+    function resetReviewInputs() {
+      document.getElementById("feedback").value = "";
+      document.getElementById("uploadInput").value = "";
+      selectedUploads.clear();
+      _feedbackDirty = false; // sent → allow server state to seed it again next gate
+    }
+
+    function artifactPathFromHref(href) {
+      const raw = String(href || "").trim();
+      if (!raw) return "";
+      if (raw.startsWith("/artifact/")) {
+        return decodeURIComponent(raw.slice("/artifact/".length));
+      }
+      try {
+        const u = new URL(raw, window.location.origin);
+        if (u.origin !== window.location.origin) return "";
+        if (!u.pathname.startsWith("/artifact/")) return "";
+        return decodeURIComponent(u.pathname.slice("/artifact/".length));
+      } catch (_e) {
+        return "";
+      }
+    }
+
+    function openExternalInModal(url) {
+      const modal = document.getElementById("artifactModal");
+      const modalPath = document.getElementById("modalPath");
+      const modalBody = document.getElementById("modalBody");
+      const safe = String(url || "");
+      modalPath.textContent = safe || "Link preview";
+      modal.classList.add("open");
+      document.body.style.overflow = "hidden";
+      modalBody.innerHTML = `<iframe src="${esc(safe)}" title="${esc(safe)}" style="width:100%;height:78vh;border:0;border-radius:8px;background:#fff;"></iframe>`;
+    }
+
+    function bindMarkdownLinks(containerId) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.addEventListener("click", async (event) => {
+        const el = event.target;
+        const link = el && el.closest ? el.closest("a.md-link") : null;
+        if (!link) return;
+        event.preventDefault();
+        const href = String(link.getAttribute("href") || "");
+        const artifactPath = artifactPathFromHref(href);
+        if (artifactPath) {
+          await openArtifactModal({ path: artifactPath, kind: "file" });
+          return;
+        }
+        openExternalInModal(href);
+      });
+    }
+
+    async function openArtifactModal(item) {
+      const modal = document.getElementById("artifactModal");
+      const modalPath = document.getElementById("modalPath");
+      const modalBody = document.getElementById("modalBody");
+      const path = String(item?.path || "");
+      const lower = path.toLowerCase();
+      const href = "/artifact/" + encodeURIComponent(path) + "?token=" + encodeURIComponent(TOKEN);
+      modalPath.textContent = path || "Artifact preview";
+      modal.classList.add("open");
+      document.body.style.overflow = "hidden";
+
+      if (!item) {
+        modalBody.textContent = "No artifact selected.";
+        return;
+      }
+      if (item.kind === "image" || isImagePath(lower)) {
+        modalBody.innerHTML = `<img src="${href}" alt="${esc(path)}" style="max-width:100%;border-radius:8px;"/>`;
+        return;
+      }
+      if (item.kind === "video" || lower.endsWith(".mp4") || lower.endsWith(".webm")) {
+        modalBody.innerHTML = `<video controls src="${href}" style="width:100%;max-height:80vh;border-radius:8px;background:#000;"></video>`;
+        return;
+      }
+      if (item.kind === "preview" || lower.endsWith(".html") || lower.endsWith(".htm") || lower.endsWith(".svg")) {
+        modalBody.innerHTML = `<iframe src="${href}" title="${esc(path)}" style="width:100%;height:78vh;border:0;border-radius:8px;background:#fff;"></iframe>`;
+        return;
+      }
+      try {
+        const res = await fetch(href);
+        const txt = await res.text();
+        if (lower.endsWith(".md")) {
+          if (looksLikeTerminalArtifact(txt)) {
+            modalBody.innerHTML = `<div class="code">${esc(txt.slice(0, 240000))}</div>`;
+            return;
+          }
+          modalBody.innerHTML = renderMarkdown(txt.slice(0, 240000));
+          await renderMermaidIn(modalBody);
+          return;
+        }
+        if (lower.endsWith(".excalidraw")) {
+          modalBody.innerHTML = renderExcalidrawSvg(txt, 180000);
+          return;
+        }
+        modalBody.innerHTML = `<div class="code">${esc(txt.slice(0, 180000))}</div>`;
+      } catch (e) {
+        modalBody.textContent = "Failed to load artifact content.";
+      }
+    }
+
+    function renderUploads(items) {
+      const box = document.getElementById("uploads");
+      box.innerHTML = "";
+      if (!items || items.length === 0) {
+        box.innerHTML = '<div class="upload-item"><span class="sub">No uploaded review files yet.</span></div>';
+        return;
+      }
+      for (const item of items) {
+        const row = document.createElement("div");
+        row.className = "upload-item";
+        const left = document.createElement("div");
+        left.className = "upload-left";
+        const chk = document.createElement("input");
+        chk.type = "checkbox";
+        chk.checked = selectedUploads.has(item.path);
+        chk.addEventListener("change", () => {
+          if (chk.checked) selectedUploads.add(item.path);
+          else selectedUploads.delete(item.path);
+        });
+        const lbl = document.createElement("label");
+        lbl.textContent = item.path;
+        left.appendChild(chk);
+        left.appendChild(lbl);
+        const right = document.createElement("div");
+        right.className = "upload-actions";
+        right.innerHTML = `<span class="chip">${esc(item.platform || "general")}</span> `;
+        const pbtn = document.createElement("button");
+        pbtn.textContent = "preview";
+        pbtn.addEventListener("click", () => openArtifactModal({ path: item.path, kind: "file" }));
+        right.appendChild(pbtn);
+        row.appendChild(left);
+        row.appendChild(right);
+        box.appendChild(row);
+      }
+    }
+
+    function closeArtifactModal() {
+      const modal = document.getElementById("artifactModal");
+      modal.classList.remove("open");
+      document.body.style.overflow = "";
+    }
+
+    function onModalBackdrop(event) {
+      if (event.target && event.target.id === "artifactModal") {
+        closeArtifactModal();
+      }
+    }
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeArtifactModal();
+      }
+    });
+
+    async function approveStage() {
+      try {
+        const r = await api("/api/approve", { method: "POST" });
+        const n = (r && r.signaled_panes) || 0;
+        const note = n > 0
+          ? `nudged ${n} agent pane(s)`
+          : "no live agent pane — it resumes on its next poll, or paste 'continue' in its terminal";
+        document.getElementById("msg").textContent = `Approved: ${r.stage || "stage"} — ${note}`;
+        resetReviewInputs();
+        await refreshAll();
+      } catch (e) {
+        document.getElementById("msg").textContent = e.message;
+      }
+    }
+
+    async function uploadSelectedInputFiles() {
+      const input = document.getElementById("uploadInput");
+      const files = input.files ? Array.from(input.files) : [];
+      if (!files.length) return [];
+      const fd = new FormData();
+      for (const f of files) fd.append("files", f, f.name);
+      const r = await api("/api/upload", { method: "POST", body: fd, headers: {} });
+      const uploaded = Array.isArray(r.items) ? r.items : [];
+      for (const it of uploaded) selectedUploads.add(it.path);
+      input.value = "";
+      return uploaded.map(x => x.path);
+    }
+
+    async function uploadFiles() {
+      try {
+        const uploaded = await uploadSelectedInputFiles();
+        if (!uploaded.length) {
+          document.getElementById("msg").textContent = "Choose at least one file to upload.";
+          return;
+        }
+        document.getElementById("msg").textContent = `Uploaded ${uploaded.length} file(s).`;
+        await refreshAll();
+      } catch (e) {
+        document.getElementById("msg").textContent = e.message;
+      }
+    }
+
+    async function rejectStage() {
+      const message = document.getElementById("feedback").value.trim();
+      if (!message) {
+        document.getElementById("msg").textContent = "Add feedback before rejecting.";
+        return;
+      }
+      try {
+        const uploaded = await uploadSelectedInputFiles();
+        const attachments = Array.from(new Set([...(Array.from(selectedUploads)), ...uploaded]));
+        const r = await api("/api/reject", {
+          method: "POST",
+          body: JSON.stringify({ message, attachments })
+        });
+        document.getElementById("msg").textContent = `Rejected: ${r.stage || "stage"}`;
+        resetReviewInputs();
+        await refreshAll();
+      } catch (e) {
+        document.getElementById("msg").textContent = e.message;
+      }
+    }
+
+    async function requestChanges() {
+      const message = document.getElementById("feedback").value.trim();
+      if (!message) {
+        document.getElementById("msg").textContent = "Add feedback before requesting changes.";
+        return;
+      }
+      try {
+        const uploaded = await uploadSelectedInputFiles();
+        const attachments = Array.from(new Set([...(Array.from(selectedUploads)), ...uploaded]));
+        const r = await api("/api/request-changes", {
+          method: "POST",
+          body: JSON.stringify({ message, attachments })
+        });
+        document.getElementById("msg").textContent = `Changes requested for: ${r.stage || "stage"}`;
+        resetReviewInputs();
+        await refreshAll();
+      } catch (e) {
+        document.getElementById("msg").textContent = e.message;
+      }
+    }
+
+    // The portal runs inside maple (in-process), so "maple connected" == "the portal is
+    // reachable". We prove that by real signals — the SSE stream being open and /health
+    // responding — not a hardcoded flag. If maple quits, the server dies, both fail, and
+    // the badge flips to offline.
+    let _connected = null;
+    function setMapleConn(connected) {
+      const el = document.getElementById("maple-conn");
+      if (!el) return;
+      const c = !!connected;
+      if (c === _connected) return;
+      _connected = c;
+      el.className = "conn " + (c ? "conn-on" : "conn-off");
+      el.textContent = c ? "● maple: connected" : "● maple: offline";
+      if (!c) document.title = "⚠ offline · MAPLE Design Review";
+      else document.title = "MAPLE Design Review";
+    }
+
+    // Live push over SSE. The stream opening = reachable; an error (server gone / dropped)
+    // = offline. EventSource auto-reconnects, so recovery flips it back on the next open.
+    function subscribeEvents() {
+      let es;
+      try { es = new EventSource("/api/events"); } catch (e) { setMapleConn(false); return; }
+      es.onopen = () => setMapleConn(true);
+      es.onmessage = (m) => {
+        setMapleConn(true);
+        let ev; try { ev = JSON.parse(m.data); } catch (e) { return; }
+        if (ev.event === "hello") return;
+        if (ev.event === "activity" && ev.payload) {
+          // A live agent/portal event: prepend to the feed and toast it (no full refresh).
+          pushActivity(ev.payload);
+          const p = ev.payload, e = String(p.event || "").toLowerCase();
+          if (p.source !== "portal") {
+            const kind = e.includes("fail") || e.includes("error") ? "bad"
+              : e.includes("warn") || e.includes("block") ? "warn"
+              : e.includes("done") || e.includes("complete") ? "ok" : "info";
+            toast(kind, actText(p), "");
+          }
+          return;
+        }
+        refreshAll().catch(() => {});  // change events → pull fresh state
+      };
+      es.onerror = () => setMapleConn(false); // server unreachable → offline (auto-reconnects)
+    }
+
+    // Backup reachability heartbeat: ping /health on a short interval so the badge flips
+    // quickly even if the SSE error is slow to fire.
+    async function pingHealth() {
+      try {
+        const r = await fetch("/health", { cache: "no-store" });
+        setMapleConn(r.ok);
+      } catch (e) { setMapleConn(false); }
+    }
+
+    function hideSplash() {
+      const s = document.getElementById("splash");
+      if (s) s.classList.add("hide");
+    }
+    // Keep the splash up briefly for charm, then reveal the app (also hides once the
+    // first state load resolves, whichever is sooner).
+    const _splashTimer = setTimeout(hideSplash, 1200);
+    refreshAll().then(() => { clearTimeout(_splashTimer); setTimeout(hideSplash, 400); }).catch(err => {
+      document.getElementById("msg").textContent = err.message;
+      setMapleConn(false); // first load failed → maple/portal unreachable
+      hideSplash();
+    });
+    bindMarkdownLinks("previewBody");
+    bindMarkdownLinks("modalBody");
+    { const sel = document.getElementById("artSort"); if (sel) sel.value = _artSort; }
+    // Mark the feedback box dirty as soon as the user types, so no refresh wipes it.
+    { const fb = document.getElementById("feedback"); if (fb) fb.addEventListener("input", () => { _feedbackDirty = fb.value.trim() !== ""; }); }
+    subscribeEvents();
+    // Updates are event-driven (SSE pushes on real change); this is only a slow safety net.
+    // A failed poll means the portal (and maple) went away → flip the badge to offline.
+    setInterval(() => refreshAll().catch(() => setMapleConn(false)), 20000);
+    // Fast reachability heartbeat so the badge flips within a few seconds of maple quitting.
+    pingHealth();
+    setInterval(pingHealth, 4000);
+
+    // TUI-style keyboard shortcuts (ignored while typing in a field or a modal is open).
+    document.addEventListener("keydown", (e) => {
+      const tag = (document.activeElement && document.activeElement.tagName) || "";
+      if (tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const modal = document.getElementById("artifactModal");
+      if (modal && modal.classList.contains("open")) {
+        if (e.key === "Escape") { e.preventDefault(); closeArtifactModal(); }
+        return;
+      }
+      const k = e.key.toLowerCase();
+      const map = { a: approveStage, r: rejectStage, c: requestChanges, g: refreshAll, ".": refreshAll };
+      if (k === "u") { e.preventDefault(); document.getElementById("uploadInput").click(); return; }
+      if (map[k]) { e.preventDefault(); map[k](); }
+    });
+  </script>
+</body>
+</html>

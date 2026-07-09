@@ -1,0 +1,28 @@
+{
+  "name": "gruvbox",
+  "default_mode": "dark",
+  "modes": {
+    "dark": {
+      "structure": {
+        "base":        { "fg": "#ebdbb2" },
+        "border":      { "fg": "#928374" },
+        "border_focus":{ "fg": "#83a598", "attrs": ["bold"] },
+        "title":       { "fg": "#83a598", "attrs": ["bold"] },
+        "subtitle":    { "fg": "#d3869b" },
+        "faint":       { "fg": "#928374", "attrs": ["faint"] },
+        "accent":      { "fg": "#d3869b" },
+        "leaf":        { "fg": "#83a598", "glyph": "🍁" },
+        "selected":    { "fg": "#282828", "bg": "#83a598", "attrs": ["bold"] },
+        "scrollhint":  { "fg": "#928374", "attrs": ["faint"] }
+      },
+      "states": {
+        "running":      { "fg": "#fabd2f", "glyph": "◐", "label": "running",  "attrs": ["bold"] },
+        "paused":       { "fg": "#fabd2f", "glyph": "‖", "label": "paused" },
+        "rate_limited": { "fg": "#fb4934", "glyph": "⏳", "label": "rate-limited" },
+        "done":         { "fg": "#b8bb26", "glyph": "✓", "label": "done" },
+        "blocked":      { "fg": "#fb4934", "glyph": "✗", "label": "blocked", "attrs": ["bold"] },
+        "pending":      { "fg": "#928374", "glyph": "·", "label": "pending", "attrs": ["faint"] }
+      }
+    }
+  }
+}

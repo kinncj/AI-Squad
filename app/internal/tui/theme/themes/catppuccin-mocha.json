@@ -1,0 +1,28 @@
+{
+  "name": "catppuccin-mocha",
+  "default_mode": "dark",
+  "modes": {
+    "dark": {
+      "structure": {
+        "base":        { "fg": "#cdd6f4" },
+        "border":      { "fg": "#585b70" },
+        "border_focus":{ "fg": "#89b4fa", "attrs": ["bold"] },
+        "title":       { "fg": "#89b4fa", "attrs": ["bold"] },
+        "subtitle":    { "fg": "#cba6f7" },
+        "faint":       { "fg": "#585b70", "attrs": ["faint"] },
+        "accent":      { "fg": "#cba6f7" },
+        "leaf":        { "fg": "#89b4fa", "glyph": "🍁" },
+        "selected":    { "fg": "#1e1e2e", "bg": "#89b4fa", "attrs": ["bold"] },
+        "scrollhint":  { "fg": "#585b70", "attrs": ["faint"] }
+      },
+      "states": {
+        "running":      { "fg": "#fab387", "glyph": "◐", "label": "running",  "attrs": ["bold"] },
+        "paused":       { "fg": "#fab387", "glyph": "‖", "label": "paused" },
+        "rate_limited": { "fg": "#f38ba8", "glyph": "⏳", "label": "rate-limited" },
+        "done":         { "fg": "#a6e3a1", "glyph": "✓", "label": "done" },
+        "blocked":      { "fg": "#f38ba8", "glyph": "✗", "label": "blocked", "attrs": ["bold"] },
+        "pending":      { "fg": "#585b70", "glyph": "·", "label": "pending", "attrs": ["faint"] }
+      }
+    }
+  }
+}

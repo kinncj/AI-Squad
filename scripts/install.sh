@@ -5,6 +5,7 @@ REPO="kinncj/MAPLE"
 RTK_REPO="rtk-ai/rtk"
 INSTALL_DIR="${MAPLE_INSTALL_DIR:-$HOME/.tools/maple/bin}"
 SKIP_RTK="${SKIP_RTK:-}"
+SKIP_HERDR="${SKIP_HERDR:-}"
 
 # ── Parse arguments ────────────────────────────────────────────────────────────
 VERSION="${MAPLE_VERSION:-}"
@@ -26,9 +27,13 @@ while [[ $# -gt 0 ]]; do
             SKIP_RTK=1
             shift
             ;;
+        --skip-herdr)
+            SKIP_HERDR=1
+            shift
+            ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: install.sh [--version vX.Y.Z] [--install-dir PATH] [--skip-rtk]"
+            echo "Usage: install.sh [--version vX.Y.Z] [--install-dir PATH] [--skip-rtk] [--skip-herdr]"
             exit 1
             ;;
     esac
@@ -159,6 +164,43 @@ _rtk_install_from_release() {
 
 if [ -z "$SKIP_RTK" ]; then
     install_rtk
+    echo ""
+fi
+
+# ── Install herdr (agent-native terminal multiplexer) ──────────────────────────
+# maple prefers herdr as its split-pane backend when present (else tmux): harnesses
+# open in a herdr side pane and approvals nudge them over herdr's socket API.
+# Skip with: --skip-herdr or SKIP_HERDR=1
+install_herdr() {
+    if command -v herdr >/dev/null 2>&1; then
+        echo "✓ herdr already installed ($(herdr --version 2>/dev/null || echo unknown))"
+        return 0
+    fi
+
+    case "$OS" in
+        linux|darwin) ;;
+        *)
+            echo "~ herdr: unsupported OS — install manually: https://herdr.dev"
+            return 0
+            ;;
+    esac
+
+    echo "Installing herdr terminal multiplexer…"
+    if curl -fsSL https://herdr.dev/install.sh | sh; then
+        if command -v herdr >/dev/null 2>&1; then
+            echo "✓ herdr installed"
+            return 0
+        fi
+        echo "~ herdr installed but not on PATH — start a new shell, or see https://herdr.dev"
+        return 0
+    fi
+
+    echo "~ herdr: install failed — install manually: curl -fsSL https://herdr.dev/install.sh | sh"
+    return 0
+}
+
+if [ -z "$SKIP_HERDR" ]; then
+    install_herdr
     echo ""
 fi
 

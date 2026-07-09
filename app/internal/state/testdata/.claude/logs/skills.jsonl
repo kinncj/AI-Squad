@@ -1,0 +1,3 @@
+{"ts":"12:00","agent":"qa","skill":"tdd","op":"run"}
+{"ts":"12:01","agent":"dev","error":"boom"}
+plain non-json line

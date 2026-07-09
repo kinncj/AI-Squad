@@ -1,6 +1,11 @@
 name: Release
 
 on:
+  # Pushing a version tag (e.g. v5.0.0) builds and publishes a GitHub Release.
+  push:
+    tags:
+      - 'v*'
+  # Still supports the manual "publish a release" flow.
   release:
     types: [published]
 
@@ -40,23 +45,18 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - name: Sync template for embedding
-        run: |
-          rm -rf tui/template
-          cp -r template tui/template
-
       - name: Build
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
         run: |
           mkdir -p dist
           EXT=""
           [ "${{ matrix.goos }}" = "windows" ] && EXT=".exe"
-          go build \
-            -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
-            -o "dist/maple${EXT}" ./tui
+          make build \
+            OUT="dist/maple${EXT}" \
+            VERSION="${{ github.ref_name }}" \
+            GOOS="${{ matrix.goos }}" \
+            GOARCH="${{ matrix.goarch }}"
 
       - name: Archive
         run: |
@@ -96,6 +96,8 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          # On a tag push this creates the release and attaches every platform archive.
+          generate_release_notes: true
           files: |
             dist/maple-darwin-amd64.tar.gz
             dist/maple-darwin-arm64.tar.gz

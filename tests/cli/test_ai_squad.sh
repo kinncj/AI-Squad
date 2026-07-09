@@ -489,9 +489,9 @@ for f in go.mod go.sum; do
   fi
 done
 
-# Go source files now live in tui/
-for f in main.go detect.go init.go req.go gh_cmds.go themes.go; do
-  if [[ -f "tui/$f" ]]; then
+# Go source now lives under app/ (BusinessRepo rebuild)
+for f in app/cmd/maple/main.go app/internal/req/convert.go app/internal/gh/gh.go app/internal/scaffold/scaffold.go; do
+  if [[ -f "$f" ]]; then
     ok "$f present"
   else
     fail "$f missing"
@@ -505,33 +505,24 @@ else
   fail "go.mod missing bubbletea"
 fi
 
-# All 5 themes present
-for theme in tokyoNight catppuccinMocha gruvbox nord everforest; do
-  if grep -q "$theme" tui/themes.go; then
+# All 5 JSON themes present
+for theme in tokyo-night catppuccin-mocha gruvbox nord everforest; do
+  if [[ -f "app/internal/tui/theme/themes/$theme.json" ]]; then
     ok "theme present: $theme"
   else
     fail "theme missing: $theme"
   fi
 done
 
-# maple binary commands documented in README
-for cmd in "maple init" "maple req" "maple labels" "maple project"; do
-  if grep -q "$cmd" tui/README.md; then
-    ok "tui README documents: $cmd"
-  else
-    fail "tui README missing: $cmd"
-  fi
-done
-
 # maple binary builds and responds to --help
 MAPLE_BIN="$REPO_ROOT/maple"
 _build_maple() {
-  rm -f "$REPO_ROOT/tui/template"
-  cp -rL "$REPO_ROOT/template" "$REPO_ROOT/tui/template"
-  go build -o "$MAPLE_BIN" "$REPO_ROOT/tui" 2>/dev/null
+  rm -f "$REPO_ROOT/app/cmd/maple/template"
+  cp -rL "$REPO_ROOT/template" "$REPO_ROOT/app/cmd/maple/template"
+  go build -o "$MAPLE_BIN" "$REPO_ROOT/app/cmd/maple" 2>/dev/null
   local rc=$?
-  rm -rf "$REPO_ROOT/tui/template"
-  ln -s ../template "$REPO_ROOT/tui/template" 2>/dev/null || true
+  rm -rf "$REPO_ROOT/app/cmd/maple/template"
+  ln -s ../../../template "$REPO_ROOT/app/cmd/maple/template" 2>/dev/null || true
   return $rc
 }
 if [[ -f "$MAPLE_BIN" ]] || _build_maple; then

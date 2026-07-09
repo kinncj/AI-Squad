@@ -26,8 +26,8 @@ jobs:
 
       - name: Build maple
         run: |
-          rm -rf tui/template && cp -rL template tui/template
-          go build -o maple ./tui
+          rm -rf app/cmd/maple/template && cp -rL template app/cmd/maple/template
+          go build -o maple ./app/cmd/maple
 
 
       - name: Validate agent frontmatter (structural)

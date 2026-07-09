@@ -36,16 +36,15 @@ fi
 # ─── skills.sh output parsing (offline — uses local parseSkillsOutput logic) ──
 printf "\n\033[1m  Output parsing (Go unit tests)\033[0m\n\n"
 
-# Go unit tests require the build dance (tui/template symlink → real copy).
-# Run them only when that dance has already been done; otherwise skip.
-if [ -d "$REPO_ROOT/tui/template" ] && [ ! -L "$REPO_ROOT/tui/template" ]; then
-  if (cd "$REPO_ROOT/tui" && go test -run "TestParse|TestStrip" -count=1 -timeout 30s ./... &>/dev/null 2>&1); then
-    ok "Go unit tests: parseSkillsOutput, parseInstalledJSON, parseInstalledText, stripANSI"
+# Pure parsing unit tests live under app/internal (no embed dance needed here).
+if command -v go &>/dev/null && [ -d "$REPO_ROOT/app/internal/req" ]; then
+  if (cd "$REPO_ROOT" && go test -run "TestParse" -count=1 -timeout 30s ./app/internal/req/... &>/dev/null 2>&1); then
+    ok "Go unit tests: ParseStories + gherkin parsing"
   else
-    fail "Go unit tests failed — run 'cd tui && go test -run TestParse -v' for details"
+    fail "Go unit tests failed — run 'go test -run TestParse ./app/internal/req/...' for details"
   fi
 else
-  skip "Go unit tests: build dance required (run: make build-tui && cd tui && go test -run TestParse -v)"
+  skip "Go unit tests: go toolchain or app/internal/req not present"
 fi
 
 # ─── network tests ────────────────────────────────────────────────────────────

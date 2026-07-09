@@ -29,7 +29,7 @@ var/*
 
 # Swarm v2 session data (worktrees, status files, result.md)
 .swarm/squad
-maple
+/maple
 .maple.json
 
 # Dogfood runtime state — generated at runtime, holds maple.json + portal token, never commit
@@ -39,8 +39,17 @@ maple
 /.cursor/state/
 __pycache__/
 
-# Build artifact — tui/template is a copy of ./template for go:embed, never commit it
-tui/template/
+# Cross-compiled release binaries
+dist/
 # Stale leftover from running maple init inside this repo's template/ dir
 template/template/
 .playwright-mcp/
+bin/
+app/cmd/maple/template/
+
+# Go build artifacts (canonical binary + local dev + cross-compile)
+/maple
+/bin/
+/dist/
+# The app/cmd/maple/template symlink is swapped for a real copy at build time
+/app/cmd/maple/template/

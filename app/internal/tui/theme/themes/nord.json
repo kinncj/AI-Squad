@@ -1,0 +1,28 @@
+{
+  "name": "nord",
+  "default_mode": "dark",
+  "modes": {
+    "dark": {
+      "structure": {
+        "base":        { "fg": "#eceff4" },
+        "border":      { "fg": "#4c566a" },
+        "border_focus":{ "fg": "#88c0d0", "attrs": ["bold"] },
+        "title":       { "fg": "#88c0d0", "attrs": ["bold"] },
+        "subtitle":    { "fg": "#b48ead" },
+        "faint":       { "fg": "#4c566a", "attrs": ["faint"] },
+        "accent":      { "fg": "#b48ead" },
+        "leaf":        { "fg": "#88c0d0", "glyph": "🍁" },
+        "selected":    { "fg": "#2e3440", "bg": "#88c0d0", "attrs": ["bold"] },
+        "scrollhint":  { "fg": "#4c566a", "attrs": ["faint"] }
+      },
+      "states": {
+        "running":      { "fg": "#ebcb8b", "glyph": "◐", "label": "running",  "attrs": ["bold"] },
+        "paused":       { "fg": "#ebcb8b", "glyph": "‖", "label": "paused" },
+        "rate_limited": { "fg": "#bf616a", "glyph": "⏳", "label": "rate-limited" },
+        "done":         { "fg": "#a3be8c", "glyph": "✓", "label": "done" },
+        "blocked":      { "fg": "#bf616a", "glyph": "✗", "label": "blocked", "attrs": ["bold"] },
+        "pending":      { "fg": "#4c566a", "glyph": "·", "label": "pending", "attrs": ["faint"] }
+      }
+    }
+  }
+}

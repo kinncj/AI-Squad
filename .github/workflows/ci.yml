@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feature/**']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -37,23 +37,19 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Build
-        run: |
-          rm -f tui/template && cp -rL template tui/template
-          go build -o maple ./tui
+        run: make build-tui
 
       - name: Verify binary runs
         run: ./maple --version
 
       - name: Cross-compile all platforms
         run: |
-          mkdir -p dist
-          GOOS=darwin  GOARCH=amd64  go build -o dist/maple-darwin-amd64  ./tui
-          GOOS=darwin  GOARCH=arm64  go build -o dist/maple-darwin-arm64  ./tui
-          GOOS=linux   GOARCH=amd64  go build -o dist/maple-linux-amd64   ./tui
-          GOOS=linux   GOARCH=arm64  go build -o dist/maple-linux-arm64   ./tui
-          GOOS=windows GOARCH=amd64  go build -o dist/maple-windows-amd64.exe ./tui
+          make build-tui-all
           echo "Cross-compile OK:"
           ls -lh dist/
+
+      - name: Unit tests
+        run: make test-app
 
   # ─── CLI tests ─────────────────────────────────────────────────────────────
   test-cli:
@@ -69,9 +65,7 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Build maple
-        run: |
-          rm -f tui/template && cp -rL template tui/template
-          go build -o maple ./tui
+        run: make build-tui
 
       - name: Configure git identity
         run: |
@@ -87,7 +81,8 @@ jobs:
       - name: maple init (non-interactive)
         run: |
           mkdir /tmp/test-init
-          MAPLE_TEMPLATE="$GITHUB_WORKSPACE/tui/template" ./maple init /tmp/test-init 2>&1 || true
+          cp "$GITHUB_WORKSPACE/maple" /tmp/test-init/maple
+          cd /tmp/test-init && ./maple init 2>&1 || true
           # Verify at minimum the binary runs without crashing
           ./maple --version
 

@@ -119,9 +119,7 @@ if echo "$COMMAND" | grep -q 'make test-all'; then
     fi
 fi
 
-# ── Design review portal auto-start at human approval gates ───────────────────
-if [ -f ".claude/state/approval-pending.txt" ] && [ -f "scripts/design-review-portal.sh" ]; then
-    bash scripts/design-review-portal.sh start >/dev/null 2>&1 || true
-fi
+# The design review portal is served by the maple binary (ADR-0002), started with the
+# dashboard — no script to launch from here.
 
 exit 0
