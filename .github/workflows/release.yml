@@ -2,12 +2,17 @@ name: Release
 
 on:
   # Pushing a version tag (e.g. v5.0.0) builds and publishes a GitHub Release.
+  # `gh release create <tag>` pushes the tag, so this one trigger covers it. Do NOT
+  # also listen on `release: published` — gh release create fires both, and two runs
+  # racing softprops' delete-then-upload wipes each other's binaries.
   push:
     tags:
       - 'v*'
-  # Still supports the manual "publish a release" flow.
-  release:
-    types: [published]
+
+# One release run per tag — never two racing on the same assets.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
