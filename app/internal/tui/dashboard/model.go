@@ -1474,7 +1474,9 @@ func (m *Model) openImplPicker(hs []harnessOption) {
 // targetStoryPath returns the Story.md path to act on: the open story detail, else the
 // Stories-pane selection, else "".
 func (m Model) targetStoryPath() string {
-	if m.detailKind == "story" && m.storyPath != "" {
+	// Only use the story detail's path while that overlay is actually OPEN — otherwise a
+	// stale storyPath from a previously-closed detail would win over the hovered story.
+	if m.detail != nil && m.detailKind == "story" && m.storyPath != "" {
 		return m.storyPath
 	}
 	if m.group.FocusIndex() == paneStories {

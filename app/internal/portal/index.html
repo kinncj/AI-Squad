@@ -580,17 +580,9 @@
       document.getElementById("pending").textContent = s.approval_pending || "-";
       document.getElementById("updated").textContent = s.updated_at || "-";
       setMapleConn(true); // a successful state fetch proves the portal (and maple) are alive
-      // Only seed the feedback box from server state when the user isn't editing it and it's
-      // empty — otherwise the 4s poll / SSE refresh would wipe what you're typing.
-      const fb = document.getElementById("feedback");
-      if (s.approval_pending && s.feedback && s.feedback.message &&
-          document.activeElement !== fb && fb.value.trim() === "" && !_feedbackDirty) {
-        fb.value = s.feedback.message;
-      }
-      if (s.approval_pending && s.feedback && Array.isArray(s.feedback.attachments)) {
-        selectedUploads.clear();
-        for (const p of s.feedback.attachments) selectedUploads.add(String(p));
-      }
+      // The feedback box is for NEW input only — never auto-populated from server state, so
+      // a refresh/SSE tick can't re-render or wipe it. Past change requests are shown in the
+      // per-story "Change requests" history instead.
 
       // Contextual controls: approve/reject/changes only when a gate is pending; stop only
       // while a workflow is in-flight.

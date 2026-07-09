@@ -979,6 +979,56 @@ func (s storyPathStore) Stories() []state.Story {
 	return []state.Story{{ID: "auth-reset-0001", Path: "docs/stories/auth-reset-0001/Story.md"}}
 }
 
+type multiStoryStore struct{ fakeStore }
+
+func (multiStoryStore) Stories() []state.Story {
+	return []state.Story{
+		{ID: "a-0001", Path: "docs/stories/a-0001/Story.md"},
+		{ID: "b-0002", Path: "docs/stories/b-0002/Story.md"},
+		{ID: "c-0003", Path: "docs/stories/c-0003/Story.md"},
+	}
+}
+
+// TestImplementUsesHoverNotStaleDetail: after opening then CLOSING a story detail, [i] must
+// target the currently-hovered story — not the last-opened one (the stale-detail bug).
+func TestImplementUsesHoverNotStaleDetail(t *testing.T) {
+	cwd, _ := os.Getwd()
+	os.Chdir(t.TempDir())
+	defer os.Chdir(cwd)
+
+	m := mustNew(t, multiStoryStore{})
+	m.lookPath = func(bin string) (string, error) {
+		if bin == "claude" {
+			return "/usr/bin/claude", nil
+		}
+		return "", exec.ErrNotFound
+	}
+	var launched []string
+	m.execFn = func(args []string) tea.Cmd { launched = args; return nil }
+	m = sized(t, m)
+
+	// Open the FIRST story's detail, then close it (esc).
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = nm.(Model)
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = nm.(Model)
+	if m.detail != nil {
+		t.Fatal("esc should close the story detail")
+	}
+	// Hover the THIRD story (down twice) and implement.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = nm.(Model)
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("i")})
+	joined := strings.Join(launched, " ")
+	if !strings.Contains(joined, "c-0003") {
+		t.Errorf("[i] should implement the hovered story c-0003, got %v", launched)
+	}
+	if strings.Contains(joined, "a-0001") {
+		t.Errorf("[i] must not target the stale (closed) detail story a-0001, got %v", launched)
+	}
+}
+
 func TestGateClearNudgesHarness(t *testing.T) {
 	// Swap the nudge so we can observe it without touching a real multiplexer.
 	orig := notifyContinue
