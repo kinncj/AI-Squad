@@ -14,9 +14,9 @@
 > Based on: [Building MAPLE: Orchestrated Multi-Agent Systems with Claude Code and OpenCode](./ARTICLE.md)
 
 <div align="center">
-  <img src="assets/screenshots/dashboard.png" alt="The maple dashboard — stories with per-phase status, sessions, PRs, and BDD tests, harnesses launching in side panes" width="880">
+  <img src="assets/screenshots/main_maple_screen.png" alt="The maple dashboard — stories, sessions, PRs, and BDD tests on the left; a copilot harness working in a side pane on the right" width="920">
   <br/>
-  <sub>The <code>maple</code> dashboard — live story/phase status, sessions, PRs, and BDD tests in one view</sub>
+  <sub>The <code>maple</code> dashboard — stories, sessions, PRs, and BDD tests beside a live harness pane</sub>
 </div>
 
 ---
@@ -86,6 +86,66 @@ Inside the dashboard press `n` to capture requirements and generate a Gherkin st
 
 ---
 
+## What a run looks like
+
+A real end-to-end run on a small React todo app — from capturing requirements to a
+human-gated design review — all driven from the `maple` dashboard while the harness works in a
+side pane.
+
+**1. Capture requirements and pick a harness** — `maple req` turns a description into approved
+Gherkin stories, then hands them to Claude Code, Copilot, OpenCode, or Cursor.
+
+<div align="center">
+  <img src="assets/screenshots/requirements_tooling_harness_selection.png" alt="maple req — selecting which AI harness to run the pipeline with" width="880">
+</div>
+
+**2. Hand the stories off — the harness launches in a side pane** and the orchestrator reads
+the governance files, then initializes `maple.json` and seeds the phase todo list.
+
+<div align="center">
+  <img src="assets/screenshots/orchestrator_kickoff_gated_process.png" alt="The orchestrator reading governance files and kicking off the gated pipeline in a side pane" width="880">
+  <br/>
+  <img src="assets/screenshots/orchestrator_initializing_maple_state.png" alt="The orchestrator initializing maple.json and seeding the 8-phase todo list" width="880">
+</div>
+
+**3. When a decision is genuinely yours, the agent stops and asks** — here, how to handle the
+design sub-pipeline across several `ui:true` stories — instead of guessing.
+
+<div align="center">
+  <img src="assets/screenshots/asking_the_agent_to_implement_all_stories.png" alt="The agent pausing to ask how to handle design gates across the ui:true stories" width="880">
+</div>
+
+**4. Every story runs the gates** — the orchestrator delegates to specialists and enforces the
+quality gates: Karpathy audit, rubber-duck review, and the `docs/`/`.github/`/`.claude/`
+import-boundary check.
+
+<div align="center">
+  <img src="assets/screenshots/agent_following_gated_process.png" alt="The agent reporting Karpathy 93/100 PASS, rubber-duck approve, and boundary checks" width="880">
+</div>
+
+**5. A `ui:true` story pauses at the wireframe gate** — no implementation happens until a human
+approves the design. The dashboard shows the pause; press `a` to approve or `v` to open the portal.
+
+<div align="center">
+  <img src="assets/screenshots/wireframe_review_enforced.png" alt="TAFFY paused, awaiting human approval of the wireframe design gate" width="880">
+</div>
+
+**6. Review the artifact in the built-in portal** — the wireframe (both states + accessibility
+flags) renders in the Go-native design-review portal, kept in sync with the TUI.
+
+<div align="center">
+  <img src="assets/screenshots/wireframe_review_in_design_review_portal.png" alt="The wireframe rendered in the design-review portal — populated and empty states plus a11y risk flags" width="880">
+</div>
+
+**7. Approve, and the pipeline continues** — maple clears the gate and nudges the harness pane
+to resume automatically.
+
+<div align="center">
+  <img src="assets/screenshots/pipeline_approved.png" alt="Gate cleared — maple nudged the harness pane to continue the run" width="880">
+</div>
+
+---
+
 ## Harness Support
 
 MAPLE works across all four AI coding harnesses. Agents, skills, and TAFFY workflows are mirrored across each.
@@ -151,6 +211,12 @@ harnesses run in the current terminal (suspend/resume). See
 | `?` | Help overlay |
 | `q` / `Ctrl+C` | Quit |
 
+Press `?` any time for the full list, plus the portal URLs on your machine and LAN:
+
+<div align="center">
+  <img src="assets/screenshots/help_menu.png" alt="The maple help overlay — full keybinding list and the design-portal URLs for localhost and the local network" width="880">
+</div>
+
 **Themes:** `tokyo-night` (default) · `catppuccin-mocha` · `gruvbox` · `nord` · `everforest`
 
 Switch with `:theme <name>`, or auto-detected from `~/.config/omarchy/current/theme`.
@@ -173,9 +239,9 @@ Connectivity is inherent (`maple: connected (in-process)`). The TUI remains the 
 approval surface. See [ADR 0002](docs/architecture/0002-go-native-design-review-portal.md).
 
 <div align="center">
-  <img src="assets/screenshots/portal.png" alt="The design-review portal — 8-phase stepper, per-story status, live activity feed, and a live mockup preview awaiting approval" width="880">
+  <img src="assets/screenshots/review_portal_synced_with_maple.png" alt="The design-review portal — 8-phase stepper, per-story status, and the selected story's spec, synced live with the TUI" width="880">
   <br/>
-  <sub>The design-review portal — 8-phase stepper, per-story status, live activity feed, and a live mockup preview at the review gate</sub>
+  <sub>The design-review portal, synced live with the TUI — 8-phase stepper, per-story status, and the selected story's spec</sub>
 </div>
 
 ### CLI Commands
@@ -249,6 +315,12 @@ MAPLE sets the rules. TAFFY runs the jobs.
 ### Human-approval gates
 
 Stages with `gate: human-approval` pause and write `PAUSED` to `maple.json`. The `[P]` overlay shows the blocked stage. Press `a` in the dashboard to approve and advance, or type "approved" directly in the harness.
+
+<div align="center">
+  <img src="assets/screenshots/taffy_runner.png" alt="The [P] pipeline overlay — live TAFFY state (workflow, stage, status) with approve/reject/portal actions" width="880">
+  <br/>
+  <sub>The <code>[P]</code> pipeline overlay — live TAFFY state, with approve / reject / open-portal actions</sub>
+</div>
 
 ### Custom workflows
 
