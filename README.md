@@ -1,16 +1,22 @@
-![MAPLE](MAPLE_8bit.png)
+<div align="center">
+  <img src="assets/MAPLE.png" alt="MAPLE" width="200">
+  <h1>MAPLE</h1>
+  <p><strong>M</strong>ulti-Agent · <strong>A</strong>rtifact-Driven · <strong>P</strong>hase-Gated · <strong>L</strong>ocal-First · <strong>E</strong>nforced</p>
 
 [![CI](https://github.com/kinncj/MAPLE/actions/workflows/ci.yml/badge.svg)](https://github.com/kinncj/MAPLE/actions/workflows/ci.yml)
 [![Integration Validation](https://github.com/kinncj/MAPLE/actions/workflows/validate-integrations.yml/badge.svg)](https://github.com/kinncj/MAPLE/actions/workflows/validate-integrations.yml)
+[![Release](https://img.shields.io/github/v/release/kinncj/MAPLE?sort=semver)](https://github.com/kinncj/MAPLE/releases)
 
-**MAPLE** is the orchestration layer that connects Claude Code, OpenCode, Cursor, and GitHub Copilot CLI into a unified, TDD-enforced development lifecycle. One binary installs everything: agents, skills, hooks, and a live project dashboard.
+</div>
+
+**MAPLE** is the orchestration layer that connects Claude Code, OpenCode, Cursor, and GitHub Copilot CLI into a unified, TDD-enforced development lifecycle. One binary installs everything: agents, skills, hooks, and a live project dashboard with a built-in design-review portal.
 
 > Based on: [Building MAPLE: Orchestrated Multi-Agent Systems with Claude Code and OpenCode](./ARTICLE.md)
 
 <div align="center">
-  <img src="./demo.gif" alt="MAPLE demo — maple init scaffolding a project" width="860">
+  <img src="assets/screenshots/dashboard.png" alt="The maple dashboard — stories with per-phase status, sessions, PRs, and BDD tests, harnesses launching in side panes" width="880">
   <br/>
-  <sub><code>maple init</code> — scaffolding a new project from the CLI</sub>
+  <sub>The <code>maple</code> dashboard — live story/phase status, sessions, PRs, and BDD tests in one view</sub>
 </div>
 
 ---
@@ -40,7 +46,7 @@ Skip the extras if you don't want them: `--skip-rtk` and/or `--skip-herdr` (or `
 irm https://raw.githubusercontent.com/kinncj/MAPLE/main/scripts/install.ps1 | iex
 ```
 
-**Build from source** (Go 1.22+):
+**Build from source** (Go 1.26+):
 
 ```bash
 git clone https://github.com/kinncj/MAPLE.git && cd MAPLE
@@ -165,6 +171,12 @@ request changes (recorded in `.claude/state/design-feedback.json`), **stop a run
 files, and browse/sort artifacts. Updates are event-driven (SSE) — no polling flicker.
 Connectivity is inherent (`maple: connected (in-process)`). The TUI remains the primary
 approval surface. See [ADR 0002](docs/architecture/0002-go-native-design-review-portal.md).
+
+<div align="center">
+  <img src="assets/screenshots/portal.png" alt="The design-review portal — 8-phase stepper, per-story status, live activity feed, and a live mockup preview awaiting approval" width="880">
+  <br/>
+  <sub>The design-review portal — 8-phase stepper, per-story status, live activity feed, and a live mockup preview at the review gate</sub>
+</div>
 
 ### CLI Commands
 
@@ -320,7 +332,7 @@ Skills install via `npx skills add <pkg> --all -y` and work across Claude Code, 
 |------|---------|----------|
 | [Claude Code](https://claude.ai/claude-code), [OpenCode](https://opencode.ai), [Cursor](https://cursor.com), or [Copilot CLI](https://github.com/features/copilot/cli) | Run the agents | At least one |
 | [GitHub CLI `gh`](https://cli.github.com) | Issues, PRs, project management | Yes |
-| [Go 1.22+](https://go.dev) | Build from source | Source builds only |
+| [Go 1.26+](https://go.dev) | Build from source | Source builds only |
 | [Node.js](https://nodejs.org) | Cucumber E2E tests + `npx skills` | Optional |
 | [Docker](https://docker.com) | Test infrastructure | Optional |
 

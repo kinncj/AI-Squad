@@ -11,7 +11,7 @@ Get from zero to a running feature pipeline using **OpenCode** and MAPLE.
 | [OpenCode](https://opencode.ai) | `npm install -g opencode-ai` |
 | [GitHub CLI](https://cli.github.com) | `brew install gh` |
 | [Git](https://git-scm.com) | pre-installed on macOS/Linux |
-| [Go 1.22+](https://go.dev) | `brew install go` *(only to build from source)* |
+| [Go 1.26+](https://go.dev) | `brew install go` *(only to build from source)* |
 | [Node.js](https://nodejs.org) | `brew install node` *(Playwright E2E tests + npx skills)* |
 | [Docker](https://docker.com) | [docker.com/get-started](https://docker.com/get-started) |
 
