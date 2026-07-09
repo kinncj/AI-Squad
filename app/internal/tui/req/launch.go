@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -25,7 +24,7 @@ func ResumeArgs(harness, taffy, stage string) []string {
 		"<maple-resume>\nContinue taffy " + taffy + " from stage \"" + stage +
 		"\" — do not restart from the beginning. Keep .claude/state/maple.json updated (status RUNNING → DONE/FAILED).\n</maple-resume>"
 	writeQuickLaunchState(taffy, "resuming", harness)
-	return buildLaunchCmd(harness, prompt, loadPinnedSessions(), true)
+	return buildLaunchCmd(harness, prompt, true)
 }
 
 func ImplementArgs(harness string, storyDirs []string) []string {
@@ -36,7 +35,7 @@ func ImplementArgs(harness string, storyDirs []string) []string {
 	_ = writeImplementationHandoff(stories)
 	writeQuickLaunchState("pipeline-runner implement-stories", "starting", harness)
 	prompt := buildImplementationPrompt(harness, stories)
-	return buildLaunchCmd(harness, prompt, loadPinnedSessions(), true)
+	return buildLaunchCmd(harness, prompt, true)
 }
 
 // taffyPathForHarness returns the implement-stories workflow path for a harness.
@@ -138,59 +137,18 @@ func writeImplementationHandoff(stories []core.Story) error {
 	return os.WriteFile(".claude/state/gherkin-handoff.json", append(data, '\n'), 0o644)
 }
 
-// loadPinnedSessions reads the pinned session ids per harness (best-effort).
-func loadPinnedSessions() map[string]string {
-	out := map[string]string{}
-	if raw, err := os.ReadFile(".claude/state/sessions.json"); err == nil {
-		_ = json.Unmarshal(raw, &out)
-	}
-	return out
-}
-
-// copilotSessionExists reports whether copilot has a session recorded for id, at its
-// canonical ~/.copilot/session-state/<id>/ path. Only such a session can be `--resume`d.
-func copilotSessionExists(id string) bool {
-	home, err := os.UserHomeDir()
-	if err != nil || id == "" {
-		return false
-	}
-	info, err := os.Stat(filepath.Join(home, ".copilot", "session-state", id))
-	return err == nil && info.IsDir()
-}
-
-// looksLikeUUID reports whether s is a canonical 8-4-4-4-12 hex uuid, so it's safe to hand
-// to `copilot --session-id`.
-func looksLikeUUID(s string) bool {
-	groups := []int{8, 4, 4, 4, 12}
-	parts := strings.Split(s, "-")
-	if len(parts) != len(groups) {
-		return false
-	}
-	for i, p := range parts {
-		if len(p) != groups[i] {
-			return false
-		}
-		for _, c := range p {
-			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-// buildLaunchCmd builds the argv to launch a harness with an opening prompt.
-func buildLaunchCmd(tool, cmd string, pinned map[string]string, dangerous bool) []string {
-	pinnedID := pinned[tool]
+// buildLaunchCmd builds the argv to launch a harness with an opening prompt. It always
+// starts a FRESH session — a TAFFY implement/resume run must never `--resume` a pinned
+// session (that session may be stale, cleared, or belong to unrelated work, and copilot
+// hard-errors on a missing one). Resuming a specific session is only for the explicit
+// session-menu path (dashboard `o`, `maple resume-session`), not this launcher.
+func buildLaunchCmd(tool, cmd string, dangerous bool) []string {
 	var args []string
 	switch tool {
 	case "claude":
 		args = []string{"claude"}
 		if dangerous {
 			args = append(args, "--dangerously-skip-permissions")
-		}
-		if pinnedID != "" {
-			args = append(args, "--resume", pinnedID)
 		}
 		if cmd != "" {
 			args = append(args, cmd)
@@ -205,17 +163,6 @@ func buildLaunchCmd(tool, cmd string, pinned map[string]string, dangerous bool) 
 		args = []string{"copilot"}
 		if dangerous {
 			args = append(args, "--allow-all")
-		}
-		// `--resume=<id>` fails hard when the session doesn't exist yet (stale pin, cleared
-		// state, or a first-ever run). Resume only a session that's actually on disk; for a
-		// pinned uuid that isn't there yet, start a new session WITH that id so future
-		// resumes work — matching copilot's own `--session-id=<valid-uuid>` hint.
-		switch {
-		case pinnedID == "":
-		case copilotSessionExists(pinnedID):
-			args = append(args, "--resume="+pinnedID)
-		case looksLikeUUID(pinnedID):
-			args = append(args, "--session-id="+pinnedID)
 		}
 		if cmd != "" {
 			args = append(args, "-i", cmd)

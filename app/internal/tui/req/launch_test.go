@@ -68,16 +68,32 @@ func TestBuildLaunchCmd(t *testing.T) {
 		return a
 	}
 
-	t.Run("claude with pinned + prompt", func(t *testing.T) {
-		got := strip(buildLaunchCmd("claude", "/pipeline-runner", map[string]string{"claude": "sess1"}, true))
-		want := []string{"claude", "--dangerously-skip-permissions", "--resume", "sess1", "/pipeline-runner"}
+	// A TAFFY implement/resume launch must ALWAYS start a fresh session — never --resume
+	// or --session-id a pinned id (copilot hard-errors on a missing session; resuming is
+	// only for the explicit session-menu path).
+	t.Run("claude launches fresh with the prompt, no --resume", func(t *testing.T) {
+		got := strip(buildLaunchCmd("claude", "/pipeline-runner", true))
+		want := []string{"claude", "--dangerously-skip-permissions", "/pipeline-runner"}
 		if strings.Join(got, " ") != strings.Join(want, " ") {
 			t.Errorf("got %v, want %v", got, want)
 		}
 	})
 
-	t.Run("copilot no pin, not dangerous", func(t *testing.T) {
-		got := strip(buildLaunchCmd("copilot", "hi", nil, false))
+	t.Run("copilot launches fresh, no --resume/--session-id", func(t *testing.T) {
+		got := strip(buildLaunchCmd("copilot", "go", true))
+		want := []string{"copilot", "--allow-all", "-i", "go"}
+		if strings.Join(got, " ") != strings.Join(want, " ") {
+			t.Errorf("got %v, want %v", got, want)
+		}
+		for _, a := range got {
+			if strings.HasPrefix(a, "--resume") || strings.HasPrefix(a, "--session-id") {
+				t.Errorf("implement launch must not carry %q", a)
+			}
+		}
+	})
+
+	t.Run("copilot not dangerous", func(t *testing.T) {
+		got := strip(buildLaunchCmd("copilot", "hi", false))
 		want := []string{"copilot", "-i", "hi"}
 		if strings.Join(got, " ") != strings.Join(want, " ") {
 			t.Errorf("got %v, want %v", got, want)
@@ -85,7 +101,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 	})
 
 	t.Run("opencode passes prompt positionally", func(t *testing.T) {
-		got := strip(buildLaunchCmd("opencode", "do it", nil, true))
+		got := strip(buildLaunchCmd("opencode", "do it", true))
 		want := []string{"opencode", "do it"}
 		if strings.Join(got, " ") != strings.Join(want, " ") {
 			t.Errorf("got %v, want %v", got, want)
@@ -93,46 +109,9 @@ func TestBuildLaunchCmd(t *testing.T) {
 	})
 
 	t.Run("unknown tool falls back to bare name", func(t *testing.T) {
-		got := strip(buildLaunchCmd("mystery", "x", nil, false))
+		got := strip(buildLaunchCmd("mystery", "x", false))
 		if len(got) != 1 || got[0] != "mystery" {
 			t.Errorf("got %v, want [mystery]", got)
-		}
-	})
-}
-
-func TestBuildLaunchCmdCopilotSession(t *testing.T) {
-	strip := func(a []string) []string {
-		if len(a) >= 2 && a[0] == "env" && strings.HasPrefix(a[1], "RTK_HOOK_AUDIT=") {
-			return a[2:]
-		}
-		return a
-	}
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	const uuid = "b7eddba5-7bae-41e2-9120-ff2e6a33be28"
-
-	t.Run("pinned uuid with no existing session → new session, not resume", func(t *testing.T) {
-		got := strip(buildLaunchCmd("copilot", "go", map[string]string{"copilot": uuid}, true))
-		want := []string{"copilot", "--allow-all", "--session-id=" + uuid, "-i", "go"}
-		if strings.Join(got, " ") != strings.Join(want, " ") {
-			t.Errorf("got %v, want %v", got, want)
-		}
-	})
-
-	t.Run("pinned uuid with existing session → resume", func(t *testing.T) {
-		os.MkdirAll(home+"/.copilot/session-state/"+uuid, 0o755)
-		got := strip(buildLaunchCmd("copilot", "go", map[string]string{"copilot": uuid}, true))
-		want := []string{"copilot", "--allow-all", "--resume=" + uuid, "-i", "go"}
-		if strings.Join(got, " ") != strings.Join(want, " ") {
-			t.Errorf("got %v, want %v", got, want)
-		}
-	})
-
-	t.Run("non-uuid pin → plain new session", func(t *testing.T) {
-		got := strip(buildLaunchCmd("copilot", "go", map[string]string{"copilot": "not-a-uuid"}, false))
-		want := []string{"copilot", "-i", "go"}
-		if strings.Join(got, " ") != strings.Join(want, " ") {
-			t.Errorf("got %v, want %v", got, want)
 		}
 	})
 }

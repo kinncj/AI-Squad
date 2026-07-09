@@ -474,7 +474,7 @@ func (m *model) launchImplementation(ai core.Tool) tea.Cmd {
 	}
 	writeQuickLaunchState("pipeline-runner implement-stories", "starting", ai.Kind)
 	prompt := buildImplementationPrompt(ai.Kind, stories)
-	args := buildLaunchCmd(ai.Kind, prompt, loadPinnedSessions(), true)
+	args := buildLaunchCmd(ai.Kind, prompt, true)
 
 	// Prefer a side pane (same as the dashboard L key) so maple stays visible beside the
 	// harness. Only take over the current terminal when there's no multiplexer to split.
