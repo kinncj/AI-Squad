@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	mapleRepo      = "kinncj/maple"
+	mapleRepo      = "kinncj/MAPLE"
 	installTimeout = 300 * time.Second
 )
 

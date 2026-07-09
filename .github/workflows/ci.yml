@@ -37,28 +37,19 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Build
-        run: |
-          rm -rf app/cmd/maple/template && cp -rL template app/cmd/maple/template
-          go build -o maple ./app/cmd/maple
+        run: make build-tui
 
       - name: Verify binary runs
         run: ./maple --version
 
       - name: Cross-compile all platforms
         run: |
-          mkdir -p dist
-          GOOS=darwin  GOARCH=amd64  go build -o dist/maple-darwin-amd64  ./app/cmd/maple
-          GOOS=darwin  GOARCH=arm64  go build -o dist/maple-darwin-arm64  ./app/cmd/maple
-          GOOS=linux   GOARCH=amd64  go build -o dist/maple-linux-amd64   ./app/cmd/maple
-          GOOS=linux   GOARCH=arm64  go build -o dist/maple-linux-arm64   ./app/cmd/maple
-          GOOS=windows GOARCH=amd64  go build -o dist/maple-windows-amd64.exe ./app/cmd/maple
+          make build-tui-all
           echo "Cross-compile OK:"
           ls -lh dist/
 
       - name: Unit tests
-        run: |
-          rm -rf app/cmd/maple/template && cp -rL template app/cmd/maple/template
-          go test ./app/...
+        run: make test-app
 
   # ─── CLI tests ─────────────────────────────────────────────────────────────
   test-cli:
@@ -74,9 +65,7 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Build maple
-        run: |
-          rm -rf app/cmd/maple/template && cp -rL template app/cmd/maple/template
-          go build -o maple ./app/cmd/maple
+        run: make build-tui
 
       - name: Configure git identity
         run: |

@@ -1,28 +1,30 @@
 # Makefile — maple repo root
 # Targets for building, testing, and maintaining the MAPLE platform itself.
 # For targets in your project template, see template/Makefile.
-.PHONY: build-tui build-tui-all build-app test test-app lint lint-app sdlc-report sdlc-rotate-logs clean help
+.PHONY: build build-tui build-tui-all build-app test test-app lint lint-app sdlc-report sdlc-rotate-logs clean help
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS  = -s -w -X main.version=$(VERSION)
+OUT     ?= maple   # output path; override for bin/ or dist/ builds
 
-## Build the maple binary (canonical name kept as build-tui for CI/docs)
+## Build the maple binary → $(OUT). Single source of truth; every build target
+## delegates here (CI and release.yml call it too, so there's one recipe).
 ## app/cmd/maple/template is a symlink → ../../../template; go:embed can't follow it,
 ## so swap it for a real copy for the build, then restore the symlink.
-build-tui:
-	@echo "Building maple..."
+build:
+	@echo "Building maple → $(OUT)$(if $(GOOS), ($(GOOS)/$(GOARCH)))..."
 	@rm -f app/cmd/maple/template && cp -rL template app/cmd/maple/template
-	@go build -ldflags="$(LDFLAGS)" -o maple ./app/cmd/maple; \
+	@$(if $(GOOS),GOOS=$(GOOS) GOARCH=$(GOARCH) )go build -ldflags="$(LDFLAGS)" -o "$(OUT)" ./app/cmd/maple; \
 		status=$$?; rm -rf app/cmd/maple/template && ln -s ../../../template app/cmd/maple/template; exit $$status
-	@echo "Built: ./maple"
+	@echo "Built: $(OUT)"
 
-## Alias — build into ./bin/maple for local dev
+## Build the canonical binary → ./maple
+build-tui:
+	@$(MAKE) --no-print-directory build OUT=maple
+
+## Build into ./bin/maple for local dev
 build-app:
-	@echo "Building maple (bin/)..."
-	@rm -f app/cmd/maple/template && cp -rL template app/cmd/maple/template
-	@go build -ldflags="$(LDFLAGS)" -o bin/maple ./app/cmd/maple; \
-		status=$$?; rm -rf app/cmd/maple/template && ln -s ../../../template app/cmd/maple/template; exit $$status
-	@echo "Built: ./bin/maple"
+	@$(MAKE) --no-print-directory build OUT=bin/maple
 
 ## Run the rebuilt binary's unit tests (with the same template dance for the embed)
 test-app:
@@ -34,16 +36,14 @@ test-app:
 lint-app:
 	@gofmt -e ./app >/dev/null && echo "gofmt(app): clean" || (echo "gofmt(app): issues found" && exit 1)
 
-## Cross-compile maple for all platforms
+## Cross-compile maple for all platforms (each delegates to `build`)
 build-tui-all:
 	@mkdir -p dist
-	@rm -f app/cmd/maple/template && cp -rL template app/cmd/maple/template
-	GOOS=darwin  GOARCH=amd64  go build -ldflags="$(LDFLAGS)" -o dist/maple-darwin-amd64  ./app/cmd/maple
-	GOOS=darwin  GOARCH=arm64  go build -ldflags="$(LDFLAGS)" -o dist/maple-darwin-arm64  ./app/cmd/maple
-	GOOS=linux   GOARCH=amd64  go build -ldflags="$(LDFLAGS)" -o dist/maple-linux-amd64   ./app/cmd/maple
-	GOOS=linux   GOARCH=arm64  go build -ldflags="$(LDFLAGS)" -o dist/maple-linux-arm64   ./app/cmd/maple
-	GOOS=windows GOARCH=amd64  go build -ldflags="$(LDFLAGS)" -o dist/maple-windows-amd64.exe ./app/cmd/maple
-	@rm -rf app/cmd/maple/template && ln -s ../../../template app/cmd/maple/template
+	@$(MAKE) --no-print-directory build GOOS=darwin  GOARCH=amd64 OUT=dist/maple-darwin-amd64
+	@$(MAKE) --no-print-directory build GOOS=darwin  GOARCH=arm64 OUT=dist/maple-darwin-arm64
+	@$(MAKE) --no-print-directory build GOOS=linux   GOARCH=amd64 OUT=dist/maple-linux-amd64
+	@$(MAKE) --no-print-directory build GOOS=linux   GOARCH=arm64 OUT=dist/maple-linux-arm64
+	@$(MAKE) --no-print-directory build GOOS=windows GOARCH=amd64 OUT=dist/maple-windows-amd64.exe
 	@echo "Binaries in dist/"
 
 ## Run the test suite for this repo
@@ -87,6 +87,7 @@ clean:
 ## Show available targets
 help:
 	@echo ""
+	@echo "  make build              Build → \$$(OUT) (default ./maple); the shared recipe"
 	@echo "  make build-tui          Build the maple binary (./maple, from app/cmd/maple)"
 	@echo "  make build-app          Build into ./bin/maple (local dev)"
 	@echo "  make build-tui-all      Cross-compile for darwin/linux/windows"
