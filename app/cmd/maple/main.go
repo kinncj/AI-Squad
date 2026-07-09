@@ -439,6 +439,11 @@ func wrapInTmux() bool {
 	if cwd != "" {
 		args = append(args, "-c", cwd)
 	}
+	// Record the outer terminal's inline-image capability so the splash can passthrough the
+	// PNG once inside tmux (TERM_PROGRAM/KITTY_WINDOW_ID are stripped inside the session).
+	if gfx := outerTermGfx(); gfx != "" {
+		args = append(args, "-e", "MAPLE_TERM_GFX="+gfx)
+	}
 	if err := exec.Command(tmux, append(args, self)...).Run(); err != nil {
 		return false
 	}
@@ -450,12 +455,35 @@ func wrapInTmux() bool {
 	return true
 }
 
+// outerTermGfx reports the current terminal's inline-image protocol ("kitty" | "iterm" | "")
+// from env markers that only exist OUTSIDE tmux — used at wrap time to tell the in-tmux splash
+// which protocol the host terminal understands. MAPLE_ASCII forces it off.
+func outerTermGfx() string {
+	if os.Getenv("MAPLE_ASCII") != "" {
+		return ""
+	}
+	term := os.Getenv("TERM")
+	prog := os.Getenv("TERM_PROGRAM")
+	switch {
+	case os.Getenv("KITTY_WINDOW_ID") != "", strings.Contains(term, "kitty"),
+		prog == "ghostty", strings.Contains(term, "ghostty"), os.Getenv("GHOSTTY_RESOURCES_DIR") != "":
+		return "kitty"
+	case os.Getenv("WEZTERM_PANE") != "", prog == "WezTerm":
+		return "kitty" // wezterm speaks the kitty graphics protocol
+	case prog == "iTerm.app", strings.Contains(strings.ToLower(term), "iterm"):
+		return "iterm"
+	}
+	return ""
+}
+
 // configureMapleTmux styles the maple session: pane-border titles (so you can see
 // which pane is maple vs a harness), mouse on, and a status bar showing how to switch
 // panes. Scoped to the maple session — never touches the user's global tmux config.
 func configureMapleTmux(tmux, s string) {
 	opts := [][]string{
 		{"set-option", "-t", s, "mouse", "on"},
+		// Let the splash forward Kitty/iTerm inline-image escapes to the outer terminal.
+		{"set-option", "-t", s, "allow-passthrough", "on"},
 		// Close a pane when its process exits instead of leaving a dead-pane corpse —
 		// quitting maple or a harness should tear the pane down cleanly. If maple exits
 		// while a harness is still running, the harness pane just takes over.

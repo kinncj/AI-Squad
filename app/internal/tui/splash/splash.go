@@ -62,19 +62,54 @@ func resizeImage(img image.Image, w int) image.Image {
 	return dst
 }
 
-// inlineImage renders MAPLE.png with an inline-image protocol, centered in
-// width×height. ok=false if the terminal can't display images.
+// tmuxPassthrough wraps a terminal escape payload so tmux forwards it to the OUTER terminal
+// (needs `allow-passthrough on`, which maple's tmux session sets). Each ESC in the payload is
+// doubled, and the whole thing is bracketed by `ESC P tmux ; … ESC \`.
+func tmuxPassthrough(payload []byte) []byte {
+	var b bytes.Buffer
+	b.WriteString("\x1bPtmux;")
+	for _, c := range payload {
+		if c == 0x1b {
+			b.WriteByte(0x1b)
+		}
+		b.WriteByte(c)
+	}
+	b.WriteString("\x1b\\")
+	return b.Bytes()
+}
+
+// inlineImage renders MAPLE.png with an inline-image protocol, centered in width×height.
+// ok=false if the terminal can't display images. Inside tmux it uses passthrough, but only
+// when maple recorded the outer terminal's graphics capability (MAPLE_TERM_GFX) at wrap time
+// — otherwise it can't know whether the outer terminal understands the escape, and falls
+// back to ASCII.
 func inlineImage(width, height int) (string, bool) {
-	if forceASCII() || rasterm.IsTmuxScreen() {
+	if forceASCII() {
 		return "", false
 	}
+	inTmux := rasterm.IsTmuxScreen()
+	outer := os.Getenv("MAPLE_TERM_GFX") // "kitty" | "iterm", set by wrapInTmux
+	proto := ""
+	switch {
+	case inTmux && outer == "kitty":
+		proto = "kitty"
+	case inTmux && outer == "iterm":
+		proto = "iterm"
+	case inTmux:
+		return "", false // in tmux but the outer terminal's capability is unknown → ASCII
+	case kittyCapable():
+		proto = "kitty"
+	case rasterm.IsItermCapable():
+		proto = "iterm"
+	default:
+		return "", false
+	}
+
 	img := decode(logoPNG)
 	if img == nil {
 		return "", false
 	}
-	// Cap the payload: a resized logo keeps the escape small. Kept modest (320px) so the
-	// encoded frame stays under herdr's oversized-graphics drop threshold — herdr silently
-	// drops a frame's graphics if the payload is too large, which blanked the splash.
+	// Cap the payload: a resized logo keeps the escape small (herdr drops oversized frames).
 	img = resizeImage(img, 320)
 
 	cols := 44
@@ -92,22 +127,27 @@ func inlineImage(width, height int) (string, bool) {
 	top := max((height-rows)/2, 0)
 	left := max((width-cols)/2, 0)
 
+	var imgBuf bytes.Buffer
+	switch proto {
+	case "kitty":
+		if rasterm.KittyWriteImage(&imgBuf, img, rasterm.KittyImgOpts{DstCols: uint32(cols), DstRows: uint32(rows)}) != nil {
+			return "", false
+		}
+	case "iterm":
+		opts := rasterm.ItermImgOpts{DisplayInline: true, Width: strconv.Itoa(cols), Height: strconv.Itoa(rows)}
+		if rasterm.ItermWriteImageWithOptions(&imgBuf, img, opts) != nil {
+			return "", false
+		}
+	}
+	payload := imgBuf.Bytes()
+	if inTmux {
+		payload = tmuxPassthrough(payload)
+	}
+
 	var buf bytes.Buffer
 	buf.WriteString(strings.Repeat("\n", top))
 	buf.WriteString(strings.Repeat(" ", left))
-	switch {
-	case kittyCapable():
-		if rasterm.KittyWriteImage(&buf, img, rasterm.KittyImgOpts{DstCols: uint32(cols), DstRows: uint32(rows)}) != nil {
-			return "", false
-		}
-	case rasterm.IsItermCapable():
-		opts := rasterm.ItermImgOpts{DisplayInline: true, Width: strconv.Itoa(cols), Height: strconv.Itoa(rows)}
-		if rasterm.ItermWriteImageWithOptions(&buf, img, opts) != nil {
-			return "", false
-		}
-	default:
-		return "", false
-	}
+	buf.Write(payload)
 	return buf.String(), true
 }
 
