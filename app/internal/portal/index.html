@@ -558,8 +558,11 @@
       document.getElementById("wf").textContent = s.taffy || "-";
       document.getElementById("stage").textContent = s.stage || "-";
       const stEl = document.getElementById("status");
-      stEl.textContent = s.status || "-";
-      const stKey = String(s.status || "").toUpperCase();
+      // A pending gate means the pipeline is effectively paused for review — reflect that even
+      // if the agent left status=RUNNING (agents don't always flip it when they pause).
+      let stKey = String(s.status || "").toUpperCase();
+      if (s.approval_pending && (stKey === "RUNNING" || stKey === "")) stKey = "PAUSED";
+      stEl.textContent = (stKey === "PAUSED" && s.approval_pending) ? "PAUSED · awaiting review" : (s.status || "-");
       stEl.className = "value status " + ({
         "RUNNING": "st-running", "PAUSED": "st-paused", "RATE_LIMITED": "st-rate",
         "DONE": "st-done", "FAILED": "st-failed"
@@ -596,10 +599,10 @@
       _reviewArtifacts = (rv && rv.artifacts && rv.artifacts.length) ? new Set(rv.artifacts) : null;
       const hint = document.getElementById("gateHint");
       if (hint) {
-        if (gate && rv && rv.title) {
+        if (gate && rv && (rv.title || (rv.artifacts || []).length)) {
           const files = (rv.artifacts || []).length;
-          hint.innerHTML = "⏳ <b>Approval required</b> — " + esc(rv.stage || s.approval_pending) +
-            " for <b>" + esc(rv.title) + "</b>" +
+          const who = rv.title ? " for <b>" + esc(rv.title) + "</b>" : "";
+          hint.innerHTML = "⏳ <b>Approval required</b> — " + esc(rv.stage || s.approval_pending) + who +
             (files ? " · " + files + " file" + (files === 1 ? "" : "s") + " to review" : "") +
             (rv.inferred ? ' <span style="color:var(--dim)">(inferred)</span>' : "");
         } else {
@@ -608,11 +611,14 @@
             : (inFlight ? "Workflow running — no approval needed right now." : "No active workflow.");
         }
       }
-      // Auto-focus the story under review when the gate first appears (don't fight the user
-      // once they navigate away).
-      if (gate && rv && rv.story && rv.story !== _lastReviewStory) {
-        _lastReviewStory = rv.story;
-        selectStory(rv.story, rv.title);
+      // On a NEW gate, focus exactly what's under review — scope the artifact list to the
+      // pending files (story-named OR project-wide identity/token files), show the story spec
+      // when there is a story. Keyed by stage+story so it re-focuses each new gate but doesn't
+      // fight the user once they navigate away within the same gate.
+      const gateKey = gate && rv ? (rv.stage || s.approval_pending) + "|" + (rv.story || "") : "";
+      if (gate && rv && (rv.artifacts || []).length && gateKey !== _lastReviewStory) {
+        _lastReviewStory = gateKey;
+        focusReview(rv);
       }
       if (!gate) _lastReviewStory = null;
 
@@ -689,6 +695,26 @@
       renderStories(window._stories || []);
       setPreview(null);
       updateStepper(); // back to the overall pipeline
+    }
+    // focusReview scopes the portal to exactly what a pending gate is asking to review — the
+    // review's artifact paths (story-named wireframes/mockups OR project-wide identity/token
+    // files). Shows the story spec when there's a story, else previews the first pending file.
+    async function focusReview(rv) {
+      const paths = rv.artifacts || [];
+      _storyFilter = { id: rv.story || "", title: rv.title || ("Review: " + (rv.stage || "stage")), paths: new Set(paths) };
+      renderArtifacts();
+      renderStories(window._stories || []);
+      updateStepper();
+      if (rv.story) {
+        try {
+          const d = await api("/api/story?id=" + encodeURIComponent(rv.story));
+          showStorySpec(d);
+          return;
+        } catch (e) { /* fall through to artifact preview */ }
+      }
+      // No story (project-wide review): preview the first pending artifact.
+      const first = (window._artifacts || []).find((a) => _storyFilter.paths.has(a.path) && isPreviewable(a));
+      setPreview(first || null);
     }
     function stripFrontmatter(md) {
       const m = String(md || "");

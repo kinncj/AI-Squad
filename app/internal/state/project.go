@@ -230,40 +230,89 @@ func (s *FS) storyTitle(id string) string {
 // inferReview derives the story + artifact files under review from the pending stage, using
 // the design-artifact naming convention (<storyID>.<stage>.*). It picks the story whose
 // matching artifact was modified most recently — the one the agent just produced.
+//
+// Design stages come in two shapes:
+//   - story-scoped (wireframe, mockup): files named <storyID>.<stage>.* → one story's artifacts.
+//   - project-wide (visual-identity, design-tokens): shared files (palette/typography/tokens.json,
+//     design system) that aren't story-named → the whole directory is under review.
 func (s *FS) inferReview(stage string) Review {
-	sl := strings.ToLower(stage)
+	dirs, storyScoped := stageDirs(strings.ToLower(stage))
 	type cand struct {
 		path string
 		mod  time.Time
 	}
 	var cands []cand
-	for _, kind := range []string{"wireframes", "mockups", "identity", "system"} {
-		matches, _ := filepath.Glob(filepath.Join(s.Root, "docs", "design", kind, "*"))
+	for _, d := range dirs {
+		matches, _ := filepath.Glob(filepath.Join(s.Root, "docs", "design", d, "*"))
 		for _, p := range matches {
-			base := strings.ToLower(filepath.Base(p))
-			singular := strings.TrimSuffix(kind, "s")
-			if strings.Contains(base, sl) || strings.HasPrefix(sl, singular) || strings.HasPrefix(singular, sl) {
-				if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
-					cands = append(cands, cand{p, fi.ModTime()})
-				}
+			if strings.HasPrefix(filepath.Base(p), ".") { // skip .gitkeep and other dotfiles
+				continue
+			}
+			if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+				cands = append(cands, cand{p, fi.ModTime()})
 			}
 		}
 	}
 	if len(cands) == 0 {
-		return Review{Stage: stage, Inferred: true}
+		return Review{Stage: stage, Story: s.currentStory(), Inferred: true}
 	}
 	sort.Slice(cands, func(i, j int) bool { return cands[i].mod.After(cands[j].mod) })
-	storyID := strings.SplitN(filepath.Base(cands[0].path), ".", 2)[0]
-	var arts []string
-	for _, c := range cands {
-		if strings.SplitN(filepath.Base(c.path), ".", 2)[0] == storyID {
-			if rel, err := filepath.Rel(s.Root, c.path); err == nil {
-				arts = append(arts, filepath.ToSlash(rel))
+
+	rel := func(p string) string {
+		if r, err := filepath.Rel(s.Root, p); err == nil {
+			return filepath.ToSlash(r)
+		}
+		return p
+	}
+	if storyScoped {
+		storyID := strings.SplitN(filepath.Base(cands[0].path), ".", 2)[0]
+		var arts []string
+		for _, c := range cands {
+			if strings.SplitN(filepath.Base(c.path), ".", 2)[0] == storyID {
+				arts = append(arts, rel(c.path))
 			}
 		}
+		sort.Strings(arts)
+		return Review{Story: storyID, Title: s.storyTitle(storyID), Stage: stage, Artifacts: arts, Inferred: true}
+	}
+	// project-wide: all files in the stage's dir are under review; the story (if any) comes
+	// from maple.json since these files aren't story-named.
+	var arts []string
+	for _, c := range cands {
+		arts = append(arts, rel(c.path))
 	}
 	sort.Strings(arts)
-	return Review{Story: storyID, Title: s.storyTitle(storyID), Stage: stage, Artifacts: arts, Inferred: true}
+	story := s.currentStory()
+	return Review{Story: story, Title: s.storyTitle(story), Stage: stage, Artifacts: arts, Inferred: true}
+}
+
+// stageDirs maps a design stage to the docs/design subdirectories that hold its output, and
+// whether those files are named per-story (true) or shared project-wide (false).
+func stageDirs(stage string) (dirs []string, storyScoped bool) {
+	switch {
+	case strings.Contains(stage, "wireframe"):
+		return []string{"wireframes"}, true
+	case strings.Contains(stage, "mockup"):
+		return []string{"mockups"}, true
+	case strings.Contains(stage, "identity") || strings.Contains(stage, "visual"):
+		return []string{"identity"}, false
+	case strings.Contains(stage, "token"):
+		return []string{"identity", "system"}, false
+	}
+	return []string{"wireframes", "mockups", "identity", "system"}, true
+}
+
+// currentStory returns the story the skill declared it is working on, if any, from a
+// top-level `story` field or a `review.story` in maple.json. Empty when not declared.
+func (s *FS) currentStory() string {
+	m := s.readMapleJSON()
+	if v := mapStr(m, "story"); v != "" {
+		return v
+	}
+	if rv, ok := m["review"].(map[string]any); ok {
+		return mapStr(rv, "story")
+	}
+	return ""
 }
 
 // ApproveGate clears the pending human gate so both surfaces agree and the harness
