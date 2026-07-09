@@ -49,6 +49,7 @@ type Store interface {
 	SetPinnedSession(source, id string) error
 	DesignArtifacts(storyID string) []state.Artifact
 	ApprovalPending() string
+	PendingRevision() bool
 	ApproveGate() error
 	RejectGate() error
 	PortalURL() string
@@ -1525,8 +1526,12 @@ func (m *Model) reload() {
 	// TUI or in the design portal — nudge the harness to continue. This unifies the
 	// nudge on maple's full logic (recorded panes + tmux sibling-broadcast + all
 	// terminals), so a portal approval reliably advances a yielded harness too.
+	//
+	// BUT: skip it when the gate cleared because of a reject / request-changes (pending
+	// revision feedback). Those already told the harness to REVISE — auto-firing "continue"
+	// here would override that and make the agent proceed as if approved.
 	gate := m.store.ApprovalPending()
-	if m.lastGate != "" && gate == "" {
+	if m.lastGate != "" && gate == "" && !m.store.PendingRevision() {
 		if n := notifyContinue(os.Getenv); n > 0 {
 			m.status = fmt.Sprintf("gate cleared — nudged %d harness pane(s)", n)
 		}

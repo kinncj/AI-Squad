@@ -56,6 +56,7 @@ func (f fakeStore) DesignArtifacts(id string) []state.Artifact {
 	return []state.Artifact{{Path: "docs/design/wireframes/" + id + ".wireframe.md", Kind: "wireframes", Status: "pending"}}
 }
 func (f fakeStore) ApprovalPending() string             { return "" }
+func (f fakeStore) PendingRevision() bool               { return false }
 func (f fakeStore) ApproveGate() error                  { return nil }
 func (f fakeStore) RejectGate() error                   { return nil }
 func (f fakeStore) PortalURL() string                   { return "" }
@@ -1010,6 +1011,26 @@ func TestGateClearNudgesHarness(t *testing.T) {
 	}
 }
 
+// TestGateClearSkipsNudgeOnRevision proves the gate-clear auto-nudge does NOT fire "continue"
+// when the gate cleared because of a reject / request-changes (revision pending) — otherwise
+// it would override the "revise" instruction and make the agent proceed as if approved.
+func TestGateClearSkipsNudgeOnRevision(t *testing.T) {
+	orig := notifyContinue
+	nudged := 0
+	notifyContinue = func(func(string) string) int { nudged++; return 1 }
+	defer func() { notifyContinue = orig }()
+
+	pending := "wireframe"
+	m := sized(t, mustNew(t, revisionStore{gateStore{fakeStore{n: 1}, &pending}}))
+	nm, _ := m.Update(tickMsg{}) // observe the pending gate
+	m = nm.(Model)
+	pending = "" // gate clears, but a request-changes is pending revision
+	nm, _ = m.Update(tickMsg{})
+	if nudged != 0 {
+		t.Errorf("must NOT nudge continue while a revision is pending, got %d", nudged)
+	}
+}
+
 func TestImplementFocusedStoryLaunches(t *testing.T) {
 	cwd, _ := os.Getwd()
 	tmp := t.TempDir()
@@ -1134,6 +1155,11 @@ type gateStore struct {
 func (g gateStore) ApprovalPending() string { return *g.pending }
 func (g gateStore) ApproveGate() error      { *g.pending = ""; return nil }
 func (g gateStore) RejectGate() error       { *g.pending = ""; return nil }
+
+// revisionStore is a gateStore that reports a pending revision (as after a request-changes).
+type revisionStore struct{ gateStore }
+
+func (revisionStore) PendingRevision() bool { return true }
 
 func TestPipelineApproveGate(t *testing.T) {
 	pending := "IMPLEMENT"

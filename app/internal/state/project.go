@@ -324,7 +324,26 @@ func (s *FS) ApproveGate() error {
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
+	// Approving resolves any prior reject/request-changes, so drop the revision feedback —
+	// this is what lets the gate-clear auto-nudge fire "continue" again on the next approval.
+	_ = os.Remove(filepath.Join(s.Root, ".claude", "state", "design-feedback.json"))
 	return s.markResumed()
+}
+
+// PendingRevision reports whether the last review action was a reject / request-changes
+// (recorded in design-feedback.json) — i.e. the harness was told to revise, not proceed.
+// The gate-clear auto-nudge checks this so it never sends "continue" over a revise request.
+func (s *FS) PendingRevision() bool {
+	b, err := os.ReadFile(filepath.Join(s.Root, ".claude", "state", "design-feedback.json"))
+	if err != nil {
+		return false
+	}
+	var m map[string]any
+	if json.Unmarshal(b, &m) != nil {
+		return false
+	}
+	a, _ := m["action"].(string)
+	return a == "rejected" || a == "requested_changes"
 }
 
 // RejectGate records a rejection for the pending stage (approval-rejected.txt) and
