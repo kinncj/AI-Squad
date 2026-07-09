@@ -1161,6 +1161,28 @@ type revisionStore struct{ gateStore }
 
 func (revisionStore) PendingRevision() bool { return true }
 
+// stoppedStore is a gateStore whose pipeline is STOPPED (as after Stop workflow).
+type stoppedStore struct{ gateStore }
+
+func (stoppedStore) PipelineStatus() string { return "STOPPED" }
+
+func TestGateClearSkipsNudgeWhenStopped(t *testing.T) {
+	orig := notifyContinue
+	nudged := 0
+	notifyContinue = func(func(string) string) int { nudged++; return 1 }
+	defer func() { notifyContinue = orig }()
+
+	pending := "wireframe"
+	m := sized(t, mustNew(t, stoppedStore{gateStore{fakeStore{n: 1}, &pending}}))
+	nm, _ := m.Update(tickMsg{}) // observe the pending gate
+	m = nm.(Model)
+	pending = "" // Stop workflow cleared the gate — must NOT auto-continue
+	nm, _ = m.Update(tickMsg{})
+	if nudged != 0 {
+		t.Errorf("a STOPPED workflow must not auto-nudge continue, got %d", nudged)
+	}
+}
+
 func TestPipelineApproveGate(t *testing.T) {
 	pending := "IMPLEMENT"
 	m, err := New("v-test", gateStore{fakeStore{n: 3}, &pending}, "")

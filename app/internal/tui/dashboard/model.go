@@ -1527,11 +1527,13 @@ func (m *Model) reload() {
 	// nudge on maple's full logic (recorded panes + tmux sibling-broadcast + all
 	// terminals), so a portal approval reliably advances a yielded harness too.
 	//
-	// BUT: skip it when the gate cleared because of a reject / request-changes (pending
-	// revision feedback). Those already told the harness to REVISE — auto-firing "continue"
-	// here would override that and make the agent proceed as if approved.
+	// BUT only when the clear means "approved, proceed". Skip it when:
+	//   - a reject / request-changes left a pending revision (harness was told to REVISE), or
+	//   - the workflow was STOPPED/FAILED (harness was told to halt).
+	// Otherwise the auto-"continue" would override those and make the agent proceed anyway.
 	gate := m.store.ApprovalPending()
-	if m.lastGate != "" && gate == "" && !m.store.PendingRevision() {
+	st := strings.ToUpper(m.store.PipelineStatus())
+	if m.lastGate != "" && gate == "" && !m.store.PendingRevision() && st != "STOPPED" && st != "FAILED" {
 		if n := notifyContinue(os.Getenv); n > 0 {
 			m.status = fmt.Sprintf("gate cleared — nudged %d harness pane(s)", n)
 		}
