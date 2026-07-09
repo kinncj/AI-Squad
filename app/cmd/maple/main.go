@@ -70,7 +70,8 @@ func main() {
 			die(err)
 		}
 	case "self-update", "upgrade":
-		if err := selfupdate.Run(version); err != nil {
+		pre := hasFlag(args[1:], "--pre") || hasFlag(args[1:], "--prerelease")
+		if err := selfupdate.Run(version, pre); err != nil {
 			die(err)
 		}
 	case "resume-session", "resume":
@@ -834,11 +835,11 @@ func usage(w *os.File) {
   (no command)      run the dashboard TUI
   init [--force]    scaffold the MAPLE template into the current project
   req               turn a free-text requirement into Gherkin stories (needs an AI harness)
-  update [--yes]    preview + apply template changes (Makefile section-patched)
+  update [--yes]    preview + apply template file changes (Makefile section-patched)
+  upgrade [--pre]   download the latest release and replace the maple binary (self-update)
   labels            bootstrap the canonical MAPLE label set (needs gh)
   project           create a GitHub Project v2 and wire project.config.yaml (needs gh)
   resume [harness]  re-launch a pinned session (claude/copilot/opencode/cursor)
-  self-update       replace the binary with the latest GitHub release
   rtk-audit         show RTK hook wiring and token savings
   emit <event…>     push a live event to the design portal (agents: progress/stage)
   version           print the version
