@@ -741,6 +741,85 @@ func TestLauncherPickerAndSpawn(t *testing.T) {
 	}
 }
 
+func TestImplementOpensHarnessPicker(t *testing.T) {
+	cwd, _ := os.Getwd()
+	os.Chdir(t.TempDir())
+	defer os.Chdir(cwd)
+
+	m := mustNew(t, storyPathStore{fakeStore{n: 1}})
+	// two harnesses installed → i must open a picker, claude first (the default).
+	m.lookPath = func(bin string) (string, error) {
+		if bin == "claude" || bin == "copilot" {
+			return "/usr/bin/" + bin, nil
+		}
+		return "", exec.ErrNotFound
+	}
+	var launched []string
+	m.execFn = func(args []string) tea.Cmd { launched = args; return nil }
+	m = sized(t, m)
+
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("i")})
+	m = nm.(Model)
+	if m.picker == nil || m.pickerMode != "implement" {
+		t.Fatal("i should open the implement harness picker")
+	}
+	if len(m.pickItems) != 2 || m.pickItems[0].id != "claude" {
+		t.Fatalf("picker should list installed harnesses claude-first, got %+v", m.pickItems)
+	}
+	if launched != nil {
+		t.Error("i must not launch before a harness is chosen")
+	}
+	// Enter on the default (claude) launches implement-stories for claude.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = nm.(Model)
+	if m.picker != nil {
+		t.Error("Enter should close the picker")
+	}
+	if harnessOf(launched) != "claude" {
+		t.Errorf("should launch implement-stories with claude, got %v", launched)
+	}
+}
+
+func TestImplementSingleHarnessSkipsPicker(t *testing.T) {
+	cwd, _ := os.Getwd()
+	os.Chdir(t.TempDir())
+	defer os.Chdir(cwd)
+
+	m := mustNew(t, storyPathStore{fakeStore{n: 1}})
+	m.lookPath = func(bin string) (string, error) {
+		if bin == "opencode" {
+			return "/usr/bin/opencode", nil
+		}
+		return "", exec.ErrNotFound
+	}
+	var launched []string
+	m.execFn = func(args []string) tea.Cmd { launched = args; return nil }
+	m = sized(t, m)
+
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("i")})
+	m = nm.(Model)
+	if m.picker != nil {
+		t.Error("a single harness should skip the picker")
+	}
+	if harnessOf(launched) != "opencode" {
+		t.Errorf("should launch directly with opencode, got %v", launched)
+	}
+}
+
+// harnessOf returns the harness binary from a launch argv, seeing past an env RTK wrapper.
+func harnessOf(argv []string) string {
+	for _, a := range argv {
+		switch a {
+		case "claude", "opencode", "copilot", "cursor", "cursor-agent":
+			return a
+		}
+	}
+	if len(argv) > 0 {
+		return argv[0]
+	}
+	return ""
+}
+
 func TestQuickPromptPicksSkillOrAgent(t *testing.T) {
 	m := sized(t, newModel(t))
 	m.lookPath = func(bin string) (string, error) {

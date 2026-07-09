@@ -112,6 +112,7 @@ type Model struct {
 	cmdBuf       string
 	reviewStory  string
 	reviewCursor int
+	implStoryDir string // story dir captured when the [i] harness picker opens
 	detailKind   string
 	storyPath    string // Story.md path of the open story detail (for `i` implement)
 	lastGate     string // last-seen pending approval stage, to detect gate-clear → nudge
@@ -956,6 +957,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if i >= 0 && i < len(m.pickItems) {
 				if m.pickerMode == "rtk" {
 					return m, m.toggleRTK(i) // keeps the picker open; wiring runs async
+				} else if m.pickerMode == "implement" {
+					h := m.pickItems[i].id
+					dir := m.implStoryDir
+					m.closePicker()
+					m.status = "launching implement-stories (" + h + ") for " + filepath.Base(dir)
+					return m, m.launch(reqtui.ImplementArgs(h, []string{dir}))
 				} else {
 					item := m.pickItems[i]
 					m.closePicker()
@@ -1399,13 +1406,56 @@ func (m Model) implementFocusedStory() (tea.Model, tea.Cmd) {
 		m.status = "focus or open a story first, then [i] to implement"
 		return m, nil
 	}
-	h := m.firstHarness()
-	if h == "" {
-		m.status = "no harness found to implement (claude / opencode / copilot)"
+	hs := m.availableHarnesses()
+	if len(hs) == 0 {
+		m.status = "no harness found to implement (claude / opencode / copilot / cursor)"
 		return m, nil
 	}
-	m.status = "launching implement-stories for " + filepath.Base(filepath.Dir(path))
-	return m, m.launch(reqtui.ImplementArgs(h, []string{filepath.Dir(path)}))
+	dir := filepath.Dir(path)
+	if len(hs) == 1 {
+		m.status = "launching implement-stories (" + hs[0].kind + ") for " + filepath.Base(dir)
+		return m, m.launch(reqtui.ImplementArgs(hs[0].kind, []string{dir}))
+	}
+	// Multiple harnesses: let the user choose. claude is listed first (the default).
+	m.implStoryDir = dir
+	m.openImplPicker(hs)
+	return m, nil
+}
+
+type harnessOption struct{ label, kind string }
+
+// availableHarnesses returns the installed implement-capable harnesses, claude-first (so
+// claude is the default highlight in the picker).
+func (m *Model) availableHarnesses() []harnessOption {
+	all := []harnessOption{
+		{"Claude Code", "claude"},
+		{"OpenCode", "opencode"},
+		{"GitHub Copilot", "copilot"},
+		{"Cursor", "cursor"},
+	}
+	var out []harnessOption
+	for _, h := range all {
+		if h.kind == "cursor" {
+			if m.available("cursor-agent") || m.available("cursor") {
+				out = append(out, h)
+			}
+			continue
+		}
+		if m.available(h.kind) {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// openImplPicker shows the "implement with…" harness chooser for the captured story dir.
+func (m *Model) openImplPicker(hs []harnessOption) {
+	m.pickerMode = "implement"
+	items := make([]pickItem, len(hs))
+	for i, h := range hs {
+		items[i] = pickItem{label: h.label, id: h.kind}
+	}
+	m.setPicker("Implement story with… — [Enter] launch · [esc] cancel", items, 0)
 }
 
 // targetStoryPath returns the Story.md path to act on: the open story detail, else the
