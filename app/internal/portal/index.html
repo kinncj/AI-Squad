@@ -567,8 +567,12 @@
       document.getElementById("pending").textContent = s.approval_pending || "-";
       document.getElementById("updated").textContent = s.updated_at || "-";
       setMapleConn(true); // a successful state fetch proves the portal (and maple) are alive
-      if (s.approval_pending && s.feedback && s.feedback.message) {
-        document.getElementById("feedback").value = s.feedback.message;
+      // Only seed the feedback box from server state when the user isn't editing it and it's
+      // empty — otherwise the 4s poll / SSE refresh would wipe what you're typing.
+      const fb = document.getElementById("feedback");
+      if (s.approval_pending && s.feedback && s.feedback.message &&
+          document.activeElement !== fb && fb.value.trim() === "" && !_feedbackDirty) {
+        fb.value = s.feedback.message;
       }
       if (s.approval_pending && s.feedback && Array.isArray(s.feedback.attachments)) {
         selectedUploads.clear();
@@ -667,6 +671,7 @@
     // ─── story review (click a story → its spec + linked artifacts) ─────────
     let _storyFilter = null;       // { id, title, paths:Set } — the story being reviewed
     let _reviewArtifacts = null;   // Set of paths the pending gate is asking to review
+    let _feedbackDirty = false;    // true once the user types feedback (don't let a refresh wipe it)
     let _lastReviewStory = null;   // last auto-focused gate story (don't re-trigger)
     async function selectStory(id, title) {
       try {
@@ -1081,6 +1086,7 @@
       document.getElementById("feedback").value = "";
       document.getElementById("uploadInput").value = "";
       selectedUploads.clear();
+      _feedbackDirty = false; // sent → allow server state to seed it again next gate
     }
 
     function artifactPathFromHref(href) {
@@ -1383,6 +1389,8 @@
     bindMarkdownLinks("previewBody");
     bindMarkdownLinks("modalBody");
     { const sel = document.getElementById("artSort"); if (sel) sel.value = _artSort; }
+    // Mark the feedback box dirty as soon as the user types, so no refresh wipes it.
+    { const fb = document.getElementById("feedback"); if (fb) fb.addEventListener("input", () => { _feedbackDirty = fb.value.trim() !== ""; }); }
     subscribeEvents();
     // Updates are event-driven (SSE pushes on real change); this is only a slow safety net.
     // A failed poll means the portal (and maple) went away → flip the badge to offline.
