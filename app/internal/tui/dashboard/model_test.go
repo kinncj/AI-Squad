@@ -1175,11 +1175,13 @@ func TestPipelineRejectGate(t *testing.T) {
 	}
 	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
 	m = nm.(Model)
-	if pending != "" {
-		t.Errorf("r should reject/clear the gate, pending=%q", pending)
+	// request-changes KEEPS the gate open (until approval) — it must not clear it, and it
+	// must not say "continue" to the harness.
+	if pending == "" {
+		t.Error("r (request changes) should keep the gate open, not clear it")
 	}
-	if !strings.HasPrefix(m.status, "rejected") {
-		t.Errorf("status = %q, want rejected note", m.status)
+	if !strings.HasPrefix(m.status, "changes requested") {
+		t.Errorf("status = %q, want a changes-requested note", m.status)
 	}
 }
 

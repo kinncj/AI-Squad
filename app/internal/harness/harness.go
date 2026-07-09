@@ -257,26 +257,32 @@ var nonHarnessCommands = map[string]bool{
 // harness, and (2) as a fallback for harnesses maple did NOT launch, any *other* pane
 // in the current tmux server whose foreground command looks like a harness. Returns
 // how many panes accepted the keys. getenv is injected for tests.
-func NotifyContinue(getenv func(string) string) int {
+func NotifyContinue(getenv func(string) string) int { return notifyText(getenv, "continue") }
+
+// notifyText types text (plus a submit) into (1) every pane maple recorded when it launched
+// a harness, and (2) as a fallback, any *other* tmux pane running a harness-like command.
+// Both NotifyContinue and NotifyHarness go through here so reject/request-changes/stop reach
+// the harness with exactly the same coverage as approve.
+func notifyText(getenv func(string) string, text string) int {
 	n := 0
 	nudgedTmux := map[string]bool{}
 	for _, p := range loadPanes() {
 		if p.Kind == "tmux" {
 			nudgedTmux[p.Target] = true
 		}
-		if sendContinue(p) {
+		if sendText(p, text) {
 			n++
 		}
 	}
 	if getenv("TMUX") != "" {
-		n += broadcastTmux(getenv("TMUX_PANE"), nudgedTmux)
+		n += broadcastTmux(getenv("TMUX_PANE"), nudgedTmux, text)
 	}
 	return n
 }
 
-// broadcastTmux sends "continue" to every tmux pane running a harness-like command,
-// skipping maple's own pane and any already nudged. Avoids typing into shells/editors.
-func broadcastTmux(self string, skip map[string]bool) int {
+// broadcastTmux sends text to every tmux pane running a harness-like command, skipping
+// maple's own pane and any already nudged. Avoids typing into shells/editors.
+func broadcastTmux(self string, skip map[string]bool, text string) int {
 	out, err := runner("tmux", "list-panes", "-a", "-F", "#{pane_id}\t#{pane_current_command}")
 	if err != nil {
 		return 0
@@ -291,26 +297,18 @@ func broadcastTmux(self string, skip map[string]bool) int {
 		if id == self || skip[id] || nonHarnessCommands[cmd] {
 			continue
 		}
-		if _, err := runner("tmux", "send-keys", "-t", id, "continue", "Enter"); err == nil {
+		if _, err := runner("tmux", "send-keys", "-t", id, text, "Enter"); err == nil {
 			n++
 		}
 	}
 	return n
 }
 
-func sendContinue(p PaneRef) bool { return sendText(p, "continue") }
-
-// NotifyHarness types text (plus a submit) into every recorded harness pane — a
-// generalisation of NotifyContinue used for e.g. a "stop the workflow" instruction from the
-// portal. Returns how many panes accepted it.
-func NotifyHarness(_ func(string) string, text string) int {
-	n := 0
-	for _, p := range loadPanes() {
-		if sendText(p, text) {
-			n++
-		}
-	}
-	return n
+// NotifyHarness types text (plus a submit) into every recorded harness pane AND the tmux
+// sibling-broadcast fallback — the same reach as NotifyContinue. Used for reject /
+// request-changes / stop from either the TUI or the portal, so they land like approve does.
+func NotifyHarness(getenv func(string) string, text string) int {
+	return notifyText(getenv, text)
 }
 
 // sendText types text into a pane and submits it (Enter), per multiplexer.

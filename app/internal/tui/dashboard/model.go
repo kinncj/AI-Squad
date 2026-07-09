@@ -518,6 +518,14 @@ func continueNote(nudged int) string {
 	return "harness continues on its next poll (≤2s)"
 }
 
+// reviseNote describes the outcome of a request-changes nudge (gate stays open).
+func reviseNote(nudged int) string {
+	if nudged > 0 {
+		return fmt.Sprintf("changes requested — told %d harness pane(s) to revise (gate stays open)", nudged)
+	}
+	return "changes requested — no live pane; feedback recorded for the harness"
+}
+
 // openExternal fires a detached command (e.g. opening a URL in the browser) without
 // suspending the TUI.
 func (m *Model) openExternal(args []string) tea.Cmd {
@@ -1029,17 +1037,21 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "r":
 			if m.detailKind == "pipeline" {
 				// When rate-limited, [r] resumes the run from its stage; otherwise it
-				// rejects a pending gate (main overloads r the same way).
+				// requests changes on a pending gate (main overloads r the same way).
 				if strings.EqualFold(m.store.PipelineStatus(), "RATE_LIMITED") {
 					return m, m.resumePipeline()
 				}
 				if m.store.ApprovalPending() == "" {
 					m.status = "no gate awaiting approval"
-				} else if err := m.store.RejectGate(); err == nil {
-					m.openPipeline()
-					m.status = "rejected · " + continueNote(harness.NotifyContinue(os.Getenv))
 				} else {
-					m.status = "reject failed: " + err.Error()
+					// Keep the gate open and tell the harness to revise — NOT "continue"
+					// (which reads as approval). Matches the portal's request-changes.
+					msg := "The reviewer REQUESTED CHANGES in the MAPLE TUI. Do NOT treat this " +
+						"as approval and do NOT proceed to the next stage. Revise the current " +
+						"artifact and re-request review."
+					n := harness.NotifyHarness(os.Getenv, msg)
+					m.openPipeline()
+					m.status = reviseNote(n)
 				}
 			}
 		case "A":

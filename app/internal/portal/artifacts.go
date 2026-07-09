@@ -237,10 +237,14 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = os.MkdirAll(s.uploadDir(), 0o755)
-	var saved []string
+	// The SPA expects `items` = [{path,name,…}] (not a bare filename list), so it can add
+	// the uploads as reference attachments — return that shape.
+	items := []artifact{}
+	var rejected []string
 	for _, fh := range files {
 		ext := strings.ToLower(filepath.Ext(fh.Filename))
 		if !artifactExts[ext] || fh.Size > 10<<20 {
+			rejected = append(rejected, fh.Filename)
 			continue
 		}
 		src, err := fh.Open()
@@ -256,8 +260,16 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(dst, src)
 		dst.Close()
 		src.Close()
-		saved = append(saved, name)
+		rel, _ := filepath.Rel(s.root, filepath.Join(s.uploadDir(), name))
+		items = append(items, artifact{
+			Path: filepath.ToSlash(rel), Name: name, Kind: artifactKind(ext),
+			Platform: artifactPlatform(name), Source: "upload",
+		})
+	}
+	if len(items) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "no supported files uploaded", "rejected": rejected})
+		return
 	}
 	s.Publish(map[string]any{"event": "upload"})
-	writeJSON(w, http.StatusOK, map[string]any{"saved": saved})
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "rejected": rejected})
 }

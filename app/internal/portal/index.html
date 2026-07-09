@@ -250,6 +250,16 @@
     .step.failed { border-color: rgba(247,118,142,.4); }
     .step.failed .sn { color: var(--bad); }
     .step.failed .sl { color: var(--text); }
+    .review-log { border:1px solid var(--line); border-radius:12px; background: var(--bg2); padding:12px 14px; margin-bottom:16px; }
+    .rl-title { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color: var(--warn); margin-bottom:8px; }
+    .rl-item { border-top:1px solid var(--line); padding:8px 0; }
+    .rl-item:first-of-type { border-top:0; }
+    .rl-verb { font-size:11px; font-weight:800; }
+    .rl-bad { color: var(--bad); }
+    .rl-warn { color: var(--warn); }
+    .rl-stage { color: var(--muted); font-size:11px; margin-left:6px; }
+    .rl-ts { color: var(--dim); font-size:10px; float:right; }
+    .rl-msg { color: var(--text); font-size:13px; margin-top:4px; white-space:pre-wrap; }
   </style>
 </head>
 <body>
@@ -727,14 +737,31 @@
       }
       return m;
     }
-    function showStorySpec(d) {
+    async function showStorySpec(d) {
       const pathEl = document.getElementById("previewPath");
       const body = document.getElementById("previewBody");
       const exp = document.getElementById("previewExpand");
       if (exp) exp.style.display = "none";
       _currentPreview = null;
       pathEl.textContent = "Story spec · " + (d.title || d.id);
-      body.innerHTML = renderMarkdown(stripFrontmatter(d.spec || ""));
+      let html = "";
+      // Change-request history for this story, if any — "what was asked for" across rounds.
+      try {
+        const h = await api("/api/review-history?story=" + encodeURIComponent(d.id || ""));
+        const items = h.items || [];
+        if (items.length) {
+          html += '<div class="review-log"><div class="rl-title">Change requests · ' + items.length + '</div>';
+          for (const e of items) {
+            const verb = e.action === "rejected" ? "Rejected" : "Changes requested";
+            html += '<div class="rl-item"><span class="rl-verb ' + (e.action === "rejected" ? "rl-bad" : "rl-warn") + '">' +
+              verb + '</span> <span class="rl-stage">' + esc(e.stage || "") + '</span>' +
+              '<span class="rl-ts">' + actTime(e) + '</span>' +
+              (e.message ? '<div class="rl-msg">' + esc(e.message) + '</div>' : '') + '</div>';
+          }
+          html += '</div>';
+        }
+      } catch (e) { /* history is best-effort */ }
+      body.innerHTML = html + renderMarkdown(stripFrontmatter(d.spec || ""));
       renderMermaidIn(body);
       bindMarkdownLinks("previewBody");
     }
